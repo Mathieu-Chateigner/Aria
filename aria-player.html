@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ARIA – Joueur</title>
+<script>const VERSION='0.1.6';</script>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHRleHQgeD0iMTYiIHk9IjI4IiBmb250LXNpemU9IjMwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjYzlhODRjIj7imZs8L3RleHQ+PC9zdmc+">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Cinzel+Decorative:wght@700&family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Playfair+Display:ital,wght@0,700;1,400&display=swap" rel="stylesheet">
 <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
@@ -290,6 +291,8 @@ body{background:var(--bg);font-family:'EB Garamond',serif;color:var(--parchment)
 <!-- TOP BAR -->
 <div class="topbar">
   <div class="topbar-title">♛ ARIA</div>
+  <span style="font-family:'Cinzel',serif;font-size:9px;color:var(--gold-dim);letter-spacing:.1em;" id="version-display"></span>
+  <span style="font-family:monospace;font-size:9px;color:var(--parchment-dim);opacity:.4;" id="pid-display"></span>
   <span class="topbar-badge">Joueur</span>
   <span class="topbar-char" id="char-display">—</span>
   <span class="rolling-ind" id="rolling-ind">⚄ Lancer…</span>
@@ -630,8 +633,9 @@ const DEFAULT_CHAR={
 
 let character=JSON.parse(localStorage.getItem('aria-character')||'null')||DEFAULT_CHAR;
 
-// Per-tab unique ID — generated fresh on every page load so duplicated tabs never share an ID
-const playerId=Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+// Per-tab unique ID — persists across refreshes (sessionStorage) but differs between tabs
+let playerId=sessionStorage.getItem('aria-player-id');
+if(!playerId){playerId=crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2,9);sessionStorage.setItem('aria-player-id',playerId);}
 if(!character.physical)   character.physical  ={age:'',taille:'',poids:'',yeux:'',cheveux:'',signes:''};
 if(!character.inventory)  character.inventory =[];
 if(!character.weapons)    character.weapons   =[{nom:'',degats:''},{nom:'',degats:''},{nom:'',degats:''}];
@@ -658,6 +662,8 @@ let cardDrawing = false;
 //  INIT
 // ═══════════════════════════════════════════
 window.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('version-display').textContent='v'+VERSION;
+  document.getElementById('pid-display').textContent='#'+playerId.slice(-6);
   initCurrentHP();
   renderAll();
   buildTracker();
@@ -666,8 +672,8 @@ window.addEventListener('DOMContentLoaded',()=>{
   loadConfigInputs();
   if(config.dddiceKey&&config.dddiceRoom) initDddice();
   if(config.ablyKey) initAbly();
-  // Send presence heartbeat every 15s
-  setInterval(sendPresence, 15000);
+  // Send presence heartbeat every 5s
+  setInterval(sendPresence, 5000);
 });
 
 // ═══════════════════════════════════════════
@@ -1129,7 +1135,7 @@ function initAbly(){
     ablyRolls =ablyInstance.channels.get('aria-rolls');
     ablyCards =ablyInstance.channels.get('aria-cards');
     ablyDamage=ablyInstance.channels.get('aria-damage');
-    ablyInstance.connection.on('connected',()=>setAblyStatus(true));
+    ablyInstance.connection.on('connected',()=>{setAblyStatus(true);sendPresence();});
     ablyInstance.connection.on('failed',   ()=>setAblyStatus(false));
     // Listen for GM damage/heal targeted at this player
     const myId=playerId;
@@ -1140,8 +1146,6 @@ function initAbly(){
       if(msg.name==='damage') handleGMDamage(d);
       if(msg.name==='heal')   handleGMHeal(d);
     });
-    // Respond to GM ping with immediate presence
-    ablyDamage.subscribe('ping',()=>sendPresence());
     // Listen for other players' rolls — show a brief toast
     ablyRolls.subscribe('roll',msg=>{
       const d=msg.data;
@@ -1155,21 +1159,13 @@ function publishCard(type,extra={}){
   if(ablyCards) ablyCards.publish(type,{...extra,excluded:[...cardExcluded],drawn:[...cardDrawn],deckIds:cardDeck.map(c=>c.id),lastCardId});
 }
 function sendPresence(){
-  if(!ablyDamage) return;
-  ablyDamage.publish('presence',{
-    playerId,
-    name:character.name,
-    charClass:character.class,
-    hp:currentHP,
-    maxHP:getMaxHP(),
-    stats:character.stats,
-    ts:Date.now()
-  });
+  if(!ablyDamage){console.warn('[ARIA] sendPresence: ablyDamage not ready');return;}
+  console.log('[ARIA] sendPresence →',playerId.slice(-6),character.name);
+  ablyDamage.publish('presence',{playerId,name:character.name,charClass:character.class,hp:currentHP,maxHP:getMaxHP(),stats:character.stats},err=>{if(err)console.error('[ARIA] publish error:',err);});
 }
 function setAblyStatus(ok){
   ['ably-dot','cfg-ably-dot2'].forEach(id=>{const el=document.getElementById(id);if(el)el.className='status-dot '+(ok?'connected':'error');});
   ['ably-status','cfg-ably-status2'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=ok?'Ably connecté':'Ably erreur';});
-  if(ok) sendPresence();
 }
 
 // ═══════════════════════════════════════════
