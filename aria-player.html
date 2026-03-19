@@ -81,8 +81,8 @@ body{background:var(--bg);font-family:'EB Garamond',serif;color:var(--parchment)
 .tab-btn{font-family:'Cinzel',serif;font-size:12px;letter-spacing:.08em;padding:10px 16px;cursor:pointer;background:none;border:none;color:var(--parchment-dim);border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap;}
 .tab-btn:hover{color:var(--parchment);}
 .tab-btn.active{color:var(--gold);border-bottom-color:var(--gold);}
-.tab-content{display:none;flex:1;overflow-y:auto;padding:20px;}
-.tab-content.active{display:flex;flex-direction:column;gap:16px;}
+.tab-content{display:none;}
+.tab-content.active{display:block;flex:1;min-height:0;overflow-y:auto;padding:20px;}
 
 /* SKILLS */
 .skill-list{display:flex;flex-direction:column;gap:6px;}
@@ -629,6 +629,9 @@ const DEFAULT_CHAR={
 };
 
 let character=JSON.parse(localStorage.getItem('aria-character')||'null')||DEFAULT_CHAR;
+
+// Per-tab unique ID — generated fresh on every page load so duplicated tabs never share an ID
+const playerId=Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 if(!character.physical)   character.physical  ={age:'',taille:'',poids:'',yeux:'',cheveux:'',signes:''};
 if(!character.inventory)  character.inventory =[];
 if(!character.weapons)    character.weapons   =[{nom:'',degats:''},{nom:'',degats:''},{nom:'',degats:''}];
@@ -978,7 +981,7 @@ function rollStat(key,val){
 }
 function handleResult(skillName,threshold,roll){
   const success=roll<=threshold;
-  const data={skillName,threshold,roll,success,char:character.name,bonusMalus,playerId:character.name};
+  const data={skillName,threshold,roll,success,char:character.name,bonusMalus,playerId};
   setRolling(false);
   showFloatCard(data);
   publishRoll(data);
@@ -1129,7 +1132,7 @@ function initAbly(){
     ablyInstance.connection.on('connected',()=>setAblyStatus(true));
     ablyInstance.connection.on('failed',   ()=>setAblyStatus(false));
     // Listen for GM damage/heal targeted at this player
-    const myId=character.name;
+    const myId=playerId;
     ablyDamage.subscribe(msg=>{
       const d=msg.data;
       if(!d||d.source==='player') return;
@@ -1137,10 +1140,12 @@ function initAbly(){
       if(msg.name==='damage') handleGMDamage(d);
       if(msg.name==='heal')   handleGMHeal(d);
     });
+    // Respond to GM ping with immediate presence
+    ablyDamage.subscribe('ping',()=>sendPresence());
     // Listen for other players' rolls — show a brief toast
     ablyRolls.subscribe('roll',msg=>{
       const d=msg.data;
-      if(!d||d.char===myId||d.playerId===myId) return; // skip own rolls
+      if(!d||d.playerId===myId) return; // skip own rolls
       showOtherRollToast(d);
     });
   }catch(e){console.error('Ably:',e);setAblyStatus(false);}
@@ -1152,7 +1157,7 @@ function publishCard(type,extra={}){
 function sendPresence(){
   if(!ablyDamage) return;
   ablyDamage.publish('presence',{
-    playerId:character.name,
+    playerId,
     name:character.name,
     charClass:character.class,
     hp:currentHP,

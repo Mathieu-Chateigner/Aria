@@ -482,7 +482,7 @@ function initAbly(){
     ablyRolls =ablyInstance.channels.get('aria-rolls');
     ablyCards =ablyInstance.channels.get('aria-cards');
     ablyDamage=ablyInstance.channels.get('aria-damage');
-    ablyInstance.connection.on('connected',()=>setAblyStatus(true));
+    ablyInstance.connection.on('connected',()=>{setAblyStatus(true);ablyDamage.publish('ping',{ts:Date.now()});});
     ablyInstance.connection.on('failed',   ()=>setAblyStatus(false));
     // Listen for player rolls
     ablyRolls.subscribe('roll',msg=>handleIncomingRoll(msg.data));
