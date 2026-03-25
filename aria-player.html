@@ -1,1447 +1,304 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ARIA – Joueur</title>
-<script>const VERSION='0.1.6';</script>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHRleHQgeD0iMTYiIHk9IjI4IiBmb250LXNpemU9IjMwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjYzlhODRjIj7imZs8L3RleHQ+PC9zdmc+">
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Cinzel+Decorative:wght@700&family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Playfair+Display:ital,wght@0,700;1,400&display=swap" rel="stylesheet">
-<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
-<style>
-:root {
-  --gold:#c9a84c; --gold-light:#e8c97a; --gold-dim:#6b5020;
-  --ink:#0d0b08; --bg:#111009; --bg2:#1a1610; --bg3:#221e14;
-  --parchment:#f0e6c8; --parchment-dim:#9e8e6a;
-  --success:#4caf77; --fail:#c0392b;
-  --border:rgba(201,168,76,0.15); --radius:4px;
-  --card-red:#c0392b; --card-black:#1a1a1a; --card-cream:#f5f0e8;
-  --card-purple:#7b3fa0; --card-navy:#1b3a6b;
-  --card-w:160px; --card-h:224px; --deck-w:128px; --deck-h:179px;
-}
-*{margin:0;padding:0;box-sizing:border-box;}
-html,body{height:100%;}
-body{background:var(--bg);font-family:'EB Garamond',serif;color:var(--parchment);display:flex;flex-direction:column;min-height:100vh;}
-
-/* TOP BAR */
-.topbar{display:flex;align-items:center;gap:12px;padding:10px 16px;background:linear-gradient(90deg,#141005,#0f0d06);border-bottom:1px solid rgba(201,168,76,.3);flex-shrink:0;box-shadow:0 2px 12px rgba(80,50,0,.35);}
-.topbar-title{font-family:'Cinzel Decorative',serif;font-size:18px;color:var(--gold);letter-spacing:.06em;flex:1;}
-.topbar-char{font-family:'Cinzel',serif;font-size:14px;color:var(--parchment-dim);font-style:italic;}
-.topbar-badge{font-family:'Cinzel',serif;font-size:12px;letter-spacing:.2em;color:var(--gold-light);text-transform:uppercase;background:linear-gradient(135deg,rgba(201,168,76,.2),rgba(160,120,20,.15));border:1px solid rgba(201,168,76,.45);padding:5px 14px;border-radius:4px;text-shadow:0 0 10px rgba(220,180,60,.35);box-shadow:0 0 8px rgba(180,130,20,.15);}
-.status-row{display:flex;align-items:center;gap:6px;font-family:'Cinzel',serif;font-size:10px;color:var(--parchment-dim);}
-.status-dot{width:8px;height:8px;border-radius:50%;background:#444;}
-.status-dot.connected{background:var(--success);}
-.status-dot.error{background:var(--fail);}
-.icon-btn{background:none;border:1px solid var(--border);color:var(--gold-dim);cursor:pointer;padding:4px 8px;border-radius:var(--radius);font-size:14px;transition:all .15s;}
-.icon-btn:hover{border-color:var(--gold);color:var(--gold);}
-
-/* BM BAR */
-.bm-bar{flex-shrink:0;display:flex;align-items:center;gap:10px;padding:6px 16px;background:var(--bg2);border-bottom:1px solid var(--border);flex-wrap:wrap;}
-.bm-bar-label{font-family:'Cinzel',serif;font-size:9px;letter-spacing:.2em;color:var(--gold-dim);text-transform:uppercase;white-space:nowrap;}
-.bm-display{font-family:'Cinzel',serif;font-size:15px;font-weight:900;min-width:46px;text-align:center;color:var(--parchment);background:rgba(0,0,0,.25);border:1px solid var(--border);border-radius:var(--radius);padding:4px 8px;}
-.bm-display.positive{color:var(--success);border-color:rgba(76,175,119,.3);}
-.bm-display.negative{color:var(--fail);border-color:rgba(192,57,43,.3);}
-.bm-sep{width:1px;height:20px;background:var(--border);flex-shrink:0;}
-.bm-btn{background:rgba(201,168,76,.07);border:1px solid var(--border);color:var(--parchment);font-family:'Cinzel',serif;font-size:12px;padding:4px 8px;cursor:pointer;border-radius:var(--radius);transition:all .15s;white-space:nowrap;}
-.bm-btn:hover{background:rgba(201,168,76,.15);border-color:var(--gold-dim);}
-.bm-btn.plus{color:var(--success);border-color:rgba(76,175,119,.25);}
-.bm-btn.minus{color:var(--fail);border-color:rgba(192,57,43,.25);}
-.bm-btn.reset-btn{color:var(--parchment-dim);font-size:11px;}
-.bm-custom-row{display:flex;gap:4px;align-items:center;}
-.bm-custom-row input{width:52px;background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--parchment);font-family:'Cinzel',serif;font-size:12px;padding:4px 6px;border-radius:var(--radius);text-align:center;}
-.bm-custom-row input:focus{outline:none;border-color:var(--gold-dim);}
-
-/* MAIN */
-.main{display:flex;flex:1;overflow:hidden;}
-
-/* SIDEBAR */
-.sidebar{width:260px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:16px;gap:16px;overflow-y:auto;}
-.panel{background:var(--bg3);border:1px solid var(--border);border-radius:6px;overflow:hidden;}
-.panel-header{font-family:'Cinzel',serif;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold-dim);padding:8px 14px;background:rgba(201,168,76,.05);border-bottom:1px solid var(--border);}
-.panel-body{padding:12px 14px;}
-
-/* HP */
-.hp-number-wrap{text-align:center;padding:8px 0 6px;cursor:pointer;user-select:none;}
-.hp-number{font-family:'Cinzel',serif;font-size:42px;font-weight:900;color:var(--parchment);line-height:1;transition:color .3s;}
-.hp-number.low{color:#e8a020;}
-.hp-number.critical{color:var(--fail);}
-.hp-fraction{font-family:'Cinzel',serif;font-size:13px;color:var(--parchment-dim);}
-.hp-bar-wrap{height:8px;background:rgba(0,0,0,.4);border-radius:4px;overflow:hidden;margin:6px 0 10px;position:relative;}
-.hp-bar-ghost{position:absolute;left:0;top:0;height:100%;background:rgba(255,100,100,.3);border-radius:4px;transition:width 0s;}
-.hp-bar-fill{position:absolute;left:0;top:0;height:100%;border-radius:4px;transition:width 1.1s ease,background .3s;}
-
-/* COMBAT SIDEBAR */
-#combat-sidebar-body .weap-row{display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;border-bottom:1px solid rgba(201,168,76,.06);}
-
-/* INVENTORY SIDEBAR */
-#inv-sidebar-body .inv-item{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(201,168,76,.06);font-size:14px;}
-
-/* CONTENT */
-.content{flex:1;display:flex;flex-direction:column;overflow:hidden;}
-.tabs{display:flex;background:linear-gradient(90deg,#130f04,#0e0c05);border-bottom:1px solid rgba(201,168,76,.2);flex-shrink:0;flex-wrap:wrap;}
-.tab-btn{font-family:'Cinzel',serif;font-size:12px;letter-spacing:.08em;padding:10px 16px;cursor:pointer;background:none;border:none;color:var(--parchment-dim);border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap;}
-.tab-btn:hover{color:var(--parchment);}
-.tab-btn.active{color:var(--gold);border-bottom-color:var(--gold);}
-.tab-content{display:none;}
-.tab-content.active{display:block;flex:1;min-height:0;overflow-y:auto;padding:20px;}
-
-/* SKILLS */
-.skill-list{display:flex;flex-direction:column;gap:6px;}
-.skill-item{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;transition:all .15s;}
-.skill-item:hover{background:rgba(201,168,76,.08);border-color:var(--gold-dim);}
-.skill-name{flex:1;font-family:'EB Garamond',serif;font-size:15px;font-style:italic;}
-.skill-link{font-family:'Cinzel',serif;font-size:10px;color:var(--gold-dim);min-width:54px;}
-.skill-pct{font-family:'Cinzel',serif;font-size:16px;font-weight:700;color:var(--gold);min-width:44px;text-align:right;}
-
-/* STATS */
-.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
-.stat-card{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:12px 8px;text-align:center;cursor:pointer;transition:all .15s;position:relative;}
-.stat-card:hover{background:rgba(201,168,76,.08);border-color:var(--gold-dim);}
-.stat-key{font-family:'Cinzel',serif;font-size:10px;letter-spacing:.18em;color:var(--gold-dim);text-transform:uppercase;}
-.stat-val{font-family:'Cinzel',serif;font-size:26px;font-weight:900;color:var(--parchment);margin:4px 0;}
-.mult-bar{display:flex;align-items:center;gap:8px;margin-bottom:12px;}
-.mult-bar-label{font-family:'Cinzel',serif;font-size:9px;letter-spacing:.2em;color:var(--gold-dim);text-transform:uppercase;white-space:nowrap;}
-.mult-btn{font-family:'Cinzel',serif;font-size:11px;padding:5px 12px;background:rgba(201,168,76,.07);border:1px solid var(--border);color:var(--parchment-dim);cursor:pointer;border-radius:var(--radius);transition:all .15s;}
-.mult-btn:hover,.mult-btn.active{background:rgba(201,168,76,.18);border-color:var(--gold);color:var(--gold);}
-
-/* FREE ROLL */
-.free-roll-form{display:flex;flex-direction:column;gap:10px;}
-.field-label{font-family:'Cinzel',serif;font-size:10px;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:3px;}
-.free-input{background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--parchment);font-family:'EB Garamond',serif;font-size:16px;padding:8px 10px;border-radius:var(--radius);width:100%;}
-.free-input:focus{outline:none;border-color:var(--gold-dim);}
-.roll-btn{font-family:'Cinzel',serif;font-size:13px;letter-spacing:.1em;background:linear-gradient(160deg,rgba(201,168,76,.12),rgba(201,168,76,.06));border:1px solid var(--gold-dim);color:var(--gold);padding:10px 18px;cursor:pointer;border-radius:var(--radius);transition:all .2s;text-transform:uppercase;}
-.roll-btn:hover{background:linear-gradient(160deg,rgba(201,168,76,.22),rgba(201,168,76,.12));border-color:var(--gold);}
-.dice-section{margin-top:24px;padding-top:20px;border-top:1px solid var(--border);}
-.dice-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
-.die-btn{font-family:'Cinzel',serif;font-size:13px;font-weight:600;letter-spacing:.08em;background:rgba(201,168,76,.07);border:1px solid var(--border);color:var(--gold);padding:8px 16px;cursor:pointer;border-radius:var(--radius);transition:all .2s;}
-.die-btn:hover{background:rgba(201,168,76,.18);border-color:var(--gold);}
-
-/* CARD */
-.card-tab-layout{display:flex;gap:20px;flex-wrap:wrap;}
-.card-deck-col{display:flex;flex-direction:column;align-items:center;gap:10px;width:160px;flex-shrink:0;}
-.card-stage{display:flex;align-items:center;justify-content:center;flex:1;min-width:200px;min-height:260px;}
-.deck-wrap{width:var(--deck-w);height:var(--deck-h);position:relative;cursor:pointer;border-radius:8px;}
-.deck-wrap.empty{opacity:.4;cursor:default;}
-.deck-back{width:100%;height:100%;border-radius:8px;border:2px solid var(--gold-dim);background:linear-gradient(145deg,#1a1508,#0e0c06);display:flex;align-items:center;justify-content:center;box-shadow:2px 4px 12px rgba(0,0,0,.6);}
-.deck-pattern{width:88%;height:88%;border:1px solid rgba(201,168,76,.25);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:28px;color:var(--gold-dim);}
-.deck-count{font-family:'Cinzel',serif;font-size:11px;color:var(--parchment-dim);}
-.card-action-btn{font-family:'Cinzel',serif;font-size:11px;padding:5px 14px;background:rgba(201,168,76,.08);border:1px solid var(--gold-dim);color:var(--gold);cursor:pointer;border-radius:var(--radius);transition:all .15s;visibility:hidden;white-space:nowrap;}
-.card-action-btn.visible{visibility:visible;}
-.card-action-btn:hover{background:rgba(201,168,76,.18);}
-.card-status{font-family:'Cinzel',serif;font-size:11px;color:var(--parchment-dim);min-height:18px;text-align:center;}
-.flip-wrap{width:var(--card-w);height:var(--card-h);perspective:900px;visibility:hidden;}
-.flip-wrap:not(.hidden){visibility:visible;}
-.flip-inner{width:100%;height:100%;transform-style:preserve-3d;transition:transform .55s cubic-bezier(.4,0,.2,1);}
-.flip-wrap.flipped .flip-inner{transform:rotateY(180deg);}
-.flip-face{position:absolute;width:100%;height:100%;backface-visibility:hidden;border-radius:10px;display:flex;flex-direction:column;justify-content:space-between;padding:10px;box-shadow:0 8px 32px rgba(0,0,0,.7);transform:rotateY(180deg);}
-.flip-face.c-black{background:var(--card-cream);color:var(--card-black);border:2px solid #888;}
-.flip-face.c-red{background:var(--card-cream);color:var(--card-red);border:2px solid var(--card-red);}
-.flip-face.c-purple{background:var(--card-cream);color:var(--card-purple);border:2px solid var(--card-purple);}
-.card-back-face{position:absolute;width:100%;height:100%;backface-visibility:hidden;border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.7);background:linear-gradient(145deg,#1a1508,#0e0c06);border:2px solid var(--gold-dim);display:flex;align-items:center;justify-content:center;}
-.card-corner{display:flex;flex-direction:column;align-items:center;line-height:1.1;}
-.rank{font-family:'Cinzel',serif;font-size:18px;font-weight:700;}
-.suit-small{font-size:13px;}
-.br{transform:rotate(180deg);}
-.card-center{font-size:58px;text-align:center;line-height:1;align-self:center;}
-.fly-card{position:fixed;z-index:900;pointer-events:none;opacity:0;border-radius:8px;background:linear-gradient(145deg,#1a1508,#0e0c06);border:2px solid var(--gold-dim);}
-.fly-card.flying{animation:fly-arc .43s ease-in-out forwards;}
-@keyframes fly-arc{
-  0%{transform:translate(var(--fly-x0),var(--fly-y0)) scale(1);}
-  50%{transform:translate(var(--fly-xm),var(--fly-ym)) scale(1.05);}
-  100%{transform:translate(var(--fly-x1),var(--fly-y1)) scale(1);}
-}
-.shuffle-overlay{position:fixed;inset:0;pointer-events:none;z-index:800;}
-.shuffle-ghost{position:fixed;pointer-events:none;border-radius:8px;background:linear-gradient(145deg,#1a1508,#0e0c06);border:2px solid var(--gold-dim);overflow:hidden;display:flex;align-items:center;justify-content:center;}
-.shuffle-ghost .deck-pattern{width:88%;height:88%;}
-@keyframes shuffle-left{0%{transform:translate(0,0) rotate(0);}40%{transform:translate(-40px,-8px) rotate(-8deg);}100%{transform:translate(0,0) rotate(0);}}
-@keyframes shuffle-right{0%{transform:translate(0,0) rotate(0);}40%{transform:translate(40px,-8px) rotate(8deg);}100%{transform:translate(0,0) rotate(0);}}
-.reshuffle-flash{position:fixed;inset:0;pointer-events:none;background:rgba(0,0,0,.35);opacity:0;z-index:700;transition:opacity .35s;display:flex;align-items:center;justify-content:center;}
-.reshuffle-flash.show{opacity:1;}
-.reshuffle-msg{font-family:'Cinzel',serif;font-size:26px;font-weight:900;letter-spacing:.25em;color:var(--gold-light);text-transform:uppercase;text-shadow:0 0 24px rgba(201,168,76,.7);}
-
-/* TRACKER */
-.tracker-suits{display:flex;flex-direction:column;gap:5px;}
-.suit-row-t{display:flex;align-items:center;gap:8px;}
-.suit-sym{font-size:18px;width:24px;text-align:center;flex-shrink:0;}
-.c-black{color:var(--card-black);}
-.c-red{color:var(--card-red);}
-.c-purple{color:var(--card-purple);}
-.rank-pills{display:flex;gap:4px;flex-wrap:wrap;}
-.rank-pill{font-family:'Cinzel',serif;font-size:10px;padding:2px 6px;border:1px solid rgba(201,168,76,.2);border-radius:3px;cursor:pointer;user-select:none;color:var(--parchment-dim);transition:all .15s;}
-.rank-pill:hover{border-color:var(--gold-dim);color:var(--parchment);}
-.rank-pill.drawn{background:rgba(201,168,76,.15);border-color:var(--gold-dim);color:var(--gold);}
-.rank-pill.excluded{background:rgba(192,57,43,.15);border-color:rgba(192,57,43,.4);color:rgba(192,57,43,.7);text-decoration:line-through;}
-.is-joker{border-color:rgba(123,63,160,.4);color:var(--card-purple);}
-
-/* PERSONNAGE TAB */
-.editor-form{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-.editor-field{display:flex;flex-direction:column;gap:4px;}
-.editor-field.full{grid-column:1/-1;}
-.editor-label{font-family:'Cinzel',serif;font-size:10px;letter-spacing:.12em;color:var(--gold-dim);text-transform:uppercase;}
-.editor-input{background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--parchment);font-family:'EB Garamond',serif;font-size:15px;padding:7px 10px;border-radius:var(--radius);}
-.editor-input:focus{outline:none;border-color:var(--gold-dim);}
-.skills-editor{margin-top:14px;}
-.skill-editor-row{display:grid;grid-template-columns:1fr 70px;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid rgba(201,168,76,.06);}
-.skill-editor-row .sname{font-family:'EB Garamond',serif;font-size:14px;font-style:italic;}
-.skill-editor-row .spct{background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--gold);font-family:'Cinzel',serif;font-size:14px;padding:4px 6px;border-radius:var(--radius);text-align:center;width:100%;}
-.skill-editor-row .spct:focus{outline:none;border-color:var(--gold-dim);}
-.save-btn{font-family:'Cinzel',serif;font-size:12px;letter-spacing:.1em;background:linear-gradient(160deg,rgba(201,168,76,.15),rgba(201,168,76,.07));border:1px solid var(--gold-dim);color:var(--gold);padding:10px 18px;cursor:pointer;border-radius:var(--radius);transition:all .2s;text-transform:uppercase;width:100%;}
-.save-btn:hover{background:linear-gradient(160deg,rgba(201,168,76,.25),rgba(201,168,76,.15));border-color:var(--gold);}
-.add-skill-btn{font-family:'Cinzel',serif;font-size:11px;background:none;border:1px dashed var(--border);color:var(--parchment-dim);padding:5px 10px;cursor:pointer;border-radius:var(--radius);width:100%;margin-top:4px;transition:all .15s;}
-.add-skill-btn:hover{border-color:var(--gold-dim);color:var(--gold-dim);}
-.specials-row{display:grid;grid-template-columns:1fr 60px 60px auto;gap:6px;align-items:center;padding:5px 0;border-bottom:1px solid rgba(201,168,76,.06);}
-.specials-row input{background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--parchment);font-family:'EB Garamond',serif;font-size:14px;padding:5px 8px;border-radius:var(--radius);}
-.specials-row input:focus{outline:none;border-color:var(--gold-dim);}
-.del-btn{background:none;border:none;color:rgba(192,57,43,.5);cursor:pointer;font-size:16px;padding:2px 6px;border-radius:var(--radius);transition:color .15s;}
-.del-btn:hover{color:var(--fail);}
-
-/* FLOAT ROLL CARD */
-.roll-scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:900;opacity:0;pointer-events:none;transition:opacity .25s;}
-.roll-scrim.show{opacity:1;pointer-events:auto;}
-.float-roll-card{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:901;
-  display:flex;flex-direction:column;align-items:center;
-  opacity:0;pointer-events:none;cursor:pointer;
-  background:linear-gradient(150deg,#1c1609 0%,#0e0c07 100%);
-  border:1px solid var(--gold-dim);
-  box-shadow:0 0 0 1px rgba(201,168,76,.08),0 0 50px rgba(201,168,76,.12),0 24px 80px rgba(0,0,0,.85);
-  padding:40px 72px 48px;min-width:400px;text-align:center;}
-.float-roll-card::before{content:'';position:absolute;top:6px;left:6px;right:6px;bottom:6px;border:1px solid rgba(201,168,76,.07);pointer-events:none;}
-.float-roll-card.show{opacity:1;pointer-events:auto;animation:fcReveal .4s cubic-bezier(.34,1.4,.64,1) forwards;}
-.float-roll-card.crit-success.show{border-color:#a8ff78;box-shadow:0 0 0 1px rgba(168,255,120,.25),0 0 60px rgba(168,255,120,.3),0 24px 80px rgba(0,0,0,.85);animation:fcReveal .4s cubic-bezier(.34,1.4,.64,1) forwards,glowPulseGreen 1.6s .5s ease-in-out infinite;}
-.float-roll-card.crit-fail.show{border-color:#ff4444;box-shadow:0 0 0 1px rgba(255,68,68,.3),0 0 60px rgba(255,68,68,.35),0 24px 80px rgba(0,0,0,.85);animation:fcReveal .4s cubic-bezier(.34,1.4,.64,1) forwards,fcShake .45s .4s ease-in-out,glowPulseRed 1.4s 1s ease-in-out infinite;}
-.float-roll-card.leaving{animation:fcLeave .32s ease-in both;}
-@keyframes fcReveal{from{opacity:0;transform:translate(-50%,-50%) scale(.65) translateY(24px);}to{opacity:1;transform:translate(-50%,-50%) scale(1);}}
-@keyframes fcLeave{from{opacity:1;transform:translate(-50%,-50%) scale(1);}to{opacity:0;transform:translate(-50%,-50%) scale(.9);}}
-@keyframes fcShake{0%,100%{transform:translate(-50%,-50%);}20%{transform:translate(calc(-50% - 9px),-50%) rotate(-1deg);}40%{transform:translate(calc(-50% + 9px),-50%) rotate(1deg);}60%{transform:translate(calc(-50% - 5px),-50%);}80%{transform:translate(calc(-50% + 5px),-50%);}}
-@keyframes glowPulseGreen{0%,100%{box-shadow:0 0 0 1px rgba(168,255,120,.25),0 0 60px rgba(168,255,120,.3),0 24px 80px rgba(0,0,0,.85);}50%{box-shadow:0 0 0 2px rgba(168,255,120,.45),0 0 90px rgba(168,255,120,.55),0 24px 80px rgba(0,0,0,.85);}}
-@keyframes glowPulseRed{0%,100%{box-shadow:0 0 0 1px rgba(255,68,68,.3),0 0 60px rgba(255,68,68,.35),0 24px 80px rgba(0,0,0,.85);}50%{box-shadow:0 0 0 2px rgba(255,68,68,.5),0 0 90px rgba(255,68,68,.6),0 24px 80px rgba(0,0,0,.85);}}
-.corner{position:absolute;width:16px;height:16px;border-color:var(--gold-dim);border-style:solid;border-width:0;}
-.corner.tl{top:8px;left:8px;border-top-width:1px;border-left-width:1px;}
-.corner.tr{top:8px;right:8px;border-top-width:1px;border-right-width:1px;}
-.corner.bl{bottom:8px;left:8px;border-bottom-width:1px;border-left-width:1px;}
-.corner.br{bottom:8px;right:8px;border-bottom-width:1px;border-right-width:1px;}
-.fc-char{font-family:'Cinzel',serif;font-size:13px;letter-spacing:.2em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:10px;}
-.fc-skill{font-family:'Playfair Display',serif;font-size:22px;font-style:italic;color:var(--parchment);margin-bottom:20px;max-width:320px;line-height:1.3;}
-.fc-roll-num{font-family:'Cinzel Decorative',serif;font-size:80px;font-weight:700;color:var(--parchment);line-height:1;text-shadow:0 0 30px rgba(240,230,200,.2);margin-bottom:4px;animation:fcRollIn .45s cubic-bezier(.22,1.5,.5,1);}
-.crit-success .fc-roll-num{color:#a8ff78;text-shadow:0 0 20px rgba(168,255,120,.7),0 0 50px rgba(168,255,120,.3);animation:fcRollIn .45s cubic-bezier(.22,1.5,.5,1),numberGlowGreen 1.4s .6s ease-in-out infinite alternate;}
-.crit-fail .fc-roll-num{color:#ff4444;text-shadow:0 0 20px rgba(255,68,68,.7),0 0 50px rgba(255,68,68,.3);animation:fcRollIn .45s cubic-bezier(.22,1.5,.5,1),numberGlowRed 1.2s .6s ease-in-out infinite alternate;}
-@keyframes fcRollIn{from{opacity:0;transform:scale(1.5) rotate(-8deg);}to{opacity:1;transform:scale(1) rotate(0);}}
-@keyframes numberGlowGreen{from{filter:brightness(1);}to{filter:brightness(1.4) drop-shadow(0 0 10px rgba(168,255,120,.9));}}
-@keyframes numberGlowRed{from{filter:brightness(1);}to{filter:brightness(1.4) drop-shadow(0 0 10px rgba(255,68,68,.9));}}
-.card-divider{width:80px;height:1px;background:linear-gradient(90deg,transparent,var(--gold-dim),transparent);margin:14px auto;}
-.fc-verdict{font-family:'Cinzel',serif;font-weight:900;letter-spacing:.18em;animation:fcVerdictIn .35s .18s both ease-out;}
-@keyframes fcVerdictIn{from{opacity:0;transform:translateY(12px) scale(.9);}to{opacity:1;transform:translateY(0) scale(1);}}
-.fv-success{font-size:30px;color:var(--success);text-shadow:0 0 24px rgba(76,175,119,.55);}
-.fv-fail{font-size:30px;color:var(--fail);text-shadow:0 0 24px rgba(192,57,43,.55);}
-.fv-crit-success{font-size:24px;color:#a8ff78;text-shadow:0 0 20px rgba(168,255,120,.9),0 0 45px rgba(168,255,120,.4);animation:fcVerdictIn .35s .18s both ease-out,critFlicker 1.5s .8s ease-in-out infinite alternate;}
-.fv-crit-fail{font-size:24px;color:#ff4444;text-shadow:0 0 20px rgba(255,68,68,.9),0 0 45px rgba(255,68,68,.4);animation:fcVerdictIn .35s .18s both ease-out,critFlicker 1.2s .8s ease-in-out infinite alternate;}
-@keyframes critFlicker{from{filter:brightness(1);opacity:1;}to{filter:brightness(1.35);opacity:.88;}}
-.fc-crit-sub{font-family:'EB Garamond',serif;font-style:italic;font-size:12px;letter-spacing:.12em;margin-top:6px;opacity:0;animation:fcSubIn .5s .6s both ease-out;}
-.crit-success .fc-crit-sub{color:rgba(168,255,120,.55);}
-.crit-fail .fc-crit-sub{color:rgba(255,100,100,.55);}
-@keyframes fcSubIn{from{opacity:0;letter-spacing:.3em;}to{opacity:1;letter-spacing:.12em;}}
-.fc-bonus{font-size:11px;color:var(--gold-dim);font-style:italic;margin-top:6px;letter-spacing:.05em;}
-.fc-dismiss{font-family:'Cinzel',serif;font-size:10px;color:var(--parchment-dim);text-align:center;margin-top:16px;opacity:.5;}
-#fc-particles{position:fixed;inset:0;pointer-events:none;z-index:902;}
-
-
-.other-roll-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(10px);z-index:950;
-  background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 18px;
-  font-family:'Cinzel',serif;font-size:12px;color:var(--parchment-dim);
-  opacity:0;pointer-events:none;transition:all .3s;white-space:nowrap;text-align:center;}
-.other-roll-toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
-.other-roll-toast .ort-roll{font-size:18px;font-weight:900;color:var(--parchment);margin:0 6px;}
-.other-roll-toast .ort-verdict{font-weight:700;}
-.other-roll-toast .ort-verdict.s{color:var(--success);}
-.other-roll-toast .ort-verdict.cs{color:#a8ff78;}
-.other-roll-toast .ort-verdict.f{color:var(--fail);}
-.other-roll-toast .ort-verdict.cf{color:#ff4444;}
-.gm-dmg-toast{position:fixed;top:20px;right:20px;z-index:950;background:rgba(80,0,0,.95);border:1px solid rgba(192,57,43,.6);border-radius:8px;padding:14px 18px;font-family:'Cinzel',serif;font-size:13px;color:#ffbbbb;opacity:0;transform:translateX(40px);transition:all .3s;pointer-events:none;}
-.gm-dmg-toast.show{opacity:1;transform:translateX(0);}
-.gm-heal-toast{position:fixed;top:20px;right:20px;z-index:950;background:rgba(0,50,20,.95);border:1px solid rgba(76,175,119,.5);border-radius:8px;padding:14px 18px;font-family:'Cinzel',serif;font-size:13px;color:#aaffcc;opacity:0;transform:translateX(40px);transition:all .3s;pointer-events:none;}
-.gm-heal-toast.show{opacity:1;transform:translateX(0);}
-
-/* ROLLING INDICATOR */
-.rolling-ind{font-family:'Cinzel',serif;font-size:11px;color:var(--gold-dim);display:none;}
-.rolling-ind.active{display:block;}
-
-/* CONFIG MODAL */
-.modal-scrim{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;display:none;}
-.modal-scrim.show{display:block;}
-.config-modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1001;width:420px;max-width:95vw;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:24px;display:none;}
-.config-modal.show{display:block;}
-.config-modal h2{font-family:'Cinzel',serif;font-size:14px;letter-spacing:.15em;color:var(--gold);margin-bottom:16px;text-transform:uppercase;}
-.config-label{font-family:'Cinzel',serif;font-size:10px;letter-spacing:.12em;color:var(--gold-dim);text-transform:uppercase;display:block;margin-bottom:4px;margin-top:12px;}
-.config-input{background:rgba(0,0,0,.4);border:1px solid var(--border);color:var(--parchment);font-family:'EB Garamond',serif;font-size:15px;padding:8px 10px;border-radius:var(--radius);width:100%;}
-.config-input:focus{outline:none;border-color:var(--gold-dim);}
-.config-save-btn{margin-top:16px;font-family:'Cinzel',serif;font-size:12px;letter-spacing:.1em;background:rgba(201,168,76,.12);border:1px solid var(--gold-dim);color:var(--gold);padding:10px 20px;cursor:pointer;border-radius:var(--radius);transition:all .2s;text-transform:uppercase;}
-.config-save-btn:hover{background:rgba(201,168,76,.22);}
-
-/* DAMAGE CANVAS */
-#dmg-canvas{position:fixed;inset:0;pointer-events:none;z-index:800;}
-.dmg-vignette{position:fixed;inset:0;pointer-events:none;z-index:799;opacity:0;background:radial-gradient(ellipse at center,transparent 40%,rgba(150,0,0,.55) 100%);transition:opacity .15s;}
-.dmg-vignette.show{opacity:1;}
-.mort-screen{position:fixed;inset:0;z-index:1100;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;display:none;}
-.mort-screen.show{display:flex;}
-.mort-text{font-family:'Cinzel Decorative',serif;font-size:48px;font-weight:700;color:var(--fail);text-shadow:0 0 40px rgba(192,57,43,.7);letter-spacing:.1em;}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARIA – Joueur</title>
+    <script>const VERSION = '0.1.6';</script>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHRleHQgeD0iMTYiIHk9IjI4IiBmb250LXNpemU9IjMwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjYzlhODRjIj7imZs8L3RleHQ+PC9zdmc+">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Cinzel+Decorative:wght@700&family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Playfair+Display:ital,wght@0,700;1,400&display=swap" rel="stylesheet">
+    <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+    <link rel="stylesheet" href="aria-player.css">
 </head>
 <body>
 
-<!-- TOP BAR -->
-<div class="topbar">
-  <div class="topbar-title">♛ ARIA</div>
-  <span style="font-family:'Cinzel',serif;font-size:9px;color:var(--gold-dim);letter-spacing:.1em;" id="version-display"></span>
-  <span style="font-family:monospace;font-size:9px;color:var(--parchment-dim);opacity:.4;" id="pid-display"></span>
-  <span class="topbar-badge">Joueur</span>
-  <span class="topbar-char" id="char-display">—</span>
-  <span class="rolling-ind" id="rolling-ind">⚄ Lancer…</span>
-  <div class="status-row"><div class="status-dot" id="dddice-dot"></div><span id="dddice-status">dddice</span></div>
-  <div class="status-row"><div class="status-dot" id="ably-dot"></div><span id="ably-status">Ably</span></div>
-  <button class="icon-btn" onclick="toggleConfig()" title="Configuration">⚙</button>
-</div>
+    <!-- TOP BAR -->
+    <div class="topbar">
+        <div class="topbar-title">♛ ARIA</div>
+        <span style="font-family:'Cinzel',serif;font-size:9px;color:var(--gold-dim);letter-spacing:.1em;" id="version-display"></span>
+        <span style="font-family:monospace;font-size:9px;color:var(--parchment-dim);opacity:.4;" id="pid-display"></span>
+        <span class="topbar-badge">Joueur</span>
+        <span class="topbar-char" id="char-display">—</span>
+        <span class="rolling-ind" id="rolling-ind">⚄ Lancer…</span>
+        <div class="status-row"><div class="status-dot" id="dddice-dot"></div><span id="dddice-status">dddice</span></div>
+        <div class="status-row"><div class="status-dot" id="ably-dot"></div><span id="ably-status">Ably</span></div>
+        <button class="icon-btn" onclick="toggleConfig()" title="Configuration">⚙</button>
+    </div>
 
-<!-- BM BAR -->
-<div class="bm-bar">
-  <span class="bm-bar-label">Bonus / Malus</span>
-  <div class="bm-display" id="bm-display">±0</div>
-  <div class="bm-sep"></div>
-  <button class="bm-btn plus"  onclick="addBM(5)">+5</button>
-  <button class="bm-btn plus"  onclick="addBM(10)">+10</button>
-  <button class="bm-btn plus"  onclick="addBM(20)">+20</button>
-  <div class="bm-sep"></div>
-  <button class="bm-btn minus" onclick="addBM(-5)">-5</button>
-  <button class="bm-btn minus" onclick="addBM(-10)">-10</button>
-  <button class="bm-btn minus" onclick="addBM(-20)">-20</button>
-  <div class="bm-sep"></div>
-  <div class="bm-custom-row">
-    <input type="text" inputmode="numeric" id="bm-custom-val" placeholder="±X" oninput="this.value=this.value.replace(/[^0-9-]/g,'').replace(/(?!^)-/g,'')" />
-    <button class="bm-btn plus"  onclick="addCustomBM(1)">+</button>
-    <button class="bm-btn minus" onclick="addCustomBM(-1)">−</button>
-  </div>
-  <div class="bm-sep"></div>
-  <button class="bm-btn reset-btn" onclick="resetBM()">↺ Reset</button>
-</div>
-
-<!-- MAIN -->
-<div class="main">
-
-  <!-- SIDEBAR -->
-  <div class="sidebar">
-    <!-- HP -->
-    <div class="panel">
-      <div class="panel-header">Points de vie</div>
-      <div class="panel-body" style="padding:10px 14px;">
-        <div class="hp-number-wrap" id="hp-number-wrap" title="Cliquer pour modifier">
-          <div class="hp-number" id="hp-number">—</div>
-          <div class="hp-fraction" id="hp-fraction"></div>
+    <!-- BM BAR -->
+    <div class="bm-bar">
+        <span class="bm-bar-label">Bonus / Malus</span>
+        <div class="bm-display" id="bm-display">±0</div>
+        <div class="bm-sep"></div>
+        <button class="bm-btn plus" onclick="addBM(10)">+10</button>
+        <button class="bm-btn plus" onclick="addBM(20)">+20</button>
+        <button class="bm-btn plus" onclick="addBM(30)">+30</button>
+        <div class="bm-sep"></div>
+        <button class="bm-btn minus" onclick="addBM(-10)">-10</button>
+        <button class="bm-btn minus" onclick="addBM(-20)">-20</button>
+        <button class="bm-btn minus" onclick="addBM(-30)">-30</button>
+        <div class="bm-sep"></div>
+        <div class="bm-custom-row">
+            <input type="text" inputmode="numeric" id="bm-custom-val" placeholder="±X" oninput="this.value=this.value.replace(/[^0-9-]/g,'').replace(/(?!^)-/g,'')" />
+            <button class="bm-btn plus" onclick="addCustomBM(1)">+</button>
+            <button class="bm-btn minus" onclick="addCustomBM(-1)">−</button>
         </div>
-        <div class="hp-bar-wrap">
-          <div class="hp-bar-ghost" id="hp-bar-ghost"></div>
-          <div class="hp-bar-fill"  id="hp-bar-fill"></div>
-        </div>
-        <div style="text-align:center;font-family:'Cinzel',serif;font-size:10px;color:var(--parchment-dim);opacity:.5;margin-top:2px;">Géré par le MJ</div>
-      </div>
+        <div class="bm-sep"></div>
+        <button class="bm-btn reset-btn" onclick="resetBM()">↺ Reset</button>
     </div>
 
-    <!-- COMBAT -->
-    <div class="panel">
-      <div class="panel-header">Combat</div>
-      <div class="panel-body" id="combat-sidebar-body"></div>
-    </div>
+    <!-- MAIN -->
+    <div class="main">
 
-    <!-- INVENTORY -->
-    <div class="panel">
-      <div class="panel-header">Inventaire</div>
-      <div class="panel-body" id="inv-sidebar-body" style="max-height:200px;overflow-y:auto;"></div>
-    </div>
-  </div>
-
-  <!-- CONTENT -->
-  <div class="content">
-    <div class="tabs">
-      <button class="tab-btn active" onclick="switchTab('tab-skills',this)">Compétences</button>
-      <button class="tab-btn" onclick="switchTab('tab-stats',this)">Caractéristiques</button>
-      <button class="tab-btn" onclick="switchTab('tab-free',this)">Jet libre</button>
-      <button class="tab-btn" onclick="switchTab('tab-cards',this)">Cartes</button>
-      <button class="tab-btn" onclick="switchTab('tab-char',this)">Personnage</button>
-    </div>
-
-    <!-- COMPETENCES -->
-    <div class="tab-content active" id="tab-skills">
-      <div class="skill-list" id="skill-list"></div>
-      <div class="skill-list" id="special-list" style="margin-top:12px;"></div>
-    </div>
-
-    <!-- STATS -->
-    <div class="tab-content" id="tab-stats">
-      <div class="mult-bar">
-        <span class="mult-bar-label">Multiplicateur</span>
-        <div id="mult-bar-btns" style="display:flex;gap:6px;"></div>
-      </div>
-      <div class="stat-grid" id="stat-grid"></div>
-    </div>
-
-    <!-- JET LIBRE -->
-    <div class="tab-content" id="tab-free">
-      <div class="free-roll-form" style="max-width:360px;">
-        <div>
-          <div class="field-label">Nom du jet</div>
-          <input class="free-input" id="free-name" placeholder="ex: Perception" />
-        </div>
-        <div>
-          <div class="field-label">Seuil (%)</div>
-          <input class="free-input" id="free-threshold" type="number" min="1" max="100" placeholder="ex: 60" />
-        </div>
-        <button class="roll-btn" onclick="doFreeRoll()">⚄ Lancer</button>
-        <div class="dice-section">
-          <div class="field-label">Dés simples</div>
-          <div class="dice-btns">
-            <button class="die-btn" onclick="rollDie(4)">d4</button>
-            <button class="die-btn" onclick="rollDie(6)">d6</button>
-            <button class="die-btn" onclick="rollDie(10)">d10</button>
-            <button class="die-btn" onclick="rollDie(20)">d20</button>
-            <button class="die-btn" onclick="rollDie(100)">d100</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- CARTES -->
-    <div class="tab-content" id="tab-cards">
-      <div class="card-tab-layout">
-        <div class="card-deck-col">
-          <div class="deck-wrap" id="deck-wrap" onclick="drawCard()">
-            <div class="deck-back"><div class="deck-pattern">♛</div></div>
-          </div>
-          <div class="deck-count" id="deck-count">54 cartes</div>
-          <button class="card-action-btn" id="reshuffle-btn" onclick="manualReshuffle(false)">↺ Mélanger</button>
-          <button class="card-action-btn" id="reshuffle-remaining-btn" onclick="manualReshuffle(true)">↺ Restant</button>
-          <button class="card-action-btn" id="clear-exclusions-btn" onclick="clearExclusions()">✕ Exclusions</button>
-          <div class="card-status" id="card-status"></div>
-        </div>
-        <div class="card-stage">
-          <div class="flip-wrap hidden" id="flip-wrap">
-            <div class="flip-inner">
-              <div class="card-back-face"><div class="deck-pattern" style="border-color:rgba(201,168,76,.25);">♛</div></div>
-              <div id="drawn-card"></div>
+        <!-- SIDEBAR -->
+        <div class="sidebar">
+            <!-- HP -->
+            <div class="panel">
+                <div class="panel-header">Points de vie</div>
+                <div class="panel-body" style="padding:10px 14px;">
+                    <div class="hp-number-wrap" id="hp-number-wrap" title="Cliquer pour modifier">
+                        <div class="hp-number" id="hp-number">—</div>
+                        <div class="hp-fraction" id="hp-fraction"></div>
+                    </div>
+                    <div class="hp-bar-wrap">
+                        <div class="hp-bar-ghost" id="hp-bar-ghost"></div>
+                        <div class="hp-bar-fill" id="hp-bar-fill"></div>
+                    </div>
+                    <div style="text-align:center;font-family:'Cinzel',serif;font-size:10px;color:var(--parchment-dim);opacity:.5;margin-top:2px;">Géré par le MJ</div>
+                </div>
             </div>
-          </div>
+
+            <!-- COMBAT -->
+            <div class="panel">
+                <div class="panel-header">Combat</div>
+                <div class="panel-body" id="combat-sidebar-body"></div>
+            </div>
+
+            <!-- INVENTORY -->
+            <div class="panel">
+                <div class="panel-header">Inventaire</div>
+                <div class="panel-body" id="inv-sidebar-body" style="max-height:200px;overflow-y:auto;"></div>
+            </div>
         </div>
-        <div style="flex:1;min-width:220px;">
-          <div class="field-label" style="margin-bottom:8px;">Suivi du talon</div>
-          <div class="tracker-suits" id="tracker-suits"></div>
+
+        <!-- CONTENT -->
+        <div class="content">
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('tab-skills',this)">Compétences</button>
+                <button class="tab-btn" onclick="switchTab('tab-stats',this)">Caractéristiques</button>
+                <button class="tab-btn" onclick="switchTab('tab-free',this)">Jet libre</button>
+                <button class="tab-btn" onclick="switchTab('tab-cards',this)">Cartes</button>
+                <button class="tab-btn" onclick="switchTab('tab-char',this)">Personnage</button>
+            </div>
+
+            <!-- COMPETENCES -->
+            <div class="tab-content active" id="tab-skills">
+                <div class="skill-list" id="skill-list"></div>
+                <div class="skill-list" id="special-list" style="margin-top:12px;"></div>
+            </div>
+
+            <!-- STATS -->
+            <div class="tab-content" id="tab-stats">
+                <div class="mult-bar">
+                    <span class="mult-bar-label">Multiplicateur</span>
+                    <div id="mult-bar-btns" style="display:flex;gap:6px;"></div>
+                </div>
+                <div class="stat-grid" id="stat-grid"></div>
+            </div>
+
+            <!-- JET LIBRE -->
+            <div class="tab-content" id="tab-free">
+                <div class="free-roll-form" style="max-width:360px;">
+                    <div>
+                        <div class="field-label">Nom du jet</div>
+                        <input class="free-input" id="free-name" placeholder="ex: Perception" />
+                    </div>
+                    <div>
+                        <div class="field-label">Seuil (%)</div>
+                        <input class="free-input" id="free-threshold" type="number" min="1" max="100" placeholder="ex: 60" />
+                    </div>
+                    <button class="roll-btn" onclick="doFreeRoll()">⚄ Lancer</button>
+                    <div class="dice-section">
+                        <div class="field-label">Dés simples</div>
+                        <div class="dice-btns">
+                            <button class="die-btn" onclick="rollDie(4)">d4</button>
+                            <button class="die-btn" onclick="rollDie(6)">d6</button>
+                            <button class="die-btn" onclick="rollDie(10)">d10</button>
+                            <button class="die-btn" onclick="rollDie(20)">d20</button>
+                            <button class="die-btn" onclick="rollDie(100)">d100</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CARTES -->
+            <div class="tab-content" id="tab-cards">
+                <div class="card-tab-layout">
+                    <div class="card-deck-col">
+                        <div class="deck-wrap" id="deck-wrap" onclick="drawCard()">
+                            <div class="deck-back"><div class="deck-pattern">♛</div></div>
+                        </div>
+                        <div class="deck-count" id="deck-count">54 cartes</div>
+                        <button class="card-action-btn" id="reshuffle-btn" onclick="manualReshuffle(false)">↺ Mélanger</button>
+                        <button class="card-action-btn" id="reshuffle-remaining-btn" onclick="manualReshuffle(true)">↺ Restant</button>
+                        <button class="card-action-btn" id="clear-exclusions-btn" onclick="clearExclusions()">✕ Exclusions</button>
+                        <div class="card-status" id="card-status"></div>
+                    </div>
+                    <div class="card-stage">
+                        <div class="flip-wrap hidden" id="flip-wrap">
+                            <div class="flip-inner">
+                                <div class="card-back-face"><div class="deck-pattern" style="border-color:rgba(201,168,76,.25);">♛</div></div>
+                                <div id="drawn-card"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="flex:1;min-width:220px;">
+                        <div class="field-label" style="margin-bottom:8px;">Suivi du talon</div>
+                        <div class="tracker-suits" id="tracker-suits"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PERSONNAGE -->
+            <div class="tab-content" id="tab-char">
+                <div class="panel" style="max-width:700px;">
+                    <div class="panel-header">Fiche personnage</div>
+                    <div class="panel-body">
+                        <div class="editor-form">
+                            <div class="editor-field full"><label class="editor-label">Nom</label><input class="editor-input" id="ed-name" /></div>
+                            <div class="editor-field full"><label class="editor-label">Classe / Description</label><input class="editor-input" id="ed-class" /></div>
+                            <div class="editor-field"><label class="editor-label">Force (FOR)</label><input class="editor-input" id="ed-for" type="number" min="1" /></div>
+                            <div class="editor-field"><label class="editor-label">Dextérité (DEX)</label><input class="editor-input" id="ed-dex" type="number" min="1" /></div>
+                            <div class="editor-field"><label class="editor-label">Endurance (END)</label><input class="editor-input" id="ed-end" type="number" min="1" /></div>
+                            <div class="editor-field"><label class="editor-label">Intelligence (INT)</label><input class="editor-input" id="ed-int" type="number" min="1" /></div>
+                            <div class="editor-field"><label class="editor-label">Charisme (CHA)</label><input class="editor-input" id="ed-cha" type="number" min="1" /></div>
+                            <div class="editor-field"><label class="editor-label">Points de vie (PV)</label><input class="editor-input" id="ed-pv" type="number" min="0" /></div>
+                        </div>
+
+                        <div class="skills-editor" style="margin-top:14px;">
+                            <div class="panel-header" style="margin:0 -14px 10px;padding:8px 14px;">Traits physiques</div>
+                            <div class="editor-form">
+                                <div class="editor-field"><label class="editor-label">Âge</label><input class="editor-input" id="ed-age" placeholder="ex: 28" /></div>
+                                <div class="editor-field"><label class="editor-label">Taille</label><input class="editor-input" id="ed-taille" placeholder="ex: 1m78" /></div>
+                                <div class="editor-field"><label class="editor-label">Poids</label><input class="editor-input" id="ed-poids" placeholder="ex: 72 kg" /></div>
+                                <div class="editor-field"><label class="editor-label">Yeux</label><input class="editor-input" id="ed-yeux" /></div>
+                                <div class="editor-field"><label class="editor-label">Cheveux</label><input class="editor-input" id="ed-cheveux" /></div>
+                                <div class="editor-field full"><label class="editor-label">Signes particuliers</label><input class="editor-input" id="ed-signes" /></div>
+                            </div>
+                        </div>
+
+                        <div class="skills-editor" style="margin-top:14px;">
+                            <div class="panel-header" style="margin:0 -14px 10px;padding:8px 14px;">Inventaire</div>
+                            <div id="inv-editor-list"></div>
+                            <button class="add-skill-btn" onclick="addInventoryRow()">+ Ajouter un objet</button>
+                        </div>
+
+                        <div class="skills-editor" style="margin-top:14px;">
+                            <div class="panel-header" style="margin:0 -14px 10px;padding:8px 14px;">Armes</div>
+                            <div style="display:grid;grid-template-columns:1fr 80px;gap:4px;margin-bottom:6px;">
+                                <span class="editor-label">Nom</span>
+                                <span class="editor-label" style="text-align:center;">Dégâts</span>
+                            </div>
+                            <div id="weapons-editor-list"></div>
+                        </div>
+
+                        <div class="skills-editor" style="margin-top:14px;">
+                            <div class="panel-header" style="margin:0 -14px 10px;padding:8px 14px;">Protection</div>
+                            <div class="editor-form">
+                                <div class="editor-field"><label class="editor-label">Armure</label><input class="editor-input" id="ed-prot-nom" /></div>
+                                <div class="editor-field"><label class="editor-label">Valeur</label><input class="editor-input" id="ed-prot-val" type="number" min="0" /></div>
+                            </div>
+                        </div>
+
+                        <div class="skills-editor" style="margin-top:14px;">
+                            <div class="panel-header" style="margin:0 -14px 10px;padding:8px 14px;">Blessures</div>
+                            <div class="editor-form">
+                                <div class="editor-field"><label class="editor-label">Actuelles</label><input class="editor-input" id="ed-bless-cur" type="number" min="0" /></div>
+                                <div class="editor-field"><label class="editor-label">Seuil max</label><input class="editor-input" id="ed-bless-max" type="number" min="1" /></div>
+                            </div>
+                        </div>
+
+                        <div class="skills-editor">
+                            <div class="panel-header" style="margin:0 -14px 10px;padding:8px 14px;">Compétences — seuils (%)</div>
+                            <div id="skills-editor-list"></div>
+                        </div>
+
+                        <div class="skills-editor">
+                            <div class="panel-header" style="margin:14px -14px 10px;padding:8px 14px;">Compétences spéciales</div>
+                            <div style="display:grid;grid-template-columns:1fr 60px 60px auto;gap:6px;margin-bottom:4px;">
+                                <span class="editor-label">Nom / Description</span>
+                                <span class="editor-label" style="text-align:center;">%</span>
+                                <span class="editor-label" style="text-align:center;"></span>
+                                <span></span>
+                            </div>
+                            <div id="specials-editor-list"></div>
+                            <button class="add-skill-btn" onclick="addSpecialRow()">+ Ajouter</button>
+                        </div>
+
+                        <button class="save-btn" style="margin-top:16px" onclick="saveCharacter()">Sauvegarder le personnage</button>
+                    </div>
+                </div>
+            </div>
         </div>
-      </div>
     </div>
 
-    <!-- PERSONNAGE -->
-    <div class="tab-content" id="tab-char">
-      <div class="panel" style="max-width:700px;">
-        <div class="panel-header">Fiche personnage</div>
-        <div class="panel-body">
-          <div class="editor-form">
-            <div class="editor-field full"><label class="editor-label">Nom</label><input class="editor-input" id="ed-name" /></div>
-            <div class="editor-field full"><label class="editor-label">Classe / Description</label><input class="editor-input" id="ed-class" /></div>
-            <div class="editor-field"><label class="editor-label">Force (FOR)</label><input class="editor-input" id="ed-for" type="number" min="1" /></div>
-            <div class="editor-field"><label class="editor-label">Dextérité (DEX)</label><input class="editor-input" id="ed-dex" type="number" min="1" /></div>
-            <div class="editor-field"><label class="editor-label">Endurance (END)</label><input class="editor-input" id="ed-end" type="number" min="1" /></div>
-            <div class="editor-field"><label class="editor-label">Intelligence (INT)</label><input class="editor-input" id="ed-int" type="number" min="1" /></div>
-            <div class="editor-field"><label class="editor-label">Charisme (CHA)</label><input class="editor-input" id="ed-cha" type="number" min="1" /></div>
-            <div class="editor-field"><label class="editor-label">Points de vie (PV)</label><input class="editor-input" id="ed-pv" type="number" min="0" /></div>
-          </div>
-
-          <div class="skills-editor" style="margin-top:14px;">
-            <div class="panel-header" style="margin:0 -14px 10px;padding:8px 14px;">Traits physiques</div>
-            <div class="editor-form">
-              <div class="editor-field"><label class="editor-label">Âge</label><input class="editor-input" id="ed-age" placeholder="ex: 28" /></div>
-              <div class="editor-field"><label class="editor-label">Taille</label><input class="editor-input" id="ed-taille" placeholder="ex: 1m78" /></div>
-              <div class="editor-field"><label class="editor-label">Poids</label><input class="editor-input" id="ed-poids" placeholder="ex: 72 kg" /></div>
-              <div class="editor-field"><label class="editor-label">Yeux</label><input class="editor-input" id="ed-yeux" /></div>
-              <div class="editor-field"><label class="editor-label">Cheveux</label><input class="editor-input" id="ed-cheveux" /></div>
-              <div class="editor-field full"><label class="editor-label">Signes particuliers</label><input class="editor-input" id="ed-signes" /></div>
-            </div>
-          </div>
-
-          <div class="skills-editor" style="margin-top:14px;">
-            <div class="panel-header" style="margin:0 -14px 10px;padding:8px 14px;">Inventaire</div>
-            <div id="inv-editor-list"></div>
-            <button class="add-skill-btn" onclick="addInventoryRow()">+ Ajouter un objet</button>
-          </div>
-
-          <div class="skills-editor" style="margin-top:14px;">
-            <div class="panel-header" style="margin:0 -14px 10px;padding:8px 14px;">Armes</div>
-            <div style="display:grid;grid-template-columns:1fr 80px;gap:4px;margin-bottom:6px;">
-              <span class="editor-label">Nom</span>
-              <span class="editor-label" style="text-align:center;">Dégâts</span>
-            </div>
-            <div id="weapons-editor-list"></div>
-          </div>
-
-          <div class="skills-editor" style="margin-top:14px;">
-            <div class="panel-header" style="margin:0 -14px 10px;padding:8px 14px;">Protection</div>
-            <div class="editor-form">
-              <div class="editor-field"><label class="editor-label">Armure</label><input class="editor-input" id="ed-prot-nom" /></div>
-              <div class="editor-field"><label class="editor-label">Valeur</label><input class="editor-input" id="ed-prot-val" type="number" min="0" /></div>
-            </div>
-          </div>
-
-          <div class="skills-editor" style="margin-top:14px;">
-            <div class="panel-header" style="margin:0 -14px 10px;padding:8px 14px;">Blessures</div>
-            <div class="editor-form">
-              <div class="editor-field"><label class="editor-label">Actuelles</label><input class="editor-input" id="ed-bless-cur" type="number" min="0" /></div>
-              <div class="editor-field"><label class="editor-label">Seuil max</label><input class="editor-input" id="ed-bless-max" type="number" min="1" /></div>
-            </div>
-          </div>
-
-          <div class="skills-editor">
-            <div class="panel-header" style="margin:0 -14px 10px;padding:8px 14px;">Compétences — seuils (%)</div>
-            <div id="skills-editor-list"></div>
-          </div>
-
-          <div class="skills-editor">
-            <div class="panel-header" style="margin:14px -14px 10px;padding:8px 14px;">Compétences spéciales</div>
-            <div style="display:grid;grid-template-columns:1fr 60px 60px auto;gap:6px;margin-bottom:4px;">
-              <span class="editor-label">Nom / Description</span>
-              <span class="editor-label" style="text-align:center;">%</span>
-              <span class="editor-label" style="text-align:center;"></span>
-              <span></span>
-            </div>
-            <div id="specials-editor-list"></div>
-            <button class="add-skill-btn" onclick="addSpecialRow()">+ Ajouter</button>
-          </div>
-
-          <button class="save-btn" style="margin-top:16px" onclick="saveCharacter()">Sauvegarder le personnage</button>
-        </div>
-      </div>
+    <!-- FLOAT ROLL CARD -->
+    <div class="roll-scrim" id="roll-scrim" onclick="dismissFloatCard()"></div>
+    <div class="float-roll-card" id="float-roll-card" onclick="dismissFloatCard()">
+        <div class="corner tl"></div>
+        <div class="corner tr"></div>
+        <div class="corner bl"></div>
+        <div class="corner br"></div>
+        <div class="fc-char" id="fc-char"></div>
+        <div class="fc-skill" id="fc-skill"></div>
+        <div class="fc-roll-num" id="fc-roll"></div>
+        <div class="card-divider"></div>
+        <div class="fc-verdict" id="fc-verdict"></div>
+        <div class="fc-crit-sub" id="fc-crit-sub"></div>
+        <div class="fc-bonus" id="fc-bonus"></div>
+        <div class="fc-dismiss">Cliquer pour fermer</div>
     </div>
-  </div>
-</div>
+    <canvas id="fc-particles"></canvas>
 
-<!-- FLOAT ROLL CARD -->
-<div class="roll-scrim" id="roll-scrim" onclick="dismissFloatCard()"></div>
-<div class="float-roll-card" id="float-roll-card" onclick="dismissFloatCard()">
-  <div class="corner tl"></div>
-  <div class="corner tr"></div>
-  <div class="corner bl"></div>
-  <div class="corner br"></div>
-  <div class="fc-char" id="fc-char"></div>
-  <div class="fc-skill" id="fc-skill"></div>
-  <div class="fc-roll-num" id="fc-roll"></div>
-  <div class="card-divider"></div>
-  <div class="fc-verdict" id="fc-verdict"></div>
-  <div class="fc-crit-sub" id="fc-crit-sub"></div>
-  <div class="fc-bonus" id="fc-bonus"></div>
-  <div class="fc-dismiss">Cliquer pour fermer</div>
-</div>
-<canvas id="fc-particles"></canvas>
+    <!-- OTHER PLAYERS' ROLL TOAST -->
+    <div class="other-roll-toast" id="other-roll-toast">
+        <span id="ort-char"></span> — <span id="ort-skill"></span> <span class="ort-roll" id="ort-roll"></span> <span class="ort-verdict" id="ort-verdict"></span>
+    </div>
 
-<!-- OTHER PLAYERS' ROLL TOAST -->
-<div class="other-roll-toast" id="other-roll-toast">
-  <span id="ort-char"></span> — <span id="ort-skill"></span> <span class="ort-roll" id="ort-roll"></span> <span class="ort-verdict" id="ort-verdict"></span>
-</div>
+    <!-- GM TOASTS -->
+    <div class="gm-dmg-toast" id="gm-dmg-toast"></div>
+    <div class="gm-heal-toast" id="gm-heal-toast"></div>
 
-<!-- GM TOASTS -->
-<div class="gm-dmg-toast"  id="gm-dmg-toast"></div>
-<div class="gm-heal-toast" id="gm-heal-toast"></div>
+    <!-- DAMAGE FX -->
+    <canvas id="dmg-canvas"></canvas>
+    <div class="dmg-vignette" id="dmg-vignette"></div>
+    <div class="mort-screen" id="mort-screen"><div class="mort-text">MORT</div></div>
 
-<!-- DAMAGE FX -->
-<canvas id="dmg-canvas"></canvas>
-<div class="dmg-vignette" id="dmg-vignette"></div>
-<div class="mort-screen" id="mort-screen"><div class="mort-text">MORT</div></div>
+    <!-- CARD FX -->
+    <div class="fly-card" id="fly-card"><div class="deck-pattern" style="width:88%;height:88%;margin:auto;">♛</div></div>
+    <div class="shuffle-overlay" id="shuffle-overlay"></div>
+    <div class="reshuffle-flash" id="reshuffle-flash"><div class="reshuffle-msg" id="reshuffle-msg">↺ Mélangé</div></div>
 
-<!-- CARD FX -->
-<div class="fly-card" id="fly-card"><div class="deck-pattern" style="width:88%;height:88%;margin:auto;">♛</div></div>
-<div class="shuffle-overlay" id="shuffle-overlay"></div>
-<div class="reshuffle-flash" id="reshuffle-flash"><div class="reshuffle-msg" id="reshuffle-msg">↺ Mélangé</div></div>
-
-<!-- CONFIG MODAL -->
-<div class="modal-scrim" id="config-scrim" onclick="toggleConfig()"></div>
-<div class="config-modal" id="config-modal">
-  <h2>⚙ Configuration</h2>
-  <div style="font-family:'EB Garamond',serif;font-size:13px;font-style:italic;color:var(--parchment-dim);margin-bottom:4px;">Identité : <strong id="cfg-identity-display" style="color:var(--parchment);font-style:normal;"></strong> <span style="opacity:.5;">(nom du personnage)</span></div>
-  <label class="config-label">Clé API dddice</label>
-  <input class="config-input" id="cfg-dddice-key" type="password" placeholder="Votre clé API…" />
-  <label class="config-label">Room dddice</label>
-  <input class="config-input" id="cfg-dddice-room" placeholder="slug ou URL complète" />
-  <label class="config-label">Thème dddice</label>
-  <select class="config-input" id="cfg-dddice-theme" disabled><option>— connectez-vous d'abord —</option></select>
-  <label class="config-label">Clé Ably</label>
-  <input class="config-input" id="cfg-ably-key" placeholder="xxxxxxxx:xxxxxxxx" />
-  <div style="margin-top:12px;" class="status-row"><div class="status-dot" id="cfg-dddice-dot"></div><span id="cfg-dddice-status">dddice non connecté</span></div>
-  <div style="margin-top:6px;" class="status-row"><div class="status-dot" id="cfg-ably-dot2"></div><span id="cfg-ably-status2">Ably non connecté</span></div>
-  <button class="config-save-btn" onclick="saveConfig()">Sauvegarder &amp; Connecter</button>
-</div>
+    <!-- CONFIG MODAL -->
+    <div class="modal-scrim" id="config-scrim" onclick="toggleConfig()"></div>
+    <div class="config-modal" id="config-modal">
+        <h2>⚙ Configuration</h2>
+        <div style="font-family:'EB Garamond',serif;font-size:13px;font-style:italic;color:var(--parchment-dim);margin-bottom:4px;">Identité : <strong id="cfg-identity-display" style="color:var(--parchment);font-style:normal;"></strong> <span style="opacity:.5;">(nom du personnage)</span></div>
+        <label class="config-label">Clé API dddice</label>
+        <input class="config-input" id="cfg-dddice-key" type="password" placeholder="Votre clé API…" />
+        <label class="config-label">Room dddice</label>
+        <input class="config-input" id="cfg-dddice-room" placeholder="slug ou URL complète" />
+        <label class="config-label">Thème dddice</label>
+        <select class="config-input" id="cfg-dddice-theme" disabled><option>— connectez-vous d'abord —</option></select>
+        <label class="config-label">Clé Ably</label>
+        <input class="config-input" id="cfg-ably-key" placeholder="xxxxxxxx:xxxxxxxx" />
+        <div style="margin-top:12px;" class="status-row"><div class="status-dot" id="cfg-dddice-dot"></div><span id="cfg-dddice-status">dddice non connecté</span></div>
+        <div style="margin-top:6px;" class="status-row"><div class="status-dot" id="cfg-ably-dot2"></div><span id="cfg-ably-status2">Ably non connecté</span></div>
+        <button class="config-save-btn" onclick="saveConfig()">Sauvegarder &amp; Connecter</button>
+    </div>
 
 
-<script>
-// ═══════════════════════════════════════════
-//  CONSTANTS
-// ═══════════════════════════════════════════
-const SUITS=[
-  {name:'spades',  sym:'♠', cls:'c-black', pillCls:''},
-  {name:'clubs',   sym:'♣', cls:'c-black', pillCls:''},
-  {name:'hearts',  sym:'♥', cls:'c-red',   pillCls:'c-red'},
-  {name:'diamonds',sym:'♦', cls:'c-red',   pillCls:'c-red'},
-];
-const RANKS=['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
-const SUIT_FR={spades:'Pique',clubs:'Trèfle',hearts:'Cœur',diamonds:'Carreau'};
-const ALL_CARDS=[];
-for(const s of SUITS) for(const r of RANKS) ALL_CARDS.push({id:`${r}-${s.name}`,rank:r,suit:s});
-ALL_CARDS.push({id:'joker-red',  isJoker:true,jokerColor:'red',  label:'Joker Rouge'});
-ALL_CARDS.push({id:'joker-black',isJoker:true,jokerColor:'black',label:'Joker Noir'});
-function cardById(id){ return ALL_CARDS.find(c=>c.id===id); }
-function shuffle(a){ const b=[...a]; for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];} return b; }
-function buildDeck(){ return shuffle([...ALL_CARDS]); }
+    <script src="aria-player.js"></script>
 
-// ═══════════════════════════════════════════
-//  STATE
-// ═══════════════════════════════════════════
-const DEFAULT_CHAR={
-  name:"Ewald Asrahan",
-  class:"Disciple étranger à l'académie",
-  stats:{FOR:9,DEX:10,END:15,INT:14,CHA:11,PV:14},
-  physical:{age:"28",taille:"",poids:"",yeux:"",cheveux:"",signes:""},
-  inventory:[],
-  weapons:[{nom:'',degats:''},{nom:'',degats:''},{nom:'',degats:''}],
-  protection:{nom:'',valeur:0},
-  blessures:{max:5,current:0},
-  skills:[
-    {name:"Artisanat, construire",   link:"DEX/INT",pct:48},
-    {name:"Combat rapproché",        link:"FOR/DEX",pct:38},
-    {name:"Combat à distance",       link:"FOR/DEX",pct:38},
-    {name:"Connaissance de la nature",link:"DEX/INT",pct:58},
-    {name:"Connaissance des secrets",link:"INT/CHA",pct:70},
-    {name:"Courir, sauter",          link:"DEX/END",pct:50},
-    {name:"Discrétion",              link:"DEX/CHA",pct:50},
-    {name:"Droit",                   link:"INT/CHA",pct:40},
-    {name:"Esquiver",                link:"DEX/INT",pct:48},
-    {name:"Intimider",               link:"FOR/CHA",pct:40},
-    {name:"Lire, écrire",            link:"INT/CHA",pct:70},
-    {name:"Mentir, convaincre",      link:"INT/CHA",pct:50},
-    {name:"Perception",              link:"INT/CHA",pct:70},
-    {name:"Piloter",                 link:"DEX/END",pct:50},
-    {name:"Psychologie",             link:"END/INT",pct:58},
-    {name:"Réflexes",                link:"DEX/INT",pct:38},
-    {name:"Serrures et pièges",      link:"DEX/END",pct:50},
-    {name:"Soigner",                 link:"INT/CHA",pct:50},
-    {name:"Survie",                  link:"END/INT",pct:50},
-    {name:"Voler",                   link:"DEX/INT",pct:58},
-  ],
-  specials:[{name:"Bonneteau",desc:"Intervertir 2 petits objets dans le champ de vision",pct:50}]
-};
-
-let character=JSON.parse(localStorage.getItem('aria-character')||'null')||DEFAULT_CHAR;
-
-// Per-tab unique ID — persists across refreshes (sessionStorage) but differs between tabs
-let playerId=sessionStorage.getItem('aria-player-id');
-if(!playerId){playerId=crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2,9);sessionStorage.setItem('aria-player-id',playerId);}
-if(!character.physical)   character.physical  ={age:'',taille:'',poids:'',yeux:'',cheveux:'',signes:''};
-if(!character.inventory)  character.inventory =[];
-if(!character.weapons)    character.weapons   =[{nom:'',degats:''},{nom:'',degats:''},{nom:'',degats:''}];
-if(!character.protection) character.protection={nom:'',valeur:0};
-if(!character.blessures)  character.blessures ={max:5,current:0};
-
-let config=JSON.parse(localStorage.getItem('aria-config')||'{}');
-let bonusMalus=0;
-let multiplier=1;
-let isRolling=false;
-let dddiceAPI=null;
-let ablyRolls=null, ablyCards=null, ablyDamage=null;
-let currentHP=null;
-
-// card state
-const saved=JSON.parse(localStorage.getItem('aria-cards')||'null');
-let cardDeck   = saved?.deckIds?.map(id=>cardById(id)).filter(Boolean) || buildDeck();
-let cardDrawn  = new Set(saved?.drawn||[]);
-let cardExcluded = new Set(saved?.excluded||[]);
-let lastCardId = saved?.lastCardId||null;
-let cardDrawing = false;
-
-// ═══════════════════════════════════════════
-//  INIT
-// ═══════════════════════════════════════════
-window.addEventListener('DOMContentLoaded',()=>{
-  document.getElementById('version-display').textContent='v'+VERSION;
-  document.getElementById('pid-display').textContent='#'+playerId.slice(-6);
-  initCurrentHP();
-  renderAll();
-  buildTracker();
-  updateDeckCount();
-  if(lastCardId) restoreCard();
-  loadConfigInputs();
-  if(config.dddiceKey&&config.dddiceRoom) initDddice();
-  if(config.ablyKey) initAbly();
-  // Send presence heartbeat every 5s
-  setInterval(sendPresence, 5000);
-});
-
-// ═══════════════════════════════════════════
-//  TABS
-// ═══════════════════════════════════════════
-function switchTab(id,btn){
-  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-  btn.classList.add('active');
-}
-
-// ═══════════════════════════════════════════
-//  HP
-// ═══════════════════════════════════════════
-function getMaxHP(){ return character.stats.PV||14; }
-function initCurrentHP(){
-  if(currentHP===null) currentHP=parseInt(localStorage.getItem('aria-current-hp'));
-  if(currentHP===null||isNaN(currentHP)) currentHP=getMaxHP();
-}
-function updateHPDisplay(){
-  const max=getMaxHP(), cur=Math.max(0,Math.min(currentHP,max));
-  const numEl=document.getElementById('hp-number');
-  numEl.textContent=cur;
-  document.getElementById('hp-fraction').textContent=`/ ${max} PV`;
-  const pct=max>0?cur/max:0;
-  numEl.className='hp-number'+(pct<=0.25?' critical':pct<=0.5?' low':'');
-  const fill=document.getElementById('hp-bar-fill');
-  fill.style.width=`${pct*100}%`;
-  fill.style.background=pct>0.5?'var(--success)':pct>0.25?'#e8a020':'var(--fail)';
-}
-function animateHPChange(hpBefore,hpAfter,maxHP){
-  const ghost=document.getElementById('hp-bar-ghost');
-  const fill=document.getElementById('hp-bar-fill');
-  const oldPct=maxHP>0?hpBefore/maxHP:0;
-  ghost.style.transition='none';
-  ghost.style.width=`${oldPct*100}%`;
-  fill.style.transition='none';
-  fill.style.width=`${oldPct*100}%`;
-  void fill.offsetWidth;
-  fill.style.transition='width 1.1s ease, background .3s';
-  const newPct=maxHP>0?hpAfter/maxHP:0;
-  fill.style.width=`${newPct*100}%`;
-  fill.style.background=newPct>0.5?'var(--success)':newPct>0.25?'#e8a020':'var(--fail)';
-  setTimeout(()=>{ ghost.style.transition='width .4s ease'; ghost.style.width=`${newPct*100}%`; },1200);
-}
-
-// ═══════════════════════════════════════════
-//  DAMAGE ANIMATIONS (received from GM)
-// ═══════════════════════════════════════════
-function handleGMDamage(data){
-  const {damage,hpBefore,hpAfter,maxHP}=data;
-  animateHPChange(hpBefore,hpAfter,maxHP);
-  currentHP=hpAfter;
-  localStorage.setItem('aria-current-hp',currentHP);
-  updateHPDisplay();
-  triggerDamageVFX(damage,false);
-  showToast('gm-dmg-toast',`⚔ Dégâts reçus : -${damage} PV`);
-  if(hpAfter<=0) showMort();
-}
-function handleGMHeal(data){
-  const {amount,hpBefore,hpAfter,maxHP}=data;
-  animateHPChange(hpBefore,hpAfter,maxHP);
-  currentHP=hpAfter;
-  localStorage.setItem('aria-current-hp',currentHP);
-  updateHPDisplay();
-  showHealNumber(amount);
-  showToast('gm-heal-toast',`♥ Soins reçus : +${amount} PV`);
-}
-function triggerDamageVFX(dmg,local){
-  // screen shake
-  document.body.style.animation='none';
-  void document.body.offsetWidth;
-  const shake=document.createElement('style');
-  shake.textContent='@keyframes _shake{0%,100%{transform:translate(0,0)}20%{transform:translate(-5px,2px)}40%{transform:translate(5px,-2px)}60%{transform:translate(-4px,1px)}80%{transform:translate(4px,-1px)}}';
-  document.head.appendChild(shake);
-  document.body.style.animation='_shake .4s ease';
-  setTimeout(()=>{ document.body.style.animation=''; shake.remove(); },400);
-  // vignette
-  const v=document.getElementById('dmg-vignette');
-  v.classList.add('show');
-  setTimeout(()=>v.classList.remove('show'),600);
-  // blood particles
-  spawnBloodParticles();
-  // damage number
-  spawnDmgNumber(`-${dmg}`,false);
-}
-function showHealNumber(amt){ spawnDmgNumber(`+${amt}`,true); }
-function spawnDmgNumber(txt,isHeal){
-  const el=document.createElement('div');
-  el.textContent=txt;
-  el.style.cssText=`position:fixed;top:40%;left:50%;transform:translate(-50%,-50%);font-family:'Cinzel',serif;font-size:64px;font-weight:900;color:${isHeal?'#4cff88':'#ff4444'};text-shadow:0 0 20px ${isHeal?'rgba(76,255,136,.5)':'rgba(255,50,50,.6)'};pointer-events:none;z-index:900;transition:all .9s ease-out;`;
-  document.body.appendChild(el);
-  void el.offsetWidth;
-  el.style.transform='translate(-50%,-120%)';
-  el.style.opacity='0';
-  setTimeout(()=>el.remove(),1000);
-}
-function spawnBloodParticles(){
-  const canvas=document.getElementById('dmg-canvas');
-  const ctx=canvas.getContext('2d');
-  canvas.width=window.innerWidth; canvas.height=window.innerHeight;
-  const particles=[];
-  for(let i=0;i<40;i++) particles.push({
-    x:Math.random()*canvas.width, y:Math.random()*canvas.height*.4,
-    vx:(Math.random()-.5)*4, vy:Math.random()*5+2,
-    r:Math.random()*4+1, life:1
-  });
-  function frame(){
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    let alive=false;
-    for(const p of particles){
-      p.x+=p.vx; p.y+=p.vy; p.vy+=.18; p.life-=.025;
-      if(p.life<=0) continue;
-      alive=true;
-      ctx.globalAlpha=p.life;
-      ctx.fillStyle=`hsl(${Math.floor(Math.random()*15)},90%,30%)`;
-      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill();
-    }
-    ctx.globalAlpha=1;
-    if(alive) requestAnimationFrame(frame);
-  }
-  requestAnimationFrame(frame);
-}
-function showMort(){
-  const m=document.getElementById('mort-screen');
-  m.classList.add('show');
-  setTimeout(()=>m.classList.remove('show'),4000);
-}
-let toastTimers={};
-function showToast(id,msg){
-  clearTimeout(toastTimers[id]);
-  const el=document.getElementById(id);
-  el.textContent=msg;
-  el.classList.add('show');
-  toastTimers[id]=setTimeout(()=>el.classList.remove('show'),3500);
-}
-
-// ═══════════════════════════════════════════
-//  BONUS / MALUS
-// ═══════════════════════════════════════════
-let otherRollToastTimer=null;
-function showOtherRollToast(d){
-  const type=classify(d.roll,d.threshold,d.success);
-  const vcls={success:'s',fail:'f','crit-success':'cs','crit-fail':'cf'};
-  const vlbl={success:'SUCCÈS',fail:'ÉCHEC','crit-success':'SUCCÈS CRITIQUE','crit-fail':'ÉCHEC CRITIQUE'};
-  const toast=document.getElementById('other-roll-toast');
-  document.getElementById('ort-char').textContent=d.char||'?';
-  document.getElementById('ort-skill').textContent=d.skillName;
-  document.getElementById('ort-roll').textContent=d.roll;
-  const vEl=document.getElementById('ort-verdict');
-  vEl.textContent=vlbl[type]; vEl.className=`ort-verdict ${vcls[type]}`;
-  toast.classList.add('show');
-  clearTimeout(otherRollToastTimer);
-  otherRollToastTimer=setTimeout(()=>toast.classList.remove('show'),4000);
-}
-
-function addBM(v){bonusMalus+=v;updateBMDisplay();}
-function resetBM(){bonusMalus=0;updateBMDisplay();}
-function addCustomBM(sign){
-  const v=parseInt(document.getElementById('bm-custom-val').value);
-  if(!isNaN(v)){bonusMalus+=sign*Math.abs(v);updateBMDisplay();}
-}
-function updateBMDisplay(){
-  const el=document.getElementById('bm-display');
-  el.textContent=(bonusMalus>0?'+':'')+bonusMalus;
-  el.className='bm-display'+(bonusMalus>0?' positive':bonusMalus<0?' negative':'');
-  renderSkills();
-  updateMultDisplay();
-}
-
-// ═══════════════════════════════════════════
-//  RENDER
-// ═══════════════════════════════════════════
-function renderAll(){
-  document.getElementById('char-display').textContent=`${character.name} — ${character.class}`;
-  renderSkills();
-  renderStats();
-  updateHPDisplay();
-  renderInventorySidebar();
-  renderCombatSidebar();
-  renderEditorForm();
-}
-
-function renderSkills(){
-  const list=document.getElementById('skill-list');
-  list.innerHTML='';
-  (character.skills||[]).forEach(skill=>{
-    const eff=Math.max(1,Math.min(100,skill.pct+bonusMalus));
-    const div=document.createElement('div');
-    div.className='skill-item';
-    div.innerHTML=`<span class="skill-link">${skill.link||''}</span><span class="skill-name">${skill.name}</span><span class="skill-pct">${eff}%</span>`;
-    div.addEventListener('click',()=>doRoll(skill.name,skill.pct));
-    list.appendChild(div);
-  });
-  const slist=document.getElementById('special-list');
-  slist.innerHTML='';
-  (character.specials||[]).forEach(sp=>{
-    const eff=Math.max(1,Math.min(100,sp.pct+bonusMalus));
-    const div=document.createElement('div');
-    div.className='skill-item';
-    div.style.borderColor='rgba(123,63,160,.3)';
-    div.innerHTML=`<span class="skill-link" style="color:var(--card-purple)">Spéciale</span><span class="skill-name">${sp.name}${sp.desc?` <span style="font-size:12px;color:var(--parchment-dim)">— ${sp.desc}</span>`:''}}</span><span class="skill-pct" style="color:var(--card-purple)">${eff}%</span>`;
-    div.addEventListener('click',()=>doRoll(sp.name,sp.pct));
-    slist.appendChild(div);
-  });
-}
-
-function renderStats(){
-  const bar=document.getElementById('mult-bar-btns');
-  bar.innerHTML=[1,2,3,4,5].map(m=>
-    `<button class="mult-btn${multiplier===m?' active':''}" onclick="setMult(${m})">${m>1?'×'+m:'×1'}</button>`
-  ).join('');
-  const grid=document.getElementById('stat-grid');
-  grid.innerHTML='';
-  ['FOR','DEX','END','INT','CHA'].forEach(key=>{
-    const val=character.stats[key]||0;
-    const threshold=Math.min(100,val*multiplier+bonusMalus);
-    const showThreshold=multiplier>1;
-    const div=document.createElement('div');
-    div.className='stat-card';
-    div.onclick=()=>rollStat(key,val);
-    div.innerHTML=`<div class="stat-key">${key}</div>
-      <div class="stat-val"${showThreshold?` style="color:var(--gold);"`:''}>
-        ${showThreshold?threshold:val}
-      </div>`;
-    grid.appendChild(div);
-  });
-}
-function setMult(m){
-  multiplier=m;
-  renderStats();
-}
-function updateMultDisplay(){
-  // noop if no active stat selected
-}
-
-function renderInventorySidebar(){
-  const body=document.getElementById('inv-sidebar-body');
-  const items=character.inventory||[];
-  if(!items.length){ body.innerHTML=`<div style="font-family:'EB Garamond',serif;font-size:13px;color:var(--parchment-dim);font-style:italic;opacity:.5;">Vide</div>`; return; }
-  body.innerHTML=items.map(it=>`<div class="inv-item"><span style="font-style:italic">${it.name||'—'}</span><span style="color:var(--gold-dim);font-family:'Cinzel',serif;font-size:12px;">×${it.qty||1}</span></div>`).join('');
-}
-
-function renderCombatSidebar(){
-  const body=document.getElementById('combat-sidebar-body');
-  if(!body) return;
-  const weapons=(character.weapons||[]).filter(w=>w.nom.trim());
-  const prot=character.protection||{};
-  const bless=character.blessures||{max:5,current:0};
-  let html='';
-  if(weapons.length){
-    weapons.forEach(w=>{
-      html+=`<div class="weap-row"><span style="font-family:'EB Garamond',serif;font-size:14px;font-style:italic;">${w.nom}</span><span style="font-family:'Cinzel',serif;font-size:12px;color:var(--gold-dim);">${w.degats||'—'}</span></div>`;
-    });
-  } else {
-    html+=`<div style="font-family:'EB Garamond',serif;font-size:13px;color:var(--parchment-dim);font-style:italic;opacity:.5;">Aucune arme</div>`;
-  }
-  html+=`<div style="margin:8px 0 6px;border-top:1px solid var(--border);"></div>`;
-  html+=`<div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase;">Protection</span><span style="font-family:'Cinzel',serif;font-size:12px;">${prot.nom||'—'} ${prot.valeur?`<span style="color:var(--gold)">${prot.valeur}</span>`:''}</span></div>`;
-  const cur=bless.current||0, max=bless.max||5;
-  let pips='';
-  for(let i=0;i<max;i++){
-    const f=i<cur;
-    pips+=`<div style="width:14px;height:14px;border-radius:2px;border:1px solid ${f?'rgba(192,57,43,.8)':'rgba(255,255,255,.15)'};background:${f?'rgba(192,57,43,.6)':'rgba(0,0,0,.2)'};"></div>`;
-  }
-  html+=`<div><span style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase;">Blessures ${cur}/${max}</span><div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">${pips}</div></div>`;
-  body.innerHTML=html;
-}
-
-// ═══════════════════════════════════════════
-//  ROLLS
-// ═══════════════════════════════════════════
-function doFreeRoll(){
-  const name=document.getElementById('free-name').value.trim()||'Jet libre';
-  const t=parseInt(document.getElementById('free-threshold').value);
-  if(isNaN(t)||t<1||t>100){alert('Seuil invalide (1-100).');return;}
-  doRoll(name,t,true);
-}
-function rollDie(sides){
-  const result=Math.floor(Math.random()*sides)+1;
-  showDieCard(`d${sides}`,result);
-}
-function showDieCard(diceName,result){
-  const card=document.getElementById('float-roll-card');
-  const scrim=document.getElementById('roll-scrim');
-  card.className='float-roll-card';
-  clearTimeout(floatCardTimer);
-  document.getElementById('fc-char').textContent='';
-  document.getElementById('fc-skill').textContent=diceName;
-  document.getElementById('fc-roll').textContent=result;
-  document.getElementById('fc-bonus').textContent='';
-  const vEl=document.getElementById('fc-verdict');
-  vEl.textContent=''; vEl.className='fc-verdict';
-  document.getElementById('fc-crit-sub').textContent='';
-  void card.offsetWidth;
-  scrim.classList.add('show');
-  card.classList.add('show');
-  floatCardTimer=setTimeout(dismissFloatCard,5000);
-}
-function doRoll(skillName,basePct,skipBM=false){
-  if(isRolling) return;
-  const threshold=skipBM?Math.max(1,Math.min(100,basePct)):Math.max(1,Math.min(100,basePct+bonusMalus));
-  setRolling(true);
-  if(dddiceAPI) rollViaDddice(skillName,threshold);
-  else setTimeout(()=>handleResult(skillName,threshold,Math.floor(Math.random()*100)+1),600);
-}
-function rollStat(key,val){
-  const t=Math.max(1,Math.min(100,val*multiplier+bonusMalus));
-  doRoll(`${multiplier>1?multiplier+'× ':''}${key}`,val*multiplier);
-}
-function handleResult(skillName,threshold,roll){
-  const success=roll<=threshold;
-  const data={skillName,threshold,roll,success,char:character.name,bonusMalus,playerId};
-  setRolling(false);
-  showFloatCard(data);
-  publishRoll(data);
-}
-function classify(roll,threshold,success){
-  if(roll<=10&&success)  return 'crit-success';
-  if(roll>=91&&!success) return 'crit-fail';
-  return success?'success':'fail';
-}
-let floatCardTimer=null;
-function showFloatCard(data){
-  const card=document.getElementById('float-roll-card');
-  const scrim=document.getElementById('roll-scrim');
-  const type=classify(data.roll,data.threshold,data.success);
-  card.className='float-roll-card';
-  clearTimeout(floatCardTimer);
-  document.getElementById('fc-char').textContent=data.char||'';
-  document.getElementById('fc-skill').textContent=data.skillName;
-  document.getElementById('fc-roll').textContent=data.roll;
-  document.getElementById('fc-bonus').textContent=data.bonusMalus&&data.bonusMalus!==0?`(Modificateur : ${data.bonusMalus>0?'+':''}${data.bonusMalus})`:'';
-  const vEl=document.getElementById('fc-verdict');
-  const sEl=document.getElementById('fc-crit-sub');
-  sEl.textContent='';
-  switch(type){
-    case 'crit-success': vEl.textContent='SUCCÈS CRITIQUE'; vEl.className='fc-verdict fv-crit-success'; sEl.textContent='✦ les dieux sourient ✦'; card.classList.add('crit-success'); spawnFcParticles('success'); break;
-    case 'crit-fail':    vEl.textContent='ÉCHEC CRITIQUE';  vEl.className='fc-verdict fv-crit-fail';    sEl.textContent='✦ les dieux se détournent ✦'; card.classList.add('crit-fail'); spawnFcParticles('fail'); break;
-    case 'success':      vEl.textContent='SUCCÈS'; vEl.className='fc-verdict fv-success'; break;
-    case 'fail':         vEl.textContent='ÉCHEC';  vEl.className='fc-verdict fv-fail';    break;
-  }
-  void card.offsetWidth;
-  scrim.classList.add('show');
-  card.classList.add('show');
-  const dur=(type==='crit-success'||type==='crit-fail')?8000:5000;
-  floatCardTimer=setTimeout(dismissFloatCard,dur);
-}
-function dismissFloatCard(){
-  clearTimeout(floatCardTimer);
-  const card=document.getElementById('float-roll-card');
-  const scrim=document.getElementById('roll-scrim');
-  card.classList.remove('show');
-  card.classList.add('leaving');
-  scrim.classList.remove('show');
-  stopFcParticles();
-  setTimeout(()=>{card.className='float-roll-card';},320);
-}
-function setRolling(v){
-  isRolling=v;
-  document.getElementById('rolling-ind').classList.toggle('active',v);
-}
-
-// ═══════════════════════════════════════════
-//  ROLL PARTICLES
-// ═══════════════════════════════════════════
-const fcCanvas=document.getElementById('fc-particles');
-const fcCtx=fcCanvas.getContext('2d');
-let fcParticles=[],fcAnimFrame=null;
-function resizeFcCanvas(){fcCanvas.width=window.innerWidth;fcCanvas.height=window.innerHeight;}
-resizeFcCanvas();
-window.addEventListener('resize',resizeFcCanvas);
-function spawnFcParticles(type){
-  fcParticles=[];
-  const cx=fcCanvas.width/2,cy=fcCanvas.height/2;
-  for(let i=0;i<70;i++){
-    const angle=Math.random()*Math.PI*2,speed=2.5+Math.random()*5.5;
-    let hue,sat,lit;
-    if(type==='success'){hue=Math.random()>.45?110+Math.random()*30:42+Math.random()*15;sat=80+Math.random()*20;lit=55+Math.random()*35;}
-    else{hue=Math.random()>.4?Math.random()*15:18+Math.random()*12;sat=85+Math.random()*15;lit=45+Math.random()*35;}
-    fcParticles.push({x:cx,y:cy,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed-1.5,r:2.5+Math.random()*4,color:`hsl(${hue},${sat}%,${lit}%)`,alpha:1,gravity:.1+Math.random()*.1,decay:.011+Math.random()*.014,star:Math.random()>.55});
-  }
-  if(fcAnimFrame) cancelAnimationFrame(fcAnimFrame);
-  loopFcParticles();
-}
-function loopFcParticles(){
-  fcCtx.clearRect(0,0,fcCanvas.width,fcCanvas.height);
-  fcParticles=fcParticles.filter(p=>p.alpha>.02);
-  for(const p of fcParticles){
-    p.x+=p.vx;p.y+=p.vy;p.vy+=p.gravity;p.alpha-=p.decay;
-    fcCtx.save();fcCtx.globalAlpha=Math.max(0,p.alpha);fcCtx.fillStyle=p.color;fcCtx.shadowColor=p.color;fcCtx.shadowBlur=8;fcCtx.translate(p.x,p.y);
-    if(p.star){drawFcStar(fcCtx,p.r);}else{fcCtx.beginPath();fcCtx.arc(0,0,p.r/2,0,Math.PI*2);fcCtx.fill();}
-    fcCtx.restore();
-  }
-  if(fcParticles.length) fcAnimFrame=requestAnimationFrame(loopFcParticles);
-  else{fcCtx.clearRect(0,0,fcCanvas.width,fcCanvas.height);fcAnimFrame=null;}
-}
-function drawFcStar(ctx,r){const spikes=4,out=r/2,inn=r/5;let rot=-Math.PI/2;ctx.beginPath();for(let i=0;i<spikes*2;i++){const radius=i%2===0?out:inn;ctx.lineTo(Math.cos(rot)*radius,Math.sin(rot)*radius);rot+=Math.PI/spikes;}ctx.closePath();ctx.fill();}
-function stopFcParticles(){if(fcAnimFrame){cancelAnimationFrame(fcAnimFrame);fcAnimFrame=null;}fcCtx.clearRect(0,0,fcCanvas.width,fcCanvas.height);fcParticles=[];}
-
-// ═══════════════════════════════════════════
-//  DDDICE
-// ═══════════════════════════════════════════
-function extractRoomSlug(val){
-  if(!val) return '';
-  const m=val.match(/\/room\/([^/?#]+)/);
-  return m?m[1]:val.trim();
-}
-async function initDddice(){
-  const slug=extractRoomSlug(config.dddiceRoom);
-  if(!config.dddiceKey||!slug) return;
-  const h={'Authorization':`Bearer ${config.dddiceKey}`,'Content-Type':'application/json','Accept':'application/json'};
-  try{
-    const roomRes=await fetch(`https://dddice.com/api/1.0/room/${slug}`,{headers:h});
-    if(!roomRes.ok) throw new Error(`Room HTTP ${roomRes.status}`);
-    const boxRes=await fetch('https://dddice.com/api/1.0/dice-box',{headers:h});
-    if(!boxRes.ok) throw new Error(`Dice box HTTP ${boxRes.status}`);
-    const themes=(await boxRes.json()).data||[];
-    let resolved=config.dddiceTheme?themes.find(t=>t.id===config.dddiceTheme):null;
-    if(!resolved&&themes.length) resolved=themes[0];
-    if(!resolved) throw new Error('Aucun thème.');
-    const sel=document.getElementById('cfg-dddice-theme');
-    sel.innerHTML='';
-    themes.forEach(t=>{const o=document.createElement('option');o.value=t.id;o.textContent=t.name?`${t.name} (${t.id})`:t.id;sel.appendChild(o);});
-    sel.disabled=false;
-    sel.value=config.dddiceTheme&&themes.find(t=>t.id===config.dddiceTheme)?config.dddiceTheme:themes[0].id;
-    dddiceAPI={key:config.dddiceKey,room:slug,theme:sel.value};
-    setDddiceStatus(true,themes.find(t=>t.id===sel.value)?.name||sel.value);
-    sel.onchange=()=>{if(dddiceAPI)dddiceAPI.theme=sel.value;config.dddiceTheme=sel.value;localStorage.setItem('aria-config',JSON.stringify(config));};
-  }catch(e){console.error('dddice:',e);setDddiceStatus(false,e.message);dddiceAPI=null;}
-}
-async function rollViaDddice(skillName,threshold){
-  try{
-    const res=await fetch('https://dddice.com/api/1.0/roll',{
-      method:'POST',
-      headers:{'Authorization':`Bearer ${config.dddiceKey}`,'Content-Type':'application/json','Accept':'application/json'},
-      body:JSON.stringify({dice:[{type:'d10x',theme:dddiceAPI.theme},{type:'d10',theme:dddiceAPI.theme}],room:dddiceAPI.room})
-    });
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json=await res.json();
-    const roll=json.data?.total_value;
-    handleResult(skillName,threshold,roll===0?100:roll);
-  }catch(e){console.error('dddice roll:',e);handleResult(skillName,threshold,Math.floor(Math.random()*100)+1);}
-}
-function setDddiceStatus(ok,detail){
-  const d=['dddice-dot','cfg-dddice-dot'], s=['dddice-status','cfg-dddice-status'];
-  d.forEach(id=>{ const el=document.getElementById(id); if(el) el.className='status-dot '+(ok?'connected':'error'); });
-  s.forEach(id=>{ const el=document.getElementById(id); if(el) el.textContent=ok?`dddice: ${detail||'connecté'}`:`Erreur: ${detail||'dddice'}`; });
-}
-
-// ═══════════════════════════════════════════
-//  ABLY
-// ═══════════════════════════════════════════
-let ablyInstance=null;
-function initAbly(){
-  try{
-    ablyInstance=new Ably.Realtime({key:config.ablyKey});
-    ablyRolls =ablyInstance.channels.get('aria-rolls');
-    ablyCards =ablyInstance.channels.get('aria-cards');
-    ablyDamage=ablyInstance.channels.get('aria-damage');
-    ablyInstance.connection.on('connected',()=>{setAblyStatus(true);sendPresence();});
-    ablyInstance.connection.on('failed',   ()=>setAblyStatus(false));
-    // Listen for GM damage/heal targeted at this player
-    const myId=playerId;
-    ablyDamage.subscribe(msg=>{
-      const d=msg.data;
-      if(!d||d.source==='player') return;
-      if(d.targetId&&d.targetId!==myId) return;
-      if(msg.name==='damage') handleGMDamage(d);
-      if(msg.name==='heal')   handleGMHeal(d);
-    });
-    // Listen for other players' rolls — show a brief toast
-    ablyRolls.subscribe('roll',msg=>{
-      const d=msg.data;
-      if(!d||d.playerId===myId) return; // skip own rolls
-      showOtherRollToast(d);
-    });
-  }catch(e){console.error('Ably:',e);setAblyStatus(false);}
-}
-function publishRoll(data){if(ablyRolls) ablyRolls.publish('roll',data);}
-function publishCard(type,extra={}){
-  if(ablyCards) ablyCards.publish(type,{...extra,excluded:[...cardExcluded],drawn:[...cardDrawn],deckIds:cardDeck.map(c=>c.id),lastCardId});
-}
-function sendPresence(){
-  if(!ablyDamage){console.warn('[ARIA] sendPresence: ablyDamage not ready');return;}
-  console.log('[ARIA] sendPresence →',playerId.slice(-6),character.name);
-  ablyDamage.publish('presence',{playerId,name:character.name,charClass:character.class,hp:currentHP,maxHP:getMaxHP(),stats:character.stats},err=>{if(err)console.error('[ARIA] publish error:',err);});
-}
-function setAblyStatus(ok){
-  ['ably-dot','cfg-ably-dot2'].forEach(id=>{const el=document.getElementById(id);if(el)el.className='status-dot '+(ok?'connected':'error');});
-  ['ably-status','cfg-ably-status2'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=ok?'Ably connecté':'Ably erreur';});
-}
-
-// ═══════════════════════════════════════════
-//  CONFIG
-// ═══════════════════════════════════════════
-function loadConfigInputs(){
-  const idEl=document.getElementById('cfg-identity-display');
-  if(idEl) idEl.textContent=character.name||'—';
-  document.getElementById('cfg-dddice-key').value=config.dddiceKey||'';
-  document.getElementById('cfg-dddice-room').value=config.dddiceRoom||'';
-  document.getElementById('cfg-dddice-theme').value=config.dddiceTheme||'';
-  document.getElementById('cfg-ably-key').value=config.ablyKey||'';
-}
-function saveConfig(){
-  config={
-    dddiceKey:document.getElementById('cfg-dddice-key').value.trim(),
-    dddiceRoom:document.getElementById('cfg-dddice-room').value.trim(),
-    dddiceTheme:document.getElementById('cfg-dddice-theme').value||'',
-    ablyKey:document.getElementById('cfg-ably-key').value.trim(),
-  };
-  localStorage.setItem('aria-config',JSON.stringify(config));
-  dddiceAPI=null; ablyRolls=null; ablyCards=null; ablyDamage=null; ablyInstance=null;
-  if(config.dddiceKey&&config.dddiceRoom) initDddice();
-  if(config.ablyKey) initAbly();
-}
-function toggleConfig(){
-  document.getElementById('config-modal').classList.toggle('show');
-  document.getElementById('config-scrim').classList.toggle('show');
-}
-
-// ═══════════════════════════════════════════
-//  CHARACTER EDITOR
-// ═══════════════════════════════════════════
-function renderEditorForm(){
-  document.getElementById('ed-name').value=character.name;
-  document.getElementById('ed-class').value=character.class||'';
-  document.getElementById('ed-for').value=character.stats.FOR;
-  document.getElementById('ed-dex').value=character.stats.DEX;
-  document.getElementById('ed-end').value=character.stats.END;
-  document.getElementById('ed-int').value=character.stats.INT;
-  document.getElementById('ed-cha').value=character.stats.CHA;
-  document.getElementById('ed-pv').value=character.stats.PV;
-  const p=character.physical||{};
-  document.getElementById('ed-age').value=p.age||'';
-  document.getElementById('ed-taille').value=p.taille||'';
-  document.getElementById('ed-poids').value=p.poids||'';
-  document.getElementById('ed-yeux').value=p.yeux||'';
-  document.getElementById('ed-cheveux').value=p.cheveux||'';
-  document.getElementById('ed-signes').value=p.signes||'';
-  const prot=character.protection||{};
-  document.getElementById('ed-prot-nom').value=prot.nom||'';
-  document.getElementById('ed-prot-val').value=prot.valeur||0;
-  const bless=character.blessures||{};
-  document.getElementById('ed-bless-cur').value=bless.current||0;
-  document.getElementById('ed-bless-max').value=bless.max||5;
-  renderWeaponsEditor();
-  renderInventoryEditor();
-  renderSkillsEditor();
-  renderSpecialsEditor();
-}
-function renderWeaponsEditor(){
-  const list=document.getElementById('weapons-editor-list');
-  if(!list) return;
-  list.innerHTML='';
-  (character.weapons||[]).forEach((w,i)=>{
-    const row=document.createElement('div');
-    row.style.cssText='display:grid;grid-template-columns:1fr 80px;gap:6px;align-items:center;margin-bottom:6px;';
-    row.innerHTML=`<input value="${w.nom}" placeholder="Nom de l'arme" oninput="character.weapons[${i}].nom=this.value" style="background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--parchment);font-family:'EB Garamond',serif;font-size:14px;padding:6px 8px;border-radius:var(--radius);" /><input value="${w.degats}" placeholder="ex: 1d6" oninput="character.weapons[${i}].degats=this.value" style="background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--gold);font-family:'Cinzel',serif;font-size:13px;font-weight:600;padding:6px 6px;border-radius:var(--radius);text-align:center;" />`;
-    list.appendChild(row);
-  });
-}
-function renderInventoryEditor(){
-  const list=document.getElementById('inv-editor-list');
-  if(!list) return;
-  list.innerHTML='';
-  (character.inventory||[]).forEach((it,i)=>{
-    const row=document.createElement('div');
-    row.style.cssText='display:grid;grid-template-columns:1fr 70px auto;gap:6px;align-items:center;margin-bottom:6px;';
-    row.innerHTML=`<input value="${it.name||''}" placeholder="Nom de l'objet" oninput="character.inventory[${i}].name=this.value;renderInventorySidebar()" style="background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--parchment);font-family:'EB Garamond',serif;font-size:14px;padding:6px 8px;border-radius:var(--radius);" /><input type="number" min="1" value="${it.qty||1}" oninput="character.inventory[${i}].qty=+this.value;renderInventorySidebar()" style="background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--gold);font-family:'Cinzel',serif;font-size:14px;padding:6px 6px;border-radius:var(--radius);text-align:center;" /><button class="del-btn" onclick="removeInventoryRow(${i})">✕</button>`;
-    list.appendChild(row);
-  });
-}
-function addInventoryRow(){ character.inventory.push({name:'',qty:1}); renderInventoryEditor(); renderInventorySidebar(); }
-function removeInventoryRow(i){ character.inventory.splice(i,1); renderInventoryEditor(); renderInventorySidebar(); }
-function renderSkillsEditor(){
-  const list=document.getElementById('skills-editor-list');
-  if(!list) return;
-  list.innerHTML='';
-  (character.skills||[]).forEach((sk,i)=>{
-    const row=document.createElement('div');
-    row.className='skill-editor-row';
-    row.innerHTML=`<span class="sname">${sk.name}</span><input class="spct" type="number" min="1" max="100" value="${sk.pct}" oninput="character.skills[${i}].pct=+this.value" />`;
-    list.appendChild(row);
-  });
-}
-function renderSpecialsEditor(){
-  const list=document.getElementById('specials-editor-list');
-  if(!list) return;
-  list.innerHTML='';
-  (character.specials||[]).forEach((sp,i)=>{
-    const row=document.createElement('div');
-    row.className='specials-row';
-    row.innerHTML=`<input value="${sp.name||''}" placeholder="Nom" oninput="character.specials[${i}].name=this.value" style="font-size:13px;" /><input type="number" min="0" max="100" value="${sp.pct||0}" oninput="character.specials[${i}].pct=+this.value" style="text-align:center;font-size:13px;" /><input value="${sp.desc||''}" placeholder="Description" oninput="character.specials[${i}].desc=this.value" style="font-size:12px;" /><button class="del-btn" onclick="removeSpecial(${i})">✕</button>`;
-    list.appendChild(row);
-  });
-}
-function addSpecialRow(){ character.specials.push({name:'',desc:'',pct:0}); renderSpecialsEditor(); }
-function removeSpecial(i){ character.specials.splice(i,1); renderSpecialsEditor(); }
-function saveCharacter(){
-  character.name=document.getElementById('ed-name').value.trim();
-  character.class=document.getElementById('ed-class').value.trim();
-  character.stats.FOR=+document.getElementById('ed-for').value;
-  character.stats.DEX=+document.getElementById('ed-dex').value;
-  character.stats.END=+document.getElementById('ed-end').value;
-  character.stats.INT=+document.getElementById('ed-int').value;
-  character.stats.CHA=+document.getElementById('ed-cha').value;
-  character.stats.PV=+document.getElementById('ed-pv').value;
-  character.physical={
-    age:document.getElementById('ed-age').value.trim(),
-    taille:document.getElementById('ed-taille').value.trim(),
-    poids:document.getElementById('ed-poids').value.trim(),
-    yeux:document.getElementById('ed-yeux').value.trim(),
-    cheveux:document.getElementById('ed-cheveux').value.trim(),
-    signes:document.getElementById('ed-signes').value.trim(),
-  };
-  character.protection={nom:document.getElementById('ed-prot-nom').value.trim(),valeur:+document.getElementById('ed-prot-val').value||0};
-  character.blessures={current:+document.getElementById('ed-bless-cur').value||0,max:+document.getElementById('ed-bless-max').value||5};
-  localStorage.setItem('aria-character',JSON.stringify(character));
-  renderAll();
-  sendPresence();
-  alert('Personnage sauvegardé !');
-}
-
-// ═══════════════════════════════════════════
-//  CARD SYSTEM
-// ═══════════════════════════════════════════
-function buildTracker(){
-  const container=document.getElementById('tracker-suits');
-  container.innerHTML='';
-  for(const suit of SUITS){
-    const row=document.createElement('div'); row.className='suit-row-t';
-    const sym=document.createElement('span'); sym.className=`suit-sym ${suit.cls}`; sym.textContent=suit.sym;
-    row.appendChild(sym);
-    const pills=document.createElement('div'); pills.className='rank-pills';
-    for(const rank of RANKS){ pills.appendChild(makePill(`${rank}-${suit.name}`,rank,suit.pillCls)); }
-    row.appendChild(pills); container.appendChild(row);
-  }
-  const jRow=document.createElement('div'); jRow.className='suit-row-t';
-  const jSym=document.createElement('span'); jSym.className='suit-sym c-purple'; jSym.textContent='★';
-  jRow.appendChild(jSym);
-  const jPills=document.createElement('div'); jPills.className='rank-pills';
-  jPills.appendChild(makePill('joker-red','R★','is-joker'));
-  jPills.appendChild(makePill('joker-black','N★','is-joker'));
-  jRow.appendChild(jPills); container.appendChild(jRow);
-}
-function makePill(id,label,extraCls){
-  const p=document.createElement('span');
-  p.id=`pill-${id}`; p.className='rank-pill'+(extraCls?' '+extraCls:''); p.textContent=label;
-  refreshPill(p,id); p.addEventListener('click',()=>togglePill(id)); return p;
-}
-function refreshPill(p,id){ const drawn=cardDrawn.has(id),excl=cardExcluded.has(id); p.classList.toggle('drawn',drawn); p.classList.toggle('excluded',excl); }
-function refreshAllPills(){ ALL_CARDS.forEach(c=>{ const p=document.getElementById(`pill-${c.id}`); if(p)refreshPill(p,c.id); }); }
-function togglePill(id){
-  if(cardDrawing) return;
-  const card=cardById(id);
-  const name=card.isJoker?card.label:`${card.rank} de ${SUIT_FR[card.suit.name]||card.suit.name}`;
-  if(cardExcluded.has(id)){ cardExcluded.delete(id); showCardStatus(`${name} re-inclus`); }
-  else if(cardDrawn.has(id)){ cardDrawn.delete(id); cardDeck.splice(Math.floor(Math.random()*(cardDeck.length+1)),0,card); updateDeckCount(); showCardStatus(`${name} remis`); }
-  else { cardExcluded.add(id); const idx=cardDeck.findIndex(c=>c.id===id); if(idx!==-1){cardDeck.splice(idx,1);updateDeckCount();} showCardStatus(`${name} exclu`); }
-  const p=document.getElementById(`pill-${id}`); if(p)refreshPill(p,id);
-  updateClearBtn(); saveCardState();
-}
-function clearExclusions(){ if(cardDrawing)return; cardExcluded.clear(); refreshAllPills(); updateClearBtn(); saveCardState(); showCardStatus('Exclusions effacées'); }
-function saveCardState(){ localStorage.setItem('aria-cards',JSON.stringify({excluded:[...cardExcluded],drawn:[...cardDrawn],deckIds:cardDeck.map(c=>c.id),lastCardId})); }
-function updateDeckCount(){
-  const n=cardDeck.length;
-  document.getElementById('deck-count').textContent=n===0?'Vide':`${n} carte${n!==1?'s':''}`;
-  document.getElementById('deck-wrap').classList.toggle('empty',n===0);
-  document.getElementById('reshuffle-btn').classList.toggle('visible',n===0);
-  document.getElementById('reshuffle-remaining-btn').classList.toggle('visible',n>1&&n<ALL_CARDS.length-cardExcluded.size);
-  updateClearBtn();
-}
-function updateClearBtn(){ document.getElementById('clear-exclusions-btn').classList.toggle('visible',cardExcluded.size>0); }
-function showCardStatus(msg){ const el=document.getElementById('card-status'); el.textContent=msg; clearTimeout(showCardStatus._t); showCardStatus._t=setTimeout(()=>el.textContent='',2200); }
-function delay(ms){ return new Promise(r=>setTimeout(r,ms)); }
-function renderCardContent(card){
-  const el=document.getElementById('drawn-card');
-  if(card.isJoker){
-    el.className=`flip-face ${card.jokerColor==='red'?'c-red':'c-black'}`;
-    el.innerHTML=`<div class="card-corner tl"><span class="rank" style="font-size:14px;color:var(--card-purple)">JKR</span></div><div class="card-center" style="flex-direction:column;gap:6px;"><span style="font-size:50px;line-height:1;color:var(--card-purple)">★</span><span style="font-family:'Playfair Display',serif;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--card-purple)">${card.label.toUpperCase()}</span></div><div class="card-corner br"><span class="rank" style="font-size:14px;color:var(--card-purple)">JKR</span></div>`;
-  } else {
-    el.className=`flip-face ${card.suit.cls}`;
-    el.innerHTML=`<div class="card-corner tl"><span class="rank">${card.rank}</span><span class="suit-small">${card.suit.sym}</span></div><div class="card-center">${card.suit.sym}</div><div class="card-corner br"><span class="rank">${card.rank}</span><span class="suit-small">${card.suit.sym}</span></div>`;
-  }
-}
-function restoreCard(){
-  const card=cardById(lastCardId); if(!card)return;
-  const flipWrap=document.getElementById('flip-wrap');
-  renderCardContent(card);
-  document.getElementById('drawn-card').classList.add('ready');
-  flipWrap.classList.remove('hidden');
-  flipWrap.style.transition='none';
-  flipWrap.classList.add('flipped');
-  flipWrap.getBoundingClientRect();
-  flipWrap.style.transition='';
-}
-async function animateShuffle(){
-  const overlay=document.getElementById('shuffle-overlay');
-  const wrap=document.getElementById('deck-wrap');
-  const rect=wrap.getBoundingClientRect();
-  const ghosts=[];
-  for(let i=0;i<4;i++){
-    const g=document.createElement('div'); g.className='shuffle-ghost';
-    g.appendChild(Object.assign(document.createElement('div'),{className:'deck-pattern'}));
-    g.style.cssText=`width:${rect.width}px;height:${rect.height}px;left:${rect.left}px;top:${rect.top}px;`;
-    overlay.appendChild(g); ghosts.push(g);
-  }
-  const dirs=['left','right','left','right'];
-  ghosts.forEach((g,i)=>{g.style.animation=`shuffle-${dirs[i]} 0.52s ${i*0.08}s ease-in-out forwards`;});
-  wrap.classList.remove('shuffling'); wrap.getBoundingClientRect(); wrap.classList.add('shuffling');
-  await delay(680); ghosts.forEach(g=>g.remove()); wrap.classList.remove('shuffling');
-}
-async function animateFly(){
-  const stage=document.querySelector('.card-stage');
-  const wrap=document.getElementById('deck-wrap');
-  const flyEl=document.getElementById('fly-card');
-  const deckRect=wrap.getBoundingClientRect();
-  const stageRect=stage.getBoundingClientRect();
-  const cw=deckRect.width,ch=deckRect.height,sx=deckRect.left,sy=deckRect.top;
-  const ex=stageRect.left+(stageRect.width-cw)/2,ey=stageRect.top+(stageRect.height-ch)/2;
-  const mx=(sx+ex)/2,my=Math.min(sy,ey)-30;
-  flyEl.style.cssText=`left:${sx}px;top:${sy}px;width:${cw}px;height:${ch}px;opacity:1;`;
-  flyEl.style.setProperty('--fly-x0','0px'); flyEl.style.setProperty('--fly-y0','0px');
-  flyEl.style.setProperty('--fly-xm',`${mx-sx}px`); flyEl.style.setProperty('--fly-ym',`${my-sy}px`);
-  flyEl.style.setProperty('--fly-x1',`${ex-sx}px`); flyEl.style.setProperty('--fly-y1',`${ey-sy}px`);
-  flyEl.classList.remove('flying'); flyEl.getBoundingClientRect(); flyEl.classList.add('flying');
-  await delay(430); flyEl.classList.remove('flying'); flyEl.style.opacity='0';
-}
-async function revealCard(card){
-  const flipWrap=document.getElementById('flip-wrap');
-  const drawnEl=document.getElementById('drawn-card');
-  renderCardContent(card); drawnEl.classList.add('ready');
-  flipWrap.classList.remove('hidden'); flipWrap.getBoundingClientRect();
-  await delay(30); flipWrap.classList.add('flipped');
-}
-async function drawCard(){
-  if(cardDrawing||cardDeck.length===0) return;
-  cardDrawing=true;
-  const flipWrap=document.getElementById('flip-wrap');
-  flipWrap.classList.remove('flipped'); flipWrap.classList.add('hidden');
-  document.getElementById('drawn-card').classList.remove('ready');
-  await animateFly();
-  const drawn=cardDeck.pop();
-  cardDrawn.add(drawn.id); lastCardId=drawn.id;
-  const pill=document.getElementById(`pill-${drawn.id}`); if(pill)refreshPill(pill,drawn.id);
-  updateDeckCount(); await revealCard(drawn);
-  showCardStatus(drawn.isJoker?drawn.label:`${drawn.rank} de ${SUIT_FR[drawn.suit.name]||drawn.suit.name}`);
-  saveCardState(); publishCard('draw',{cardId:drawn.id});
-  cardDrawing=false;
-}
-async function manualReshuffle(remainingOnly){
-  if(cardDrawing)return;
-  cardDrawing=true;
-  const flipWrap=document.getElementById('flip-wrap');
-  flipWrap.classList.remove('flipped');
-  await delay(200); flipWrap.classList.add('hidden');
-  document.getElementById('drawn-card').classList.remove('ready');
-  await animateShuffle();
-  if(remainingOnly){ cardDeck=shuffle(cardDeck); }
-  else { cardDrawn.clear(); cardDeck=buildDeck(); lastCardId=null; }
-  buildTracker(); updateDeckCount(); updateClearBtn(); saveCardState(); publishCard('reshuffle');
-  const flash=document.getElementById('reshuffle-flash');
-  document.getElementById('reshuffle-msg').textContent=remainingOnly?'↺ Restant mélangé':'↺ Mélangé';
-  flash.classList.add('show'); await delay(900); flash.classList.remove('show');
-  cardDrawing=false;
-}
-</script>
 </body>
 </html>

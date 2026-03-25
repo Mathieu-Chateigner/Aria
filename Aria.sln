@@ -1,0 +1,41 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Player", "Player", "{B1B2C3D4-E5F6-7890-ABCD-EF1234567891}"
+	ProjectSection(SolutionItems) = preProject
+		aria-player.html = aria-player.html
+		aria-player.css = aria-player.css
+		aria-player.js = aria-player.js
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "GM", "GM", "{C1B2C3D4-E5F6-7890-ABCD-EF1234567892}"
+	ProjectSection(SolutionItems) = preProject
+		aria-gm.html = aria-gm.html
+		aria-gm.css = aria-gm.css
+		aria-gm.js = aria-gm.js
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Overlay", "Overlay", "{D1B2C3D4-E5F6-7890-ABCD-EF1234567893}"
+	ProjectSection(SolutionItems) = preProject
+		aria-overlay.html = aria-overlay.html
+		aria-overlay.css = aria-overlay.css
+		aria-overlay.js = aria-overlay.js
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Docs", "Docs", "{E1B2C3D4-E5F6-7890-ABCD-EF1234567894}"
+	ProjectSection(SolutionItems) = preProject
+		CLAUDE.md = CLAUDE.md
+		README.md = README.md
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

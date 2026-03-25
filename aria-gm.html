@@ -1,952 +1,170 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ARIA – Maître de Jeu</title>
-<script>const VERSION='0.1.6';</script>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHRleHQgeD0iMTYiIHk9IjI4IiBmb250LXNpemU9IjMwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjYzlhODRjIj7imZs8L3RleHQ+PC9zdmc+">
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Cinzel+Decorative:wght@700&family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Playfair+Display:ital,wght@0,700;1,400&display=swap" rel="stylesheet">
-<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
-<style>
-:root{
-  --gold:#c9a84c;--gold-light:#e8c97a;--gold-dim:#6b5020;
-  --ink:#0d0b08;--bg:#0d0a05;--bg2:#1a1610;--bg3:#221e14;
-  --parchment:#f0e6c8;--parchment-dim:#9e8e6a;
-  --success:#4caf77;--fail:#c0392b;
-  --border:rgba(201,168,76,0.15);--radius:4px;
-  --gm-accent:#7b3fa0;
-  --card-red:#c0392b;--card-black:#1a1a1a;--card-cream:#f5f0e8;
-  --card-purple:#7b3fa0;
-  --card-w:160px;--card-h:224px;--deck-w:128px;--deck-h:179px;
-}
-*{margin:0;padding:0;box-sizing:border-box;}
-html,body{height:100%;}
-body{background:var(--bg);font-family:'EB Garamond',serif;color:var(--parchment);display:flex;flex-direction:column;min-height:100vh;}
-
-/* TOP BAR */
-.topbar{display:flex;align-items:center;gap:12px;padding:10px 16px;background:linear-gradient(90deg,#1a0a0f,#120814);border-bottom:1px solid rgba(123,63,160,.35);flex-shrink:0;box-shadow:0 2px 12px rgba(80,0,40,.4);}
-.topbar-title{font-family:'Cinzel Decorative',serif;font-size:18px;color:var(--gold);letter-spacing:.06em;}
-.topbar-badge{font-family:'Cinzel',serif;font-size:12px;letter-spacing:.2em;color:#d4aaff;text-transform:uppercase;background:linear-gradient(135deg,rgba(123,63,160,.35),rgba(80,20,120,.25));border:1px solid rgba(160,100,220,.5);padding:5px 14px;border-radius:4px;text-shadow:0 0 10px rgba(180,100,255,.4);box-shadow:0 0 8px rgba(120,50,180,.2);}
-.topbar-spacer{flex:1;}
-
-.status-row{display:flex;align-items:center;gap:6px;font-family:'Cinzel',serif;font-size:10px;color:var(--parchment-dim);}
-.status-dot{width:8px;height:8px;border-radius:50%;background:#444;}
-.status-dot.connected{background:var(--success);}
-.status-dot.error{background:var(--fail);}
-.icon-btn{background:none;border:1px solid var(--border);color:var(--gold-dim);cursor:pointer;padding:4px 8px;border-radius:var(--radius);font-size:14px;transition:all .15s;}
-.icon-btn:hover{border-color:var(--gold);color:var(--gold);}
-.player-count{font-family:'Cinzel',serif;font-size:11px;color:var(--parchment-dim);}
-
-/* LAYOUT */
-.main{display:flex;flex:1;overflow:hidden;}
-.content{flex:1;display:flex;flex-direction:column;overflow:hidden;}
-.tabs{display:flex;background:linear-gradient(90deg,#160810,#110612);border-bottom:1px solid rgba(123,63,160,.25);flex-shrink:0;flex-wrap:wrap;}
-.tab-btn{font-family:'Cinzel',serif;font-size:12px;letter-spacing:.08em;padding:10px 16px;cursor:pointer;background:none;border:none;color:var(--parchment-dim);border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap;}
-.tab-btn:hover{color:var(--parchment);}
-.tab-btn.active{color:#d4aaff;border-bottom-color:#9b59d0;}
-.tab-content{display:none;}
-.tab-content.active{display:block;flex:1;min-height:0;overflow-y:auto;padding:20px;}
-
-/* PANEL */
-.panel{background:var(--bg3);border:1px solid var(--border);border-radius:6px;overflow:hidden;}
-.panel-header{font-family:'Cinzel',serif;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold-dim);padding:8px 14px;background:rgba(201,168,76,.05);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
-.panel-body{padding:12px 14px;}
-.section-title{font-family:'Cinzel',serif;font-size:11px;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);}
-
-/* ═══ PLAYER CARDS ═══ */
-.players-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;}
-.player-card{background:var(--bg3);border:1px solid var(--border);border-radius:8px;overflow:hidden;transition:border-color .2s;}
-.player-card.online{border-color:rgba(76,175,119,.3);}
-.player-card.offline{opacity:.55;border-color:rgba(201,168,76,.08);}
-.pc-header{display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(201,168,76,.04);border-bottom:1px solid var(--border);}
-.pc-online-dot{width:8px;height:8px;border-radius:50%;background:#444;flex-shrink:0;}
-.pc-online-dot.online{background:var(--success);}
-.pc-name{font-family:'Cinzel',serif;font-size:14px;color:var(--parchment);flex:1;}
-.pc-class{font-family:'EB Garamond',serif;font-size:12px;color:var(--parchment-dim);font-style:italic;}
-.pc-body{padding:12px 14px;display:flex;flex-direction:column;gap:10px;}
-.pc-hp-row{display:flex;align-items:center;gap:10px;}
-.pc-hp-num{font-family:'Cinzel',serif;font-size:28px;font-weight:900;color:var(--parchment);line-height:1;}
-.pc-hp-num.low{color:#e8a020;}
-.pc-hp-num.critical{color:var(--fail);}
-.pc-hp-frac{font-family:'Cinzel',serif;font-size:11px;color:var(--parchment-dim);}
-.pc-hp-bar-wrap{flex:1;height:6px;background:rgba(0,0,0,.4);border-radius:3px;overflow:hidden;}
-.pc-hp-bar{height:100%;border-radius:3px;transition:width .8s ease,background .3s;}
-.pc-stats{display:flex;gap:8px;flex-wrap:wrap;}
-.pc-stat{font-family:'Cinzel',serif;font-size:10px;color:var(--parchment-dim);background:rgba(0,0,0,.2);border:1px solid var(--border);padding:2px 7px;border-radius:3px;}
-.pc-stat span{color:var(--parchment);font-weight:600;}
-.pc-actions{display:flex;gap:6px;margin-top:4px;}
-.pc-dmg-input{flex:1;background:rgba(120,0,0,.2);border:1px solid rgba(192,57,43,.35);color:#ffbbbb;font-family:'Cinzel',serif;font-size:14px;padding:6px 8px;border-radius:var(--radius);text-align:center;min-width:0;}
-.pc-dmg-input:focus{outline:none;border-color:rgba(192,57,43,.6);}
-.pc-heal-input{flex:1;background:rgba(0,80,30,.2);border:1px solid rgba(76,175,119,.25);color:#aaffcc;font-family:'Cinzel',serif;font-size:14px;padding:6px 8px;border-radius:var(--radius);text-align:center;min-width:0;}
-.pc-heal-input:focus{outline:none;border-color:rgba(76,175,119,.5);}
-.pc-btn{font-family:'Cinzel',serif;font-size:13px;font-weight:700;padding:6px 12px;cursor:pointer;border-radius:var(--radius);transition:all .15s;flex-shrink:0;}
-.pc-btn.dmg{background:linear-gradient(160deg,#5a0f0f,#8b1a1a);border:1px solid rgba(192,57,43,.5);color:#ffaaaa;}
-.pc-btn.dmg:hover{background:linear-gradient(160deg,#7a1414,#b02020);}
-.pc-btn.heal{background:rgba(30,90,55,.4);border:1px solid rgba(76,175,119,.4);color:#aaffcc;}
-.pc-btn.heal:hover{background:rgba(50,120,75,.5);}
-.pc-prot{font-family:'Cinzel',serif;font-size:10px;color:var(--gold-dim);}
-.no-players{font-family:'EB Garamond',serif;font-size:16px;font-style:italic;color:var(--parchment-dim);opacity:.5;text-align:center;padding:40px;}
-
-/* ═══ MONSTERS ═══ */
-.monsters-grid{display:flex;flex-direction:column;gap:12px;}
-.monster-card{background:var(--bg3);border:1px solid rgba(192,57,43,.2);border-radius:8px;overflow:hidden;}
-.monster-card .mc-header{display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(192,57,43,.06);border-bottom:1px solid rgba(192,57,43,.15);}
-.mc-name{font-family:'Cinzel',serif;font-size:14px;color:#ffbbbb;flex:1;}
-.mc-del{background:none;border:none;color:rgba(192,57,43,.5);cursor:pointer;font-size:18px;padding:2px 6px;border-radius:var(--radius);transition:color .15s;}
-.mc-del:hover{color:var(--fail);}
-.mc-body{padding:12px 14px;display:flex;flex-direction:column;gap:10px;}
-.mc-hp-row{display:flex;align-items:center;gap:10px;}
-.mc-hp-num{font-family:'Cinzel',serif;font-size:28px;font-weight:900;line-height:1;}
-.mc-hp-bar-wrap{flex:1;height:6px;background:rgba(0,0,0,.4);border-radius:3px;overflow:hidden;}
-.mc-hp-bar{height:100%;border-radius:3px;background:var(--fail);transition:width .8s ease;}
-.mc-stats{display:flex;gap:6px;flex-wrap:wrap;}
-.mc-stat{font-family:'Cinzel',serif;font-size:10px;color:rgba(255,150,150,.6);background:rgba(120,0,0,.15);border:1px solid rgba(192,57,43,.15);padding:2px 7px;border-radius:3px;}
-.mc-stat span{color:#ffbbbb;font-weight:600;}
-.mc-attacks{display:flex;flex-direction:column;gap:4px;}
-.mc-attack-row{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background:rgba(0,0,0,.2);border-radius:3px;border:1px solid rgba(192,57,43,.1);cursor:pointer;transition:background .15s;}
-.mc-attack-row:hover{background:rgba(192,57,43,.1);}
-.mc-atk-name{font-family:'EB Garamond',serif;font-size:14px;font-style:italic;color:#ffbbbb;}
-.mc-atk-pct{font-family:'Cinzel',serif;font-size:12px;color:rgba(255,150,150,.7);}
-.mc-atk-dmg{font-family:'Cinzel',serif;font-size:12px;color:var(--gold-dim);}
-.mc-actions{display:flex;gap:6px;}
-.mc-input{flex:1;background:rgba(120,0,0,.15);border:1px solid rgba(192,57,43,.25);color:#ffbbbb;font-family:'Cinzel',serif;font-size:14px;padding:6px 8px;border-radius:var(--radius);text-align:center;min-width:0;}
-.mc-input:focus{outline:none;border-color:rgba(192,57,43,.5);}
-.mc-heal-input{flex:1;background:rgba(0,60,20,.2);border:1px solid rgba(76,175,119,.2);color:#aaffcc;font-family:'Cinzel',serif;font-size:14px;padding:6px 8px;border-radius:var(--radius);text-align:center;min-width:0;}
-.mc-heal-input:focus{outline:none;border-color:rgba(76,175,119,.4);}
-.mc-btn{font-family:'Cinzel',serif;font-size:13px;font-weight:700;padding:6px 12px;cursor:pointer;border-radius:var(--radius);transition:all .15s;flex-shrink:0;}
-.mc-btn.dmg{background:rgba(80,10,10,.5);border:1px solid rgba(192,57,43,.4);color:#ffaaaa;}
-.mc-btn.dmg:hover{background:rgba(120,15,15,.6);}
-.mc-btn.heal{background:rgba(20,70,40,.4);border:1px solid rgba(76,175,119,.3);color:#aaffcc;}
-.mc-btn.heal:hover{background:rgba(30,90,55,.5);}
-
-/* Add Monster Form */
-.add-monster-form{background:var(--bg3);border:1px solid rgba(192,57,43,.2);border-radius:8px;padding:16px;margin-bottom:16px;}
-.add-monster-form h3{font-family:'Cinzel',serif;font-size:11px;letter-spacing:.18em;color:rgba(255,150,150,.6);text-transform:uppercase;margin-bottom:12px;}
-.amf-grid{display:grid;grid-template-columns:1fr 80px 80px;gap:8px;margin-bottom:10px;}
-.amf-grid2{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:10px;}
-.amf-full{grid-column:1/-1;}
-.amf-label{font-family:'Cinzel',serif;font-size:9px;letter-spacing:.12em;color:rgba(255,150,150,.5);text-transform:uppercase;display:block;margin-bottom:3px;}
-.amf-input{background:rgba(80,0,0,.2);border:1px solid rgba(192,57,43,.25);color:#ffbbbb;font-family:'EB Garamond',serif;font-size:14px;padding:6px 8px;border-radius:var(--radius);width:100%;}
-.amf-input:focus{outline:none;border-color:rgba(192,57,43,.5);}
-.amf-add-btn{font-family:'Cinzel',serif;font-size:11px;letter-spacing:.1em;background:rgba(192,57,43,.15);border:1px solid rgba(192,57,43,.4);color:#ffaaaa;padding:8px 16px;cursor:pointer;border-radius:var(--radius);text-transform:uppercase;transition:all .15s;}
-.amf-add-btn:hover{background:rgba(192,57,43,.25);}
-
-/* Attack editor inside add form */
-.attack-editor{margin-top:10px;}
-.atk-row{display:grid;grid-template-columns:1fr 70px 70px auto;gap:6px;align-items:center;margin-bottom:6px;}
-.atk-row input{background:rgba(80,0,0,.15);border:1px solid rgba(192,57,43,.2);color:#ffbbbb;font-family:'EB Garamond',serif;font-size:13px;padding:5px 7px;border-radius:var(--radius);}
-.atk-row input:focus{outline:none;border-color:rgba(192,57,43,.45);}
-.del-btn{background:none;border:none;color:rgba(192,57,43,.5);cursor:pointer;font-size:16px;padding:2px 6px;border-radius:var(--radius);}
-.del-btn:hover{color:var(--fail);}
-.add-atk-btn{font-family:'Cinzel',serif;font-size:11px;background:none;border:1px dashed rgba(192,57,43,.3);color:rgba(255,150,150,.5);padding:4px 10px;cursor:pointer;border-radius:var(--radius);transition:all .15s;}
-.add-atk-btn:hover{border-color:rgba(192,57,43,.5);color:#ffaaaa;}
-
-/* ═══ ROLLS FEED ═══ */
-.rolls-feed{display:flex;flex-direction:column;gap:8px;}
-.roll-entry{padding:10px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:center;}
-.roll-entry.crit-success{border-color:rgba(168,255,120,.3);background:rgba(100,200,60,.04);}
-.roll-entry.crit-fail{border-color:rgba(255,68,68,.3);background:rgba(180,30,30,.04);}
-.re-char{font-family:'Cinzel',serif;font-size:11px;color:var(--gold-dim);white-space:nowrap;}
-.re-skill{font-family:'EB Garamond',serif;font-size:15px;font-style:italic;color:var(--parchment);}
-.re-roll{font-family:'Cinzel',serif;font-size:22px;font-weight:900;color:var(--parchment);text-align:right;}
-.re-verdict{font-family:'Cinzel',serif;font-size:11px;font-weight:700;letter-spacing:.1em;text-align:right;white-space:nowrap;}
-.re-verdict.s{color:var(--success);}
-.re-verdict.cs{color:#a8ff78;}
-.re-verdict.f{color:var(--fail);}
-.re-verdict.cf{color:#ff4444;}
-.re-threshold{font-family:'Cinzel',serif;font-size:10px;color:var(--parchment-dim);grid-column:2;}
-.rolls-empty{font-family:'EB Garamond',serif;font-size:16px;font-style:italic;color:var(--parchment-dim);opacity:.5;text-align:center;padding:30px;}
-.rolls-header{display:flex;justify-content:space-between;align-items:center;}
-.clear-btn{font-family:'Cinzel',serif;font-size:10px;background:none;border:1px solid var(--border);color:var(--parchment-dim);padding:3px 10px;cursor:pointer;border-radius:var(--radius);transition:all .15s;}
-.clear-btn:hover{border-color:var(--gold-dim);color:var(--parchment);}
-
-/* ═══ GM ROLLS ═══ */
-.gm-roll-section{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
-.gm-roll-form{background:var(--bg3);border:1px solid rgba(123,63,160,.2);border-radius:8px;padding:14px;}
-.gm-roll-form h3{font-family:'Cinzel',serif;font-size:10px;letter-spacing:.18em;color:var(--gm-accent);text-transform:uppercase;margin-bottom:10px;}
-.field-label{font-family:'Cinzel',serif;font-size:9px;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:3px;display:block;}
-.gm-input{background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--parchment);font-family:'EB Garamond',serif;font-size:15px;padding:7px 10px;border-radius:var(--radius);width:100%;margin-bottom:8px;}
-.gm-input:focus{outline:none;border-color:var(--gold-dim);}
-.gm-roll-btn{font-family:'Cinzel',serif;font-size:11px;letter-spacing:.1em;background:rgba(123,63,160,.15);border:1px solid rgba(123,63,160,.4);color:var(--gm-accent);padding:8px 16px;cursor:pointer;border-radius:var(--radius);text-transform:uppercase;transition:all .15s;width:100%;}
-.gm-roll-btn:hover{background:rgba(123,63,160,.25);}
-.gm-roll-result{background:var(--bg3);border:1px solid rgba(123,63,160,.2);border-radius:8px;padding:14px;min-height:80px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;}
-.gm-rr-roll{font-family:'Cinzel',serif;font-size:48px;font-weight:900;color:var(--parchment);}
-.gm-rr-verdict{font-family:'Cinzel',serif;font-size:14px;font-weight:700;letter-spacing:.12em;}
-.gm-rr-detail{font-family:'Cinzel',serif;font-size:11px;color:var(--parchment-dim);}
-.monster-roll-target{width:100%;margin-bottom:8px;}
-
-/* ═══ CARD TAB ═══ */
-.card-tab-layout{display:flex;gap:20px;flex-wrap:wrap;}
-.card-deck-col{display:flex;flex-direction:column;align-items:center;gap:10px;width:160px;flex-shrink:0;}
-.card-stage{display:flex;align-items:center;justify-content:center;flex:1;min-width:200px;min-height:260px;}
-.deck-wrap{width:var(--deck-w);height:var(--deck-h);position:relative;cursor:pointer;border-radius:8px;}
-.deck-wrap.empty{opacity:.4;cursor:default;}
-.deck-back{width:100%;height:100%;border-radius:8px;border:2px solid var(--gold-dim);background:linear-gradient(145deg,#1a1508,#0e0c06);display:flex;align-items:center;justify-content:center;box-shadow:2px 4px 12px rgba(0,0,0,.6);}
-.deck-pattern{width:88%;height:88%;border:1px solid rgba(201,168,76,.25);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:28px;color:var(--gold-dim);}
-.deck-count{font-family:'Cinzel',serif;font-size:11px;color:var(--parchment-dim);}
-.card-action-btn{font-family:'Cinzel',serif;font-size:11px;padding:5px 14px;background:rgba(201,168,76,.08);border:1px solid var(--gold-dim);color:var(--gold);cursor:pointer;border-radius:var(--radius);transition:all .15s;visibility:hidden;white-space:nowrap;}
-.card-action-btn.visible{visibility:visible;}
-.card-action-btn:hover{background:rgba(201,168,76,.18);}
-.card-status{font-family:'Cinzel',serif;font-size:11px;color:var(--parchment-dim);min-height:18px;text-align:center;}
-.flip-wrap{width:var(--card-w);height:var(--card-h);perspective:900px;visibility:hidden;}
-.flip-wrap:not(.hidden){visibility:visible;}
-.flip-inner{width:100%;height:100%;transform-style:preserve-3d;transition:transform .55s cubic-bezier(.4,0,.2,1);}
-.flip-wrap.flipped .flip-inner{transform:rotateY(180deg);}
-.flip-face{position:absolute;width:100%;height:100%;backface-visibility:hidden;border-radius:10px;display:flex;flex-direction:column;justify-content:space-between;padding:10px;box-shadow:0 8px 32px rgba(0,0,0,.7);}
-.flip-face.c-black{background:var(--card-cream);color:var(--card-black);border:2px solid #888;}
-.flip-face.c-red{background:var(--card-cream);color:var(--card-red);border:2px solid var(--card-red);}
-.flip-face.c-purple{background:var(--card-cream);color:var(--card-purple);border:2px solid var(--card-purple);}
-.card-back-face{transform:rotateY(180deg);background:linear-gradient(145deg,#1a1508,#0e0c06);border:2px solid var(--gold-dim);}
-.card-corner{display:flex;flex-direction:column;align-items:center;line-height:1.1;}
-.rank{font-family:'Cinzel',serif;font-size:18px;font-weight:700;}
-.suit-small{font-size:13px;}
-.br{transform:rotate(180deg);}
-.card-center{font-size:58px;text-align:center;line-height:1;align-self:center;}
-.fly-card{position:fixed;z-index:900;pointer-events:none;opacity:0;border-radius:8px;background:linear-gradient(145deg,#1a1508,#0e0c06);border:2px solid var(--gold-dim);}
-.fly-card.flying{animation:fly-arc .43s ease-in-out forwards;}
-@keyframes fly-arc{0%{transform:translate(var(--fly-x0),var(--fly-y0)) scale(1);}50%{transform:translate(var(--fly-xm),var(--fly-ym)) scale(1.05);}100%{transform:translate(var(--fly-x1),var(--fly-y1)) scale(1);}}
-.shuffle-overlay{position:fixed;inset:0;pointer-events:none;z-index:800;}
-.shuffle-ghost{position:fixed;pointer-events:none;border-radius:8px;background:linear-gradient(145deg,#1a1508,#0e0c06);border:2px solid var(--gold-dim);overflow:hidden;display:flex;align-items:center;justify-content:center;}
-.shuffle-ghost .deck-pattern{width:88%;height:88%;}
-@keyframes shuffle-left{0%{transform:translate(0,0) rotate(0);}40%{transform:translate(-40px,-8px) rotate(-8deg);}100%{transform:translate(0,0) rotate(0);}}
-@keyframes shuffle-right{0%{transform:translate(0,0) rotate(0);}40%{transform:translate(40px,-8px) rotate(8deg);}100%{transform:translate(0,0) rotate(0);}}
-.reshuffle-flash{position:fixed;inset:0;pointer-events:none;background:rgba(201,168,76,.04);opacity:0;z-index:700;transition:opacity .4s;}
-.reshuffle-flash.show{opacity:1;}
-.tracker-suits{display:flex;flex-direction:column;gap:5px;}
-.suit-row-t{display:flex;align-items:center;gap:8px;}
-.suit-sym{font-size:18px;width:24px;text-align:center;flex-shrink:0;}
-.c-black-txt{color:#222;}
-.c-red-txt{color:var(--card-red);}
-.c-purple-txt{color:var(--card-purple);}
-.rank-pills{display:flex;gap:4px;flex-wrap:wrap;}
-.rank-pill{font-family:'Cinzel',serif;font-size:10px;padding:2px 6px;border:1px solid rgba(201,168,76,.2);border-radius:3px;cursor:pointer;user-select:none;color:var(--parchment-dim);transition:all .15s;}
-.rank-pill:hover{border-color:var(--gold-dim);color:var(--parchment);}
-.rank-pill.drawn{background:rgba(201,168,76,.15);border-color:var(--gold-dim);color:var(--gold);}
-.rank-pill.excluded{background:rgba(192,57,43,.15);border-color:rgba(192,57,43,.4);color:rgba(192,57,43,.7);text-decoration:line-through;}
-.is-joker{border-color:rgba(123,63,160,.4);color:var(--card-purple);}
-
-/* CONFIG MODAL */
-.modal-scrim{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;display:none;}
-.modal-scrim.show{display:block;}
-.config-modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1001;width:420px;max-width:95vw;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:24px;display:none;}
-.config-modal.show{display:block;}
-.config-modal h2{font-family:'Cinzel',serif;font-size:14px;letter-spacing:.15em;color:var(--gold);margin-bottom:16px;text-transform:uppercase;}
-.config-label{font-family:'Cinzel',serif;font-size:10px;letter-spacing:.12em;color:var(--gold-dim);text-transform:uppercase;display:block;margin-bottom:4px;margin-top:12px;}
-.config-input{background:rgba(0,0,0,.4);border:1px solid var(--border);color:var(--parchment);font-family:'EB Garamond',serif;font-size:15px;padding:8px 10px;border-radius:var(--radius);width:100%;}
-.config-input:focus{outline:none;border-color:var(--gold-dim);}
-.config-save-btn{margin-top:16px;font-family:'Cinzel',serif;font-size:12px;letter-spacing:.1em;background:rgba(201,168,76,.12);border:1px solid var(--gold-dim);color:var(--gold);padding:10px 20px;cursor:pointer;border-radius:var(--radius);transition:all .2s;text-transform:uppercase;}
-.config-save-btn:hover{background:rgba(201,168,76,.22);}
-
-/* ROLL RESULT (GM local) */
-.gm-float-result{position:fixed;bottom:24px;right:24px;z-index:900;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px 20px;min-width:220px;opacity:0;transform:translateY(12px);pointer-events:none;transition:all .3s;}
-.gm-float-result.show{opacity:1;transform:translateY(0);pointer-events:auto;}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARIA – Maître de Jeu</title>
+    <script>const VERSION = '0.1.6';</script>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHRleHQgeD0iMTYiIHk9IjI4IiBmb250LXNpemU9IjMwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjYzlhODRjIj7imZs8L3RleHQ+PC9zdmc+">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Cinzel+Decorative:wght@700&family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Playfair+Display:ital,wght@0,700;1,400&display=swap" rel="stylesheet">
+    <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+    <link rel="stylesheet" href="aria-gm.css">
 </head>
 <body>
 
-<!-- TOP BAR -->
-<div class="topbar">
-  <div class="topbar-title">♛ ARIA</div>
-  <span style="font-family:'Cinzel',serif;font-size:9px;color:var(--gold-dim);letter-spacing:.1em;" id="version-display"></span>
-  <span class="topbar-badge">Maître de Jeu</span>
-  <span class="topbar-spacer"></span>
-  <span class="player-count" id="player-count">0 joueur(s) en ligne</span>
-  <div class="status-row"><div class="status-dot" id="ably-dot"></div><span id="ably-status">Ably</span></div>
-  <button class="icon-btn" onclick="toggleConfig()" title="Configuration">⚙</button>
-</div>
-
-<!-- MAIN -->
-<div class="main">
-  <div class="content">
-    <div class="tabs">
-      <button class="tab-btn active" onclick="switchTab('tab-players',this)">👥 Joueurs</button>
-      <button class="tab-btn" onclick="switchTab('tab-monsters',this)">☠ Monstres</button>
-      <button class="tab-btn" onclick="switchTab('tab-rolls',this)">⚄ Jets</button>
-      <button class="tab-btn" onclick="switchTab('tab-gm-roll',this)">⚄ Jet MJ</button>
-      <button class="tab-btn" onclick="switchTab('tab-cards',this)">🂠 Cartes</button>
+    <!-- TOP BAR -->
+    <div class="topbar">
+        <div class="topbar-title">♛ ARIA</div>
+        <span style="font-family:'Cinzel',serif;font-size:9px;color:var(--gold-dim);letter-spacing:.1em;" id="version-display"></span>
+        <span class="topbar-badge">Maître de Jeu</span>
+        <span class="topbar-spacer"></span>
+        <span class="player-count" id="player-count">0 joueur(s) en ligne</span>
+        <div class="status-row"><div class="status-dot" id="ably-dot"></div><span id="ably-status">Ably</span></div>
+        <button class="icon-btn" onclick="toggleConfig()" title="Configuration">⚙</button>
     </div>
 
-    <!-- JOUEURS -->
-    <div class="tab-content active" id="tab-players">
-      <div class="section-title" style="margin-bottom:0;">Joueurs connectés</div>
-      <div class="players-grid" id="players-grid">
-      </div>
-      <div class="no-players" id="no-players">En attente de joueurs… <br><span style="font-size:13px;opacity:.6;">Les joueurs apparaissent automatiquement dès qu'ils ouvrent aria-player.html</span></div>
-    </div>
-
-    <!-- MONSTRES -->
-    <div class="tab-content" id="tab-monsters">
-      <!-- Add Monster Form -->
-      <div class="add-monster-form">
-        <h3>+ Nouveau monstre</h3>
-        <div class="amf-grid">
-          <div>
-            <label class="amf-label">Nom</label>
-            <input class="amf-input" id="amf-name" placeholder="ex: Gobelin éclaireur" />
-          </div>
-          <div>
-            <label class="amf-label">PV max</label>
-            <input class="amf-input" id="amf-pv" type="number" min="1" placeholder="20" />
-          </div>
-          <div>
-            <label class="amf-label">Armure</label>
-            <input class="amf-input" id="amf-armor" type="number" min="0" placeholder="0" />
-          </div>
-        </div>
-        <div class="amf-grid2">
-          <div><label class="amf-label">FOR</label><input class="amf-input" id="amf-for" type="number" min="1" placeholder="10" /></div>
-          <div><label class="amf-label">DEX</label><input class="amf-input" id="amf-dex" type="number" min="1" placeholder="10" /></div>
-          <div><label class="amf-label">END</label><input class="amf-input" id="amf-end" type="number" min="1" placeholder="10" /></div>
-          <div><label class="amf-label">INT</label><input class="amf-input" id="amf-int" type="number" min="1" placeholder="10" /></div>
-          <div><label class="amf-label">CHA</label><input class="amf-input" id="amf-cha" type="number" min="1" placeholder="10" /></div>
-        </div>
-        <div class="attack-editor">
-          <label class="amf-label" style="margin-bottom:6px;">Attaques / Compétences</label>
-          <div style="display:grid;grid-template-columns:1fr 70px 70px auto;gap:6px;margin-bottom:4px;">
-            <span class="amf-label">Nom</span><span class="amf-label" style="text-align:center;">%</span><span class="amf-label" style="text-align:center;">Dégâts</span><span></span>
-          </div>
-          <div id="amf-attacks-list"></div>
-          <button class="add-atk-btn" onclick="addAmfAttack()">+ Attaque</button>
-        </div>
-        <div style="margin-top:14px;"><button class="amf-add-btn" onclick="addMonster()">Ajouter le monstre</button></div>
-      </div>
-
-      <!-- Monsters list -->
-      <div class="monsters-grid" id="monsters-grid">
-        <div style="font-family:'EB Garamond',serif;font-size:15px;font-style:italic;color:var(--parchment-dim);opacity:.5;text-align:center;padding:20px;" id="no-monsters">Aucun monstre actif</div>
-      </div>
-    </div>
-
-    <!-- JETS -->
-    <div class="tab-content" id="tab-rolls">
-      <div class="rolls-header">
-        <div class="section-title" style="margin-bottom:0;">Fil des jets</div>
-        <button class="clear-btn" onclick="clearRolls()">Effacer</button>
-      </div>
-      <div class="rolls-feed" id="rolls-feed">
-        <div class="rolls-empty">En attente de jets…</div>
-      </div>
-    </div>
-
-    <!-- JET MJ -->
-    <div class="tab-content" id="tab-gm-roll">
-      <div class="gm-roll-section">
-        <div>
-          <div class="gm-roll-form">
-            <h3>Jet libre</h3>
-            <label class="field-label">Nom du jet</label>
-            <input class="gm-input" id="gm-free-name" placeholder="ex: Perception" />
-            <label class="field-label">Seuil (%)</label>
-            <input class="gm-input" id="gm-free-threshold" type="number" min="1" max="100" placeholder="50" />
-            <button class="gm-roll-btn" onclick="doGMFreeRoll()">⚄ Lancer</button>
-          </div>
-          <div class="gm-roll-form" style="margin-top:12px;">
-            <h3>Jet pour un monstre</h3>
-            <label class="field-label">Monstre</label>
-            <select class="gm-input monster-roll-target" id="gm-monster-select">
-              <option value="">— Aucun monstre —</option>
-            </select>
-            <label class="field-label">Attaque / Seuil personnalisé (%)</label>
-            <input class="gm-input" id="gm-monster-threshold" type="number" min="1" max="100" placeholder="50" />
-            <button class="gm-roll-btn" onclick="doGMMonsterRoll()">⚄ Jet monstre</button>
-          </div>
-        </div>
-        <div>
-          <div class="section-title">Résultat</div>
-          <div class="gm-roll-result" id="gm-roll-result">
-            <div style="font-family:'EB Garamond',serif;font-size:14px;font-style:italic;color:var(--parchment-dim);opacity:.5;">Pas encore de jet</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- CARTES -->
-    <div class="tab-content" id="tab-cards">
-      <div class="card-tab-layout">
-        <div class="card-deck-col">
-          <div class="deck-wrap" id="deck-wrap" onclick="drawCard()">
-            <div class="deck-back"><div class="deck-pattern">♛</div></div>
-          </div>
-          <div class="deck-count" id="deck-count">54 cartes</div>
-          <button class="card-action-btn" id="reshuffle-btn" onclick="manualReshuffle(false)">↺ Mélanger</button>
-          <button class="card-action-btn" id="reshuffle-remaining-btn" onclick="manualReshuffle(true)">↺ Restant</button>
-          <button class="card-action-btn" id="clear-exclusions-btn" onclick="clearExclusions()">✕ Exclusions</button>
-          <div class="card-status" id="card-status"></div>
-        </div>
-        <div class="card-stage">
-          <div class="flip-wrap hidden" id="flip-wrap">
-            <div class="flip-inner">
-              <div class="card-back-face"><div class="deck-pattern" style="border-color:rgba(201,168,76,.25);">♛</div></div>
-              <div id="drawn-card"></div>
+    <!-- MAIN -->
+    <div class="main">
+        <div class="content">
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('tab-players',this)">👥 Joueurs</button>
+                <button class="tab-btn" onclick="switchTab('tab-monsters',this)">☠ Monstres</button>
+                <button class="tab-btn" onclick="switchTab('tab-rolls',this)">⚄ Jets</button>
+                <button class="tab-btn" onclick="switchTab('tab-gm-roll',this)">⚄ Jet MJ</button>
+                <button class="tab-btn" onclick="switchTab('tab-cards',this)">🂠 Cartes</button>
             </div>
-          </div>
+
+            <!-- JOUEURS -->
+            <div class="tab-content active" id="tab-players">
+                <div class="section-title" style="margin-bottom:0;">Joueurs connectés</div>
+                <div class="players-grid" id="players-grid">
+                </div>
+                <div class="no-players" id="no-players">En attente de joueurs… <br><span style="font-size:13px;opacity:.6;">Les joueurs apparaissent automatiquement dès qu'ils ouvrent aria-player.html</span></div>
+            </div>
+
+            <!-- MONSTRES -->
+            <div class="tab-content" id="tab-monsters">
+                <!-- Add Monster Form -->
+                <div class="add-monster-form">
+                    <h3>+ Nouveau monstre</h3>
+                    <div class="amf-grid">
+                        <div>
+                            <label class="amf-label">Nom</label>
+                            <input class="amf-input" id="amf-name" placeholder="ex: Gobelin éclaireur" />
+                        </div>
+                        <div>
+                            <label class="amf-label">PV max</label>
+                            <input class="amf-input" id="amf-pv" type="number" min="1" placeholder="20" />
+                        </div>
+                        <div>
+                            <label class="amf-label">Armure</label>
+                            <input class="amf-input" id="amf-armor" type="number" min="0" placeholder="0" />
+                        </div>
+                    </div>
+                    <div class="amf-grid2">
+                        <div><label class="amf-label">FOR</label><input class="amf-input" id="amf-for" type="number" min="1" placeholder="10" /></div>
+                        <div><label class="amf-label">DEX</label><input class="amf-input" id="amf-dex" type="number" min="1" placeholder="10" /></div>
+                        <div><label class="amf-label">END</label><input class="amf-input" id="amf-end" type="number" min="1" placeholder="10" /></div>
+                        <div><label class="amf-label">INT</label><input class="amf-input" id="amf-int" type="number" min="1" placeholder="10" /></div>
+                        <div><label class="amf-label">CHA</label><input class="amf-input" id="amf-cha" type="number" min="1" placeholder="10" /></div>
+                    </div>
+                    <div class="attack-editor">
+                        <label class="amf-label" style="margin-bottom:6px;">Attaques / Compétences</label>
+                        <div style="display:grid;grid-template-columns:1fr 70px 70px auto;gap:6px;margin-bottom:4px;">
+                            <span class="amf-label">Nom</span><span class="amf-label" style="text-align:center;">%</span><span class="amf-label" style="text-align:center;">Dégâts</span><span></span>
+                        </div>
+                        <div id="amf-attacks-list"></div>
+                        <button class="add-atk-btn" onclick="addAmfAttack()">+ Attaque</button>
+                    </div>
+                    <div style="margin-top:14px;"><button class="amf-add-btn" onclick="addMonster()">Ajouter le monstre</button></div>
+                </div>
+
+                <!-- Monsters list -->
+                <div class="monsters-grid" id="monsters-grid">
+                    <div style="font-family:'EB Garamond',serif;font-size:15px;font-style:italic;color:var(--parchment-dim);opacity:.5;text-align:center;padding:20px;" id="no-monsters">Aucun monstre actif</div>
+                </div>
+            </div>
+
+            <!-- JETS -->
+            <div class="tab-content" id="tab-rolls">
+                <div class="rolls-header">
+                    <div class="section-title" style="margin-bottom:0;">Fil des jets</div>
+                    <button class="clear-btn" onclick="clearRolls()">Effacer</button>
+                </div>
+                <div class="rolls-feed" id="rolls-feed">
+                    <div class="rolls-empty">En attente de jets…</div>
+                </div>
+            </div>
+
+            <!-- JET MJ -->
+            <div class="tab-content" id="tab-gm-roll">
+                <div class="gm-roll-section">
+                    <div>
+                        <div class="gm-roll-form">
+                            <h3>Jet libre</h3>
+                            <label class="field-label">Nom du jet</label>
+                            <input class="gm-input" id="gm-free-name" placeholder="ex: Perception" />
+                            <label class="field-label">Seuil (%)</label>
+                            <input class="gm-input" id="gm-free-threshold" type="number" min="1" max="100" placeholder="50" />
+                            <button class="gm-roll-btn" onclick="doGMFreeRoll()">⚄ Lancer</button>
+                        </div>
+                        <div class="gm-roll-form" style="margin-top:12px;">
+                            <h3>Jet pour un monstre</h3>
+                            <label class="field-label">Monstre</label>
+                            <select class="gm-input monster-roll-target" id="gm-monster-select">
+                                <option value="">— Aucun monstre —</option>
+                            </select>
+                            <label class="field-label">Attaque / Seuil personnalisé (%)</label>
+                            <input class="gm-input" id="gm-monster-threshold" type="number" min="1" max="100" placeholder="50" />
+                            <button class="gm-roll-btn" onclick="doGMMonsterRoll()">⚄ Jet monstre</button>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="section-title">Résultat</div>
+                        <div class="gm-roll-result" id="gm-roll-result">
+                            <div style="font-family:'EB Garamond',serif;font-size:14px;font-style:italic;color:var(--parchment-dim);opacity:.5;">Pas encore de jet</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CARTES -->
+            <div class="tab-content" id="tab-cards">
+                <div class="gm-card-display">
+                    <div class="gm-card-info" id="gm-card-info">En attente d'un tirage joueur…</div>
+                    <div class="card-stage">
+                        <div class="flip-wrap hidden" id="flip-wrap">
+                            <div class="flip-inner">
+                                <div class="card-back-face"><div class="deck-pattern" style="border-color:rgba(201,168,76,.25);">♛</div></div>
+                                <div id="drawn-card"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-history-section">
+                    <div class="rolls-header">
+                        <div class="section-title" style="margin-bottom:0;">Historique des tirages</div>
+                        <button class="clear-btn" onclick="clearCardHistory()">Effacer</button>
+                    </div>
+                    <div class="card-history-feed" id="card-history-feed">
+                        <div class="rolls-empty">Aucun tirage pour l'instant…</div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div style="flex:1;min-width:220px;">
-          <div class="field-label" style="margin-bottom:8px;font-family:'Cinzel',serif;font-size:9px;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase;">Suivi du talon</div>
-          <div class="tracker-suits" id="tracker-suits"></div>
-        </div>
-      </div>
     </div>
-  </div>
-</div>
 
-<!-- CARD FX -->
-<div class="fly-card" id="fly-card"><div class="deck-pattern" style="width:88%;height:88%;margin:auto;">♛</div></div>
-<div class="shuffle-overlay" id="shuffle-overlay"></div>
-<div class="reshuffle-flash" id="reshuffle-flash"></div>
-
-<!-- CONFIG MODAL -->
-<div class="modal-scrim" id="config-scrim" onclick="toggleConfig()"></div>
-<div class="config-modal" id="config-modal">
-  <h2>⚙ Configuration MJ</h2>
-  <label class="config-label">Clé Ably (même clé que les joueurs)</label>
-  <input class="config-input" id="cfg-ably-key" placeholder="xxxxxxxx:xxxxxxxx" />
-  <div style="margin-top:12px;" class="status-row"><div class="status-dot" id="cfg-ably-dot"></div><span id="cfg-ably-status">Ably non connecté</span></div>
-  <button class="config-save-btn" onclick="saveConfig()">Sauvegarder &amp; Connecter</button>
-</div>
+    <!-- CONFIG MODAL -->
+    <div class="modal-scrim" id="config-scrim" onclick="toggleConfig()"></div>
+    <div class="config-modal" id="config-modal">
+        <h2>⚙ Configuration MJ</h2>
+        <label class="config-label">Clé Ably (même clé que les joueurs)</label>
+        <input class="config-input" id="cfg-ably-key" placeholder="xxxxxxxx:xxxxxxxx" />
+        <div style="margin-top:12px;" class="status-row"><div class="status-dot" id="cfg-ably-dot"></div><span id="cfg-ably-status">Ably non connecté</span></div>
+        <button class="config-save-btn" onclick="saveConfig()">Sauvegarder &amp; Connecter</button>
+    </div>
 
 
-<script>
-// ═══════════════════════════════════════════
-//  CARD CONSTANTS
-// ═══════════════════════════════════════════
-const SUITS=[
-  {name:'spades',  sym:'♠',cls:'c-black',pillCls:''},
-  {name:'clubs',   sym:'♣',cls:'c-black',pillCls:''},
-  {name:'hearts',  sym:'♥',cls:'c-red-txt',pillCls:'c-red-txt'},
-  {name:'diamonds',sym:'♦',cls:'c-red-txt',pillCls:'c-red-txt'},
-];
-const RANKS=['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
-const SUIT_FR={spades:'Pique',clubs:'Trèfle',hearts:'Cœur',diamonds:'Carreau'};
-const ALL_CARDS=[];
-for(const s of SUITS) for(const r of RANKS) ALL_CARDS.push({id:`${r}-${s.name}`,rank:r,suit:s});
-ALL_CARDS.push({id:'joker-red',  isJoker:true,jokerColor:'red',  label:'Joker Rouge'});
-ALL_CARDS.push({id:'joker-black',isJoker:true,jokerColor:'black',label:'Joker Noir'});
-function cardById(id){ return ALL_CARDS.find(c=>c.id===id); }
-function shuffle(a){ const b=[...a]; for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];} return b; }
-function buildDeck(){ return shuffle([...ALL_CARDS]); }
-
-// ═══════════════════════════════════════════
-//  STATE
-// ═══════════════════════════════════════════
-let config=JSON.parse(localStorage.getItem('aria-gm-config')||'{}');
-let ablyInstance=null, ablyRolls=null, ablyCards=null, ablyDamage=null;
-
-// Players presence map: playerId -> {name,charClass,hp,maxHP,stats,ts}
-const players=new Map();
-const PRESENCE_TIMEOUT=30000; // 30s offline threshold
-
-// Monsters array
-let monsters=JSON.parse(localStorage.getItem('aria-gm-monsters')||'[]');
-let newMonsterAttacks=[];
-
-// Roll feed
-let rollFeed=[];
-
-// Card state
-const savedCards=JSON.parse(localStorage.getItem('aria-gm-cards')||'null');
-let cardDeck=savedCards?.deckIds?.map(id=>cardById(id)).filter(Boolean)||buildDeck();
-let cardDrawn=new Set(savedCards?.drawn||[]);
-let cardExcluded=new Set(savedCards?.excluded||[]);
-let lastCardId=savedCards?.lastCardId||null;
-let cardDrawing=false;
-
-// ═══════════════════════════════════════════
-//  INIT
-// ═══════════════════════════════════════════
-window.addEventListener('DOMContentLoaded',()=>{
-  document.getElementById('version-display').textContent='v'+VERSION;
-  buildTracker();
-  updateDeckCount();
-  if(lastCardId) restoreCard();
-  renderMonsters();
-  loadConfigInputs();
-  if(config.ablyKey) initAbly();
-  setInterval(sweepOfflinePlayers,10000);
-});
-
-// ═══════════════════════════════════════════
-//  TABS
-// ═══════════════════════════════════════════
-function switchTab(id,btn){
-  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-  btn.classList.add('active');
-  if(id==='tab-gm-roll') refreshMonsterSelect();
-}
-
-// ═══════════════════════════════════════════
-//  ABLY
-// ═══════════════════════════════════════════
-function initAbly(){
-  try{
-    ablyInstance=new Ably.Realtime({key:config.ablyKey});
-    ablyRolls =ablyInstance.channels.get('aria-rolls');
-    ablyCards =ablyInstance.channels.get('aria-cards');
-    ablyDamage=ablyInstance.channels.get('aria-damage');
-    ablyInstance.connection.on('connected',()=>setAblyStatus(true));
-    ablyInstance.connection.on('failed',   ()=>setAblyStatus(false));
-    // Listen for player rolls
-    ablyRolls.subscribe('roll',msg=>handleIncomingRoll(msg.data));
-    // Listen for player presence heartbeats (published every 5s)
-    ablyDamage.subscribe('presence',msg=>{console.log('[ARIA] presence received:',msg.data?.playerId?.slice(-6),msg.data?.name);handlePresence(msg.data);});
-  }catch(e){console.error('Ably:',e);setAblyStatus(false);}
-}
-function setAblyStatus(ok){
-  ['ably-dot','cfg-ably-dot'].forEach(id=>{const el=document.getElementById(id);if(el)el.className='status-dot '+(ok?'connected':'error');});
-  ['ably-status','cfg-ably-status'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=ok?'Ably connecté':'Ably erreur';});
-}
-function publishDamage(targetId,damage,hpBefore,hpAfter,maxHP){
-  if(!ablyDamage) return;
-  ablyDamage.publish('damage',{targetId,damage,hpBefore,hpAfter,maxHP,source:'gm'});
-}
-function publishHeal(targetId,amount,hpBefore,hpAfter,maxHP){
-  if(!ablyDamage) return;
-  ablyDamage.publish('heal',{targetId,amount,hpBefore,hpAfter,maxHP,source:'gm'});
-}
-function publishCard(type,extra={}){
-  if(ablyCards) ablyCards.publish(type,{...extra,excluded:[...cardExcluded],drawn:[...cardDrawn],deckIds:cardDeck.map(c=>c.id),lastCardId});
-}
-
-// ═══════════════════════════════════════════
-//  PLAYER PRESENCE
-// ═══════════════════════════════════════════
-function handlePresence(data){
-  if(!data?.playerId) return;
-  players.set(data.playerId,{...data,ts:Date.now()});
-  renderPlayerCards();
-}
-function sweepOfflinePlayers(){
-  const now=Date.now();
-  let changed=false;
-  players.forEach((p,id)=>{
-    const wasOnline=p.online!==false;
-    const isOnline=now-p.ts<PRESENCE_TIMEOUT;
-    if(wasOnline!==isOnline){p.online=isOnline;changed=true;}
-    else if(p.online===undefined){p.online=isOnline;changed=true;}
-  });
-  if(changed) renderPlayerCards();
-}
-function renderPlayerCards(){
-  const grid=document.getElementById('players-grid');
-  const noP=document.getElementById('no-players');
-  if(players.size===0){
-    noP.style.display='';
-    grid.innerHTML='';
-    document.getElementById('player-count').textContent='0 joueur(s) en ligne';
-    return;
-  }
-  noP.style.display='none';
-  const online=[...players.values()].filter(p=>p.online!==false).length;
-  document.getElementById('player-count').textContent=`${online}/${players.size} joueur(s) en ligne`;
-  grid.innerHTML='';
-  players.forEach((p,playerId)=>{
-    const isOnline=p.online!==false&&Date.now()-p.ts<PRESENCE_TIMEOUT;
-    const hp=p.hp??p.maxHP??'?', maxHP=p.maxHP??'?';
-    const pct=maxHP>0?hp/maxHP:0;
-    const hpColor=pct>0.5?'var(--success)':pct>0.25?'#e8a020':'var(--fail)';
-    const hpClass=pct<=0.25?'critical':pct<=0.5?'low':'';
-    const stats=p.stats||{};
-    const card=document.createElement('div');
-    card.className=`player-card ${isOnline?'online':'offline'}`;
-    card.innerHTML=`
-      <div class="pc-header">
-        <div class="pc-online-dot ${isOnline?'online':''}"></div>
-        <div>
-          <div class="pc-name">${p.name||playerId} <span style="font-family:monospace;font-size:9px;opacity:.35;">#${playerId.slice(-6)}</span></div>
-          <div class="pc-class">${p.charClass||''}</div>
-        </div>
-      </div>
-      <div class="pc-body">
-        <div class="pc-hp-row">
-          <div>
-            <div class="pc-hp-num ${hpClass}">${hp}</div>
-            <div style="font-family:'Cinzel',serif;font-size:9px;color:var(--parchment-dim);">/ ${maxHP} PV</div>
-          </div>
-          <div class="pc-hp-bar-wrap"><div class="pc-hp-bar" style="width:${Math.round(pct*100)}%;background:${hpColor};"></div></div>
-          ${p.protection?`<div class="pc-prot" title="Protection">🛡 ${p.protection.nom||''} ${p.protection.valeur?p.protection.valeur:''}</div>`:''}
-        </div>
-        <div class="pc-stats">
-          ${Object.entries(stats).filter(([k])=>k!=='PV').map(([k,v])=>`<span class="pc-stat">${k} <span>${v}</span></span>`).join('')}
-        </div>
-        <div class="pc-actions">
-          <input class="pc-dmg-input" id="dmg-${playerId}" type="text" inputmode="numeric"
-            placeholder="Dégâts" oninput="this.value=this.value.replace(/[^0-9]/g,'')"
-            onkeydown="if(event.key==='Enter')applyPlayerDamage('${playerId}')" />
-          <button class="pc-btn dmg" onclick="applyPlayerDamage('${playerId}')">⚔</button>
-          <input class="pc-heal-input" id="heal-${playerId}" type="text" inputmode="numeric"
-            placeholder="Soins" oninput="this.value=this.value.replace(/[^0-9]/g,'')"
-            onkeydown="if(event.key==='Enter')applyPlayerHeal('${playerId}')" />
-          <button class="pc-btn heal" onclick="applyPlayerHeal('${playerId}')">♥</button>
-        </div>
-      </div>`;
-    grid.appendChild(card);
-  });
-}
-function applyPlayerDamage(playerId){
-  const inp=document.getElementById(`dmg-${playerId}`);
-  const dmg=parseInt(inp.value);
-  if(!dmg||dmg<=0) return;
-  const p=players.get(playerId);
-  if(!p) return;
-  const hpBefore=p.hp??p.maxHP??0;
-  const hpAfter=Math.max(0,hpBefore-dmg);
-  p.hp=hpAfter;
-  inp.value='';
-  publishDamage(playerId,dmg,hpBefore,hpAfter,p.maxHP||hpBefore);
-  renderPlayerCards();
-}
-function applyPlayerHeal(playerId){
-  const inp=document.getElementById(`heal-${playerId}`);
-  const amt=parseInt(inp.value);
-  if(!amt||amt<=0) return;
-  const p=players.get(playerId);
-  if(!p) return;
-  const hpBefore=p.hp??0;
-  const hpAfter=Math.min(p.maxHP||hpBefore,hpBefore+amt);
-  p.hp=hpAfter;
-  inp.value='';
-  publishHeal(playerId,amt,hpBefore,hpAfter,p.maxHP||hpBefore);
-  renderPlayerCards();
-}
-
-// ═══════════════════════════════════════════
-//  MONSTERS
-// ═══════════════════════════════════════════
-function saveMonsters(){ localStorage.setItem('aria-gm-monsters',JSON.stringify(monsters)); }
-function addMonster(){
-  const name=document.getElementById('amf-name').value.trim();
-  if(!name){alert('Entrez un nom.');return;}
-  const pv=parseInt(document.getElementById('amf-pv').value)||20;
-  const armor=parseInt(document.getElementById('amf-armor').value)||0;
-  const stats={
-    FOR:parseInt(document.getElementById('amf-for').value)||10,
-    DEX:parseInt(document.getElementById('amf-dex').value)||10,
-    END:parseInt(document.getElementById('amf-end').value)||10,
-    INT:parseInt(document.getElementById('amf-int').value)||10,
-    CHA:parseInt(document.getElementById('amf-cha').value)||10,
-  };
-  const monster={id:Date.now(),name,pv,maxPV:pv,armor,stats,attacks:[...newMonsterAttacks]};
-  monsters.push(monster);
-  saveMonsters();
-  // Reset form
-  ['amf-name','amf-pv','amf-armor','amf-for','amf-dex','amf-end','amf-int','amf-cha'].forEach(id=>{document.getElementById(id).value='';});
-  newMonsterAttacks=[];
-  document.getElementById('amf-attacks-list').innerHTML='';
-  renderMonsters();
-  refreshMonsterSelect();
-}
-function removeMonster(id){
-  monsters=monsters.filter(m=>m.id!==id);
-  saveMonsters();
-  renderMonsters();
-  refreshMonsterSelect();
-}
-function addAmfAttack(){
-  const idx=newMonsterAttacks.length;
-  newMonsterAttacks.push({name:'',pct:50,dmg:''});
-  const list=document.getElementById('amf-attacks-list');
-  const row=document.createElement('div'); row.className='atk-row'; row.id=`amf-atk-${idx}`;
-  row.innerHTML=`<input placeholder="Nom" oninput="newMonsterAttacks[${idx}].name=this.value" /><input type="number" min="1" max="100" placeholder="%" oninput="newMonsterAttacks[${idx}].pct=+this.value" /><input placeholder="1d6" oninput="newMonsterAttacks[${idx}].dmg=this.value" /><button class="del-btn" onclick="removeAmfAttack(${idx})">✕</button>`;
-  list.appendChild(row);
-}
-function removeAmfAttack(idx){
-  newMonsterAttacks.splice(idx,1);
-  // re-render amf attacks
-  const list=document.getElementById('amf-attacks-list');
-  list.innerHTML='';
-  newMonsterAttacks.forEach((a,i)=>{
-    const row=document.createElement('div'); row.className='atk-row';
-    row.innerHTML=`<input value="${a.name}" placeholder="Nom" oninput="newMonsterAttacks[${i}].name=this.value" /><input type="number" value="${a.pct}" min="1" max="100" placeholder="%" oninput="newMonsterAttacks[${i}].pct=+this.value" /><input value="${a.dmg}" placeholder="1d6" oninput="newMonsterAttacks[${i}].dmg=this.value" /><button class="del-btn" onclick="removeAmfAttack(${i})">✕</button>`;
-    list.appendChild(row);
-  });
-}
-function applyMonsterDamage(id){
-  const m=monsters.find(m=>m.id===id); if(!m)return;
-  const dmg=parseInt(document.getElementById(`mc-dmg-${id}`).value); if(!dmg||dmg<=0)return;
-  m.pv=Math.max(0,m.pv-dmg);
-  document.getElementById(`mc-dmg-${id}`).value='';
-  saveMonsters(); renderMonsters();
-}
-function applyMonsterHeal(id){
-  const m=monsters.find(m=>m.id===id); if(!m)return;
-  const amt=parseInt(document.getElementById(`mc-heal-${id}`).value); if(!amt||amt<=0)return;
-  m.pv=Math.min(m.maxPV,m.pv+amt);
-  document.getElementById(`mc-heal-${id}`).value='';
-  saveMonsters(); renderMonsters();
-}
-function rollMonsterAttack(mId,pct,atkName){
-  const roll=Math.floor(Math.random()*100)+1;
-  const success=roll<=pct;
-  showGMRollResult(atkName,pct,roll,success);
-}
-function renderMonsters(){
-  const grid=document.getElementById('monsters-grid');
-  const noM=document.getElementById('no-monsters');
-  if(!monsters.length){
-    grid.innerHTML=''; grid.appendChild(noM); noM.style.display=''; return;
-  }
-  noM.style.display='none'; grid.innerHTML='';
-  monsters.forEach(m=>{
-    const pct=m.maxPV>0?m.pv/m.maxPV:0;
-    const hpColor=pct>0.5?'var(--fail)':pct>0.25?'#e85020':'#ff4444';
-    const card=document.createElement('div'); card.className='monster-card';
-    card.innerHTML=`
-      <div class="mc-header">
-        <div class="mc-name">${m.name}</div>
-        <button class="mc-del" onclick="removeMonster(${m.id})">✕</button>
-      </div>
-      <div class="mc-body">
-        <div class="mc-hp-row">
-          <div><div class="mc-hp-num" style="color:${hpColor}">${m.pv}</div><div style="font-family:'Cinzel',serif;font-size:9px;color:rgba(255,150,150,.5);">/ ${m.maxPV} PV</div></div>
-          <div class="mc-hp-bar-wrap"><div class="mc-hp-bar" style="width:${Math.round(pct*100)}%;background:${hpColor};"></div></div>
-          <div style="font-family:'Cinzel',serif;font-size:10px;color:rgba(255,150,150,.5);">🛡 ${m.armor}</div>
-        </div>
-        <div class="mc-stats">
-          ${Object.entries(m.stats).map(([k,v])=>`<span class="mc-stat">${k} <span>${v}</span></span>`).join('')}
-        </div>
-        ${m.attacks.length?`<div class="mc-attacks">${m.attacks.map(a=>`<div class="mc-attack-row" onclick="rollMonsterAttack(${m.id},${a.pct},'${m.name}: ${a.name}')"><span class="mc-atk-name">${a.name}</span><span class="mc-atk-pct">${a.pct}%</span><span class="mc-atk-dmg">${a.dmg||'—'}</span></div>`).join('')}</div>`:''}
-        <div class="mc-actions">
-          <input class="mc-input" id="mc-dmg-${m.id}" type="text" inputmode="numeric" placeholder="Dégâts"
-            oninput="this.value=this.value.replace(/[^0-9]/g,'')"
-            onkeydown="if(event.key==='Enter')applyMonsterDamage(${m.id})" />
-          <button class="mc-btn dmg" onclick="applyMonsterDamage(${m.id})">⚔</button>
-          <input class="mc-heal-input" id="mc-heal-${m.id}" type="text" inputmode="numeric" placeholder="Soins"
-            oninput="this.value=this.value.replace(/[^0-9]/g,'')"
-            onkeydown="if(event.key==='Enter')applyMonsterHeal(${m.id})" />
-          <button class="mc-btn heal" onclick="applyMonsterHeal(${m.id})">♥</button>
-        </div>
-      </div>`;
-    grid.appendChild(card);
-  });
-}
-function refreshMonsterSelect(){
-  const sel=document.getElementById('gm-monster-select');
-  if(!sel) return;
-  sel.innerHTML='<option value="">— Aucun monstre —</option>';
-  monsters.forEach(m=>{ const o=document.createElement('option'); o.value=m.id; o.textContent=m.name; sel.appendChild(o); });
-}
-
-// ═══════════════════════════════════════════
-//  ROLL FEED
-// ═══════════════════════════════════════════
-function handleIncomingRoll(data){
-  if(!data) return;
-  rollFeed.unshift({...data,receivedAt:Date.now()});
-  if(rollFeed.length>50) rollFeed.pop();
-  renderRollFeed();
-}
-function classify(roll,threshold,success){
-  if(roll<=10&&success)  return 'crit-success';
-  if(roll>=91&&!success) return 'crit-fail';
-  return success?'success':'fail';
-}
-function renderRollFeed(){
-  const feed=document.getElementById('rolls-feed');
-  if(!rollFeed.length){ feed.innerHTML='<div class="rolls-empty">En attente de jets…</div>'; return; }
-  feed.innerHTML='';
-  rollFeed.forEach(d=>{
-    const type=classify(d.roll,d.threshold,d.success);
-    const verdicts={success:'SUCCÈS',fail:'ÉCHEC','crit-success':'SUCCÈS CRITIQUE','crit-fail':'ÉCHEC CRITIQUE'};
-    const vcls={success:'s',fail:'f','crit-success':'cs','crit-fail':'cf'};
-    const row=document.createElement('div'); row.className=`roll-entry ${type}`;
-    row.innerHTML=`
-      <div class="re-char">${d.char||d.playerId||'?'}</div>
-      <div class="re-skill">${d.skillName}</div>
-      <div class="re-roll">${d.roll}</div>
-      <div class="re-verdict ${vcls[type]}">${verdicts[type]}</div>
-      <div class="re-threshold">Seuil : ${d.threshold}%${d.bonusMalus?` (BM: ${d.bonusMalus>0?'+':''}${d.bonusMalus})`:''}</div>`;
-    feed.appendChild(row);
-  });
-}
-function clearRolls(){ rollFeed=[]; renderRollFeed(); }
-
-// ═══════════════════════════════════════════
-//  GM ROLLS
-// ═══════════════════════════════════════════
-function doGMFreeRoll(){
-  const name=document.getElementById('gm-free-name').value.trim()||'Jet MJ';
-  const t=parseInt(document.getElementById('gm-free-threshold').value);
-  if(isNaN(t)||t<1||t>100){alert('Seuil invalide.');return;}
-  const roll=Math.floor(Math.random()*100)+1;
-  showGMRollResult(name,t,roll,roll<=t);
-}
-function doGMMonsterRoll(){
-  const mId=parseInt(document.getElementById('gm-monster-select').value);
-  const t=parseInt(document.getElementById('gm-monster-threshold').value);
-  if(isNaN(t)||t<1||t>100){alert('Seuil invalide.');return;}
-  const m=monsters.find(m=>m.id===mId);
-  const name=m?`${m.name} (${t}%)`:(`Jet MJ (${t}%)`);
-  const roll=Math.floor(Math.random()*100)+1;
-  showGMRollResult(name,t,roll,roll<=t);
-}
-function showGMRollResult(name,threshold,roll,success){
-  const type=classify(roll,threshold,success);
-  const verdicts={success:'SUCCÈS',fail:'ÉCHEC','crit-success':'SUCCÈS CRITIQUE','crit-fail':'ÉCHEC CRITIQUE'};
-  const colors={success:'var(--success)',fail:'var(--fail)','crit-success':'#a8ff78','crit-fail':'#ff4444'};
-  const el=document.getElementById('gm-roll-result');
-  el.innerHTML=`
-    <div style="font-family:'Cinzel',serif;font-size:11px;color:var(--parchment-dim);">${name}</div>
-    <div class="gm-rr-roll">${roll}</div>
-    <div class="gm-rr-detail">Seuil : ${threshold}%</div>
-    <div class="gm-rr-verdict" style="color:${colors[type]};">${verdicts[type]}</div>`;
-}
-
-// ═══════════════════════════════════════════
-//  CONFIG
-// ═══════════════════════════════════════════
-function loadConfigInputs(){ document.getElementById('cfg-ably-key').value=config.ablyKey||''; }
-function saveConfig(){
-  config={ablyKey:document.getElementById('cfg-ably-key').value.trim()};
-  localStorage.setItem('aria-gm-config',JSON.stringify(config));
-  ablyInstance=null; ablyRolls=null; ablyCards=null; ablyDamage=null;
-  if(config.ablyKey) initAbly();
-  toggleConfig();
-}
-function toggleConfig(){
-  document.getElementById('config-modal').classList.toggle('show');
-  document.getElementById('config-scrim').classList.toggle('show');
-}
-
-// ═══════════════════════════════════════════
-//  CARD SYSTEM
-// ═══════════════════════════════════════════
-function buildTracker(){
-  const container=document.getElementById('tracker-suits');
-  container.innerHTML='';
-  for(const suit of SUITS){
-    const row=document.createElement('div'); row.className='suit-row-t';
-    const sym=document.createElement('span'); sym.className=`suit-sym ${suit.cls}`; sym.textContent=suit.sym;
-    row.appendChild(sym);
-    const pills=document.createElement('div'); pills.className='rank-pills';
-    for(const rank of RANKS){ pills.appendChild(makePill(`${rank}-${suit.name}`,rank,suit.pillCls)); }
-    row.appendChild(pills); container.appendChild(row);
-  }
-  const jRow=document.createElement('div'); jRow.className='suit-row-t';
-  const jSym=document.createElement('span'); jSym.className='suit-sym c-purple-txt'; jSym.textContent='★';
-  jRow.appendChild(jSym);
-  const jPills=document.createElement('div'); jPills.className='rank-pills';
-  jPills.appendChild(makePill('joker-red','R★','is-joker'));
-  jPills.appendChild(makePill('joker-black','N★','is-joker'));
-  jRow.appendChild(jPills); container.appendChild(jRow);
-}
-function makePill(id,label,extraCls){
-  const p=document.createElement('span');
-  p.id=`pill-${id}`; p.className='rank-pill'+(extraCls?' '+extraCls:''); p.textContent=label;
-  refreshPill(p,id); p.addEventListener('click',()=>togglePill(id)); return p;
-}
-function refreshPill(p,id){ p.classList.toggle('drawn',cardDrawn.has(id)); p.classList.toggle('excluded',cardExcluded.has(id)); }
-function refreshAllPills(){ ALL_CARDS.forEach(c=>{ const p=document.getElementById(`pill-${c.id}`); if(p)refreshPill(p,c.id); }); }
-function togglePill(id){
-  if(cardDrawing)return;
-  const card=cardById(id);
-  const name=card.isJoker?card.label:`${card.rank} de ${SUIT_FR[card.suit.name]||card.suit.name}`;
-  if(cardExcluded.has(id)){ cardExcluded.delete(id); showCardStatus(`${name} re-inclus`); }
-  else if(cardDrawn.has(id)){ cardDrawn.delete(id); cardDeck.splice(Math.floor(Math.random()*(cardDeck.length+1)),0,card); updateDeckCount(); showCardStatus(`${name} remis`); }
-  else { cardExcluded.add(id); const idx=cardDeck.findIndex(c=>c.id===id); if(idx!==-1){cardDeck.splice(idx,1);updateDeckCount();} showCardStatus(`${name} exclu`); }
-  const p=document.getElementById(`pill-${id}`); if(p)refreshPill(p,id);
-  updateClearBtn(); saveCardState();
-}
-function clearExclusions(){ if(cardDrawing)return; cardExcluded.clear(); refreshAllPills(); updateClearBtn(); saveCardState(); showCardStatus('Exclusions effacées'); }
-function saveCardState(){ localStorage.setItem('aria-gm-cards',JSON.stringify({excluded:[...cardExcluded],drawn:[...cardDrawn],deckIds:cardDeck.map(c=>c.id),lastCardId})); }
-function updateDeckCount(){
-  const n=cardDeck.length;
-  document.getElementById('deck-count').textContent=n===0?'Vide':`${n} carte${n!==1?'s':''}`;
-  document.getElementById('deck-wrap').classList.toggle('empty',n===0);
-  document.getElementById('reshuffle-btn').classList.toggle('visible',n===0);
-  document.getElementById('reshuffle-remaining-btn').classList.toggle('visible',n>1&&n<ALL_CARDS.length-cardExcluded.size);
-  updateClearBtn();
-}
-function updateClearBtn(){ document.getElementById('clear-exclusions-btn').classList.toggle('visible',cardExcluded.size>0); }
-function showCardStatus(msg){ const el=document.getElementById('card-status'); el.textContent=msg; clearTimeout(showCardStatus._t); showCardStatus._t=setTimeout(()=>el.textContent='',2200); }
-function delay(ms){ return new Promise(r=>setTimeout(r,ms)); }
-function renderCardContent(card){
-  const el=document.getElementById('drawn-card');
-  if(card.isJoker){
-    el.className=`flip-face ${card.jokerColor==='red'?'c-red':'c-black'}`;
-    el.innerHTML=`<div class="card-corner tl"><span class="rank" style="font-size:14px;color:var(--card-purple)">JKR</span></div><div class="card-center" style="flex-direction:column;gap:6px;"><span style="font-size:50px;line-height:1;color:var(--card-purple)">★</span></div><div class="card-corner br"><span class="rank" style="font-size:14px;color:var(--card-purple)">JKR</span></div>`;
-  } else {
-    el.className=`flip-face ${card.suit.cls}`;
-    el.innerHTML=`<div class="card-corner tl"><span class="rank">${card.rank}</span><span class="suit-small">${card.suit.sym}</span></div><div class="card-center">${card.suit.sym}</div><div class="card-corner br"><span class="rank">${card.rank}</span><span class="suit-small">${card.suit.sym}</span></div>`;
-  }
-}
-function restoreCard(){
-  const card=cardById(lastCardId); if(!card)return;
-  const flipWrap=document.getElementById('flip-wrap');
-  renderCardContent(card);
-  document.getElementById('drawn-card').classList.add('ready');
-  flipWrap.classList.remove('hidden');
-  flipWrap.style.transition='none';
-  flipWrap.classList.add('flipped');
-  flipWrap.getBoundingClientRect();
-  flipWrap.style.transition='';
-}
-async function animateShuffle(){
-  const overlay=document.getElementById('shuffle-overlay');
-  const wrap=document.getElementById('deck-wrap');
-  const rect=wrap.getBoundingClientRect();
-  const ghosts=[];
-  for(let i=0;i<4;i++){
-    const g=document.createElement('div'); g.className='shuffle-ghost';
-    g.appendChild(Object.assign(document.createElement('div'),{className:'deck-pattern'}));
-    g.style.cssText=`width:${rect.width}px;height:${rect.height}px;left:${rect.left}px;top:${rect.top}px;`;
-    overlay.appendChild(g); ghosts.push(g);
-  }
-  ['left','right','left','right'].forEach((d,i)=>{ghosts[i].style.animation=`shuffle-${d} 0.52s ${i*0.08}s ease-in-out forwards`;});
-  wrap.classList.remove('shuffling'); wrap.getBoundingClientRect(); wrap.classList.add('shuffling');
-  await delay(680); ghosts.forEach(g=>g.remove()); wrap.classList.remove('shuffling');
-}
-async function animateFly(){
-  const stage=document.querySelector('.card-stage');
-  const wrap=document.getElementById('deck-wrap');
-  const flyEl=document.getElementById('fly-card');
-  const dr=wrap.getBoundingClientRect(), sr=stage.getBoundingClientRect();
-  const cw=dr.width,ch=dr.height,sx=dr.left,sy=dr.top;
-  const ex=sr.left+(sr.width-cw)/2, ey=sr.top+(sr.height-ch)/2;
-  flyEl.style.cssText=`left:${sx}px;top:${sy}px;width:${cw}px;height:${ch}px;opacity:1;`;
-  flyEl.style.setProperty('--fly-x0','0px'); flyEl.style.setProperty('--fly-y0','0px');
-  flyEl.style.setProperty('--fly-xm',`${(sx+ex)/2-sx}px`); flyEl.style.setProperty('--fly-ym',`${Math.min(sy,ey)-30-sy}px`);
-  flyEl.style.setProperty('--fly-x1',`${ex-sx}px`); flyEl.style.setProperty('--fly-y1',`${ey-sy}px`);
-  flyEl.classList.remove('flying'); flyEl.getBoundingClientRect(); flyEl.classList.add('flying');
-  await delay(430); flyEl.classList.remove('flying'); flyEl.style.opacity='0';
-}
-async function revealCard(card){
-  const flipWrap=document.getElementById('flip-wrap');
-  renderCardContent(card);
-  document.getElementById('drawn-card').classList.add('ready');
-  flipWrap.classList.remove('hidden'); flipWrap.getBoundingClientRect();
-  await delay(30); flipWrap.classList.add('flipped');
-}
-async function drawCard(){
-  if(cardDrawing||cardDeck.length===0)return;
-  cardDrawing=true;
-  const flipWrap=document.getElementById('flip-wrap');
-  flipWrap.classList.remove('flipped'); flipWrap.classList.add('hidden');
-  document.getElementById('drawn-card').classList.remove('ready');
-  await animateFly();
-  const drawn=cardDeck.pop();
-  cardDrawn.add(drawn.id); lastCardId=drawn.id;
-  const pill=document.getElementById(`pill-${drawn.id}`); if(pill)refreshPill(pill,drawn.id);
-  updateDeckCount(); await revealCard(drawn);
-  showCardStatus(drawn.isJoker?drawn.label:`${drawn.rank} de ${SUIT_FR[drawn.suit.name]||drawn.suit.name}`);
-  saveCardState(); publishCard('draw',{cardId:drawn.id});
-  cardDrawing=false;
-}
-async function manualReshuffle(remainingOnly){
-  if(cardDrawing)return; cardDrawing=true;
-  const flipWrap=document.getElementById('flip-wrap');
-  flipWrap.classList.remove('flipped'); await delay(200); flipWrap.classList.add('hidden');
-  document.getElementById('drawn-card').classList.remove('ready');
-  await animateShuffle();
-  if(remainingOnly){ cardDeck=shuffle(cardDeck); }
-  else { cardDrawn.clear(); cardDeck=buildDeck(); lastCardId=null; }
-  buildTracker(); updateDeckCount(); updateClearBtn(); saveCardState(); publishCard('reshuffle');
-  const flash=document.getElementById('reshuffle-flash');
-  flash.classList.add('show'); await delay(800); flash.classList.remove('show');
-  cardDrawing=false;
-}
-</script>
+    <script src="aria-gm.js"></script>
 </body>
 </html>

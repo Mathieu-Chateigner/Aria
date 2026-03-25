@@ -7,17 +7,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project overview
 
 TTRPG overlay system for OBS streaming built with vanilla HTML/CSS/JS (no framework, no build step).
-Three self-contained single-file HTML apps that communicate in real time over Ably.
+Three apps that communicate in real time over Ably, each split into separate HTML/CSS/JS files.
 
 ---
 
 ## Files
 
-| File | Purpose |
-|---|---|
-| `aria-player.html` | Player panel — character sheet, dice rolls, card draws. Open in browser on player's PC. |
-| `aria-gm.html` | GM panel — player cards, monster manager, roll feed, GM rolls, card draws. |
-| `aria-overlay.html` | OBS browser source — displays roll results, drawn cards, damage animations. |
+Each app is split into three files that must stay in the same directory (paths are relative):
+
+| App | HTML | CSS | JS |
+|---|---|---|---|
+| Player panel | `aria-player.html` | `aria-player.css` | `aria-player.js` |
+| GM panel | `aria-gm.html` | `aria-gm.css` | `aria-gm.js` |
+| OBS overlay | `aria-overlay.html` | `aria-overlay.css` | `aria-overlay.js` |
+
+**Player panel** — character sheet, dice rolls, card draws. Open in browser on player's PC.
+**GM panel** — player cards, monster manager, roll feed, GM rolls, card draws.
+**OBS overlay** — displays roll results, drawn cards, damage animations.
 
 > `aria-control-panel.html` and `aria-dice-roller.html` are **deprecated** — superseded by the player/gm split.
 
@@ -212,7 +218,7 @@ Persistent horizontal bar between topbar and content. Buttons: +5/+10/+20/-5/-10
 - **BM custom input (allows minus):** `oninput="this.value=this.value.replace(/[^0-9-]/g,'').replace(/(?!^)-/g,'')"`
 - **No display:none for layout-shifting elements** — use `visibility:hidden/visible`
 - **No external state server** — Ably free tier only, no Railway/WebSocket relay
-- When editing, **always work on a copy** then replace the output file
+- **Each app = 3 files** — when editing logic edit `.js`, styles edit `.css`, structure edit `.html`
 - When providing updates, **provide only changed files**
 
 ---
