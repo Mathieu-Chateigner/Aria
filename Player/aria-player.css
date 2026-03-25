@@ -1093,7 +1093,7 @@ body {
 
 .specials-row {
     display: grid;
-    grid-template-columns: 1fr 60px 60px auto;
+    grid-template-columns: 1fr 55px 1fr auto;
     gap: 6px;
     align-items: center;
     padding: 5px 0;
@@ -1736,4 +1736,166 @@ body {
     color: var(--fail);
     text-shadow: 0 0 40px rgba(192,57,43,.7);
     letter-spacing: .1em;
+}
+
+/* ═══════════════════════════════════════════
+   CHARACTER SHEET REFACTOR
+═══════════════════════════════════════════ */
+.char-sheet-wrap {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    align-items: start;
+}
+
+.cs-full {
+    grid-column: 1 / -1;
+}
+
+.cs-save-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.cs-save-status {
+    font-family: 'Cinzel',serif;
+    font-size: 11px;
+    letter-spacing: .12em;
+    color: var(--success);
+    opacity: 0;
+    transition: opacity .4s;
+}
+
+    .cs-save-status.show {
+        opacity: 1;
+    }
+
+#skills-editor-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 20px;
+}
+
+.cs-block {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.cs-block-title {
+    font-family: 'Cinzel',serif;
+    font-size: 10px;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--gold-dim);
+    padding: 8px 14px;
+    background: rgba(201,168,76,.05);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.cs-hint {
+    font-family: 'EB Garamond',serif;
+    font-size: 12px;
+    font-style: italic;
+    color: var(--parchment-dim);
+    letter-spacing: 0;
+    text-transform: none;
+    opacity: .7;
+}
+
+.cs-block-body {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.cs-block-body .editor-form {
+    gap: 10px;
+}
+
+.cs-attrs-row {
+    display: flex;
+    gap: 8px;
+    padding: 14px;
+}
+
+.cs-attr {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+}
+
+.cs-attr-pv {
+    border-left: 1px solid var(--border);
+    padding-left: 10px;
+    margin-left: 4px;
+}
+
+.cs-attr-label {
+    font-family: 'Cinzel',serif;
+    font-size: 10px;
+    letter-spacing: .15em;
+    color: var(--gold-dim);
+    text-transform: uppercase;
+}
+
+.cs-attr-input {
+    text-align: center !important;
+    font-family: 'Cinzel',serif !important;
+    font-size: 20px !important;
+    font-weight: 700 !important;
+    padding: 6px 4px !important;
+    width: 100%;
+    color: var(--parchment) !important;
+}
+
+.cs-weapons-hdr {
+    display: grid;
+    grid-template-columns: 1fr 80px;
+    gap: 4px;
+    padding: 8px 14px 2px;
+}
+
+.cs-specials-hdr {
+    display: grid;
+    grid-template-columns: 1fr 55px 1fr auto;
+    gap: 6px;
+    padding: 8px 14px 2px;
+}
+
+/* CLICKABLE WEAPON ROWS in combat sidebar */
+#combat-sidebar-body .weap-row.weap-rollable {
+    cursor: pointer;
+    border-radius: 3px;
+    margin: 0 -4px;
+    padding-left: 4px;
+    padding-right: 4px;
+    transition: background .15s;
+}
+
+#combat-sidebar-body .weap-row.weap-rollable:hover {
+    background: rgba(201,168,76,.1);
+    border-bottom-color: rgba(201,168,76,.15);
+}
+
+.weap-roll-hint {
+    font-family: 'Cinzel',serif;
+    font-size: 9px;
+    letter-spacing: .1em;
+    color: var(--gold-dim);
+    opacity: 0;
+    transition: opacity .15s;
+    white-space: nowrap;
+}
+
+#combat-sidebar-body .weap-row.weap-rollable:hover .weap-roll-hint {
+    opacity: 1;
 }

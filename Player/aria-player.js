@@ -95,6 +95,8 @@ window.addEventListener('DOMContentLoaded', () => {
     loadConfigInputs();
     if (config.dddiceKey && config.dddiceRoom) initDddice();
     if (config.ablyKey) initAbly();
+    // Auto-save on any input change in the character tab
+    document.getElementById('tab-char').addEventListener('input', scheduleAutoSave);
     // Send presence heartbeat every 5s
     setInterval(sendPresence, 5000);
 });
@@ -347,7 +349,11 @@ function renderCombatSidebar() {
     let html = '';
     if (weapons.length) {
         weapons.forEach(w => {
-            html += `<div class="weap-row"><span style="font-family:'EB Garamond',serif;font-size:14px;font-style:italic;">${w.nom}</span><span style="font-family:'Cinzel',serif;font-size:12px;color:var(--gold-dim);">${w.degats || '—'}</span></div>`;
+            const hasFormula = w.degats && w.degats.trim();
+            const rollAttr = hasFormula ? ` onclick="rollWeaponDamage('${w.nom.replace(/'/g,"\\'")}','${w.degats.replace(/'/g,"\\'")}')"` : '';
+            const rollableClass = hasFormula ? ' weap-rollable' : '';
+            const hint = hasFormula ? `<span class="weap-roll-hint">⚄ lancer</span>` : '';
+            html += `<div class="weap-row${rollableClass}"${rollAttr}><span style="font-family:'EB Garamond',serif;font-size:14px;font-style:italic;">${w.nom}</span><span style="display:flex;align-items:center;gap:6px;font-family:'Cinzel',serif;font-size:12px;color:var(--gold-dim);">${hint}${w.degats || '—'}</span></div>`;
         });
     } else {
         html += `<div style="font-family:'EB Garamond',serif;font-size:13px;color:var(--parchment-dim);font-style:italic;opacity:.5;">Aucune arme</div>`;
@@ -377,6 +383,60 @@ function rollDie(sides) {
     const result = Math.floor(Math.random() * sides) + 1;
     showDieCard(`d${sides}`, result);
     publishRoll({ skillName: `d${sides}`, threshold: null, roll: result, success: null, char: character.name, bonusMalus: 0, playerId });
+}
+
+// Parse and roll a dice formula like "2d6+2", "1d8-1", "3d4", "5"
+function rollDiceFormula(formula) {
+    const expr = (formula || '').replace(/\s+/g, '').toLowerCase();
+    if (!expr) return { total: 0, breakdown: '0' };
+    // Split on + or - keeping the sign with the following term
+    const tokens = expr.split(/(?=[+-])/);
+    let total = 0;
+    const parts = [];
+    for (const token of tokens) {
+        if (!token) continue;
+        const sign = token[0] === '-' ? -1 : 1;
+        const raw = token.replace(/^[+-]/, '');
+        const diceMatch = raw.match(/^(\d+)d(\d+)$/);
+        if (diceMatch) {
+            const count = parseInt(diceMatch[1]);
+            const sides = parseInt(diceMatch[2]);
+            const rolls = [];
+            for (let i = 0; i < count; i++) rolls.push(Math.floor(Math.random() * sides) + 1);
+            const sub = rolls.reduce((a, b) => a + b, 0);
+            total += sign * sub;
+            const prefix = sign < 0 ? '−' : parts.length ? '+' : '';
+            parts.push(`${prefix}[${rolls.join('+')}]`);
+        } else {
+            const num = parseInt(raw);
+            if (!isNaN(num)) {
+                total += sign * num;
+                parts.push(`${sign < 0 ? '−' : parts.length ? '+' : ''}${num}`);
+            }
+        }
+    }
+    return { total, breakdown: parts.join(' ') };
+}
+
+function rollWeaponDamage(name, formula) {
+    if (!formula || !formula.trim()) return;
+    const result = rollDiceFormula(formula);
+    const card = document.getElementById('float-roll-card');
+    const scrim = document.getElementById('roll-scrim');
+    card.className = 'float-roll-card';
+    clearTimeout(floatCardTimer);
+    document.getElementById('fc-char').textContent = name;
+    document.getElementById('fc-skill').textContent = formula;
+    document.getElementById('fc-roll').textContent = result.total;
+    document.getElementById('fc-bonus').textContent = result.breakdown !== String(result.total) ? result.breakdown : '';
+    const vEl = document.getElementById('fc-verdict');
+    vEl.textContent = 'Dégâts'; vEl.className = 'fc-verdict fv-success';
+    document.getElementById('fc-crit-sub').textContent = '';
+    void card.offsetWidth;
+    scrim.classList.add('show');
+    card.classList.add('show');
+    floatCardTimer = setTimeout(dismissFloatCard, 5000);
+    publishRoll({ skillName: `${name} (dégâts)`, threshold: null, roll: result.total, success: null, char: character.name, bonusMalus: 0, playerId });
 }
 function showDieCard(diceName, result) {
     const card = document.getElementById('float-roll-card');
@@ -654,7 +714,7 @@ function renderWeaponsEditor() {
     (character.weapons || []).forEach((w, i) => {
         const row = document.createElement('div');
         row.style.cssText = 'display:grid;grid-template-columns:1fr 80px;gap:6px;align-items:center;margin-bottom:6px;';
-        row.innerHTML = `<input value="${w.nom}" placeholder="Nom de l'arme" oninput="character.weapons[${i}].nom=this.value" style="background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--parchment);font-family:'EB Garamond',serif;font-size:14px;padding:6px 8px;border-radius:var(--radius);" /><input value="${w.degats}" placeholder="ex: 1d6" oninput="character.weapons[${i}].degats=this.value" style="background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--gold);font-family:'Cinzel',serif;font-size:13px;font-weight:600;padding:6px 6px;border-radius:var(--radius);text-align:center;" />`;
+        row.innerHTML = `<input value="${w.nom}" placeholder="Nom de l'arme" oninput="character.weapons[${i}].nom=this.value" style="background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--parchment);font-family:'EB Garamond',serif;font-size:14px;padding:6px 8px;border-radius:var(--radius);" /><input value="${w.degats}" placeholder="ex: 2d6+2" oninput="character.weapons[${i}].degats=this.value" style="background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--gold);font-family:'Cinzel',serif;font-size:13px;font-weight:600;padding:6px 6px;border-radius:var(--radius);text-align:center;" />`;
         list.appendChild(row);
     });
 }
@@ -695,7 +755,7 @@ function renderSpecialsEditor() {
 }
 function addSpecialRow() { character.specials.push({ name: '', desc: '', pct: 0 }); renderSpecialsEditor(); }
 function removeSpecial(i) { character.specials.splice(i, 1); renderSpecialsEditor(); }
-function saveCharacter() {
+function readEditorInputs() {
     character.name = document.getElementById('ed-name').value.trim();
     character.class = document.getElementById('ed-class').value.trim();
     character.stats.FOR = +document.getElementById('ed-for').value;
@@ -714,10 +774,41 @@ function saveCharacter() {
     };
     character.protection = { nom: document.getElementById('ed-prot-nom').value.trim(), valeur: +document.getElementById('ed-prot-val').value || 0 };
     character.blessures = { current: +document.getElementById('ed-bless-cur').value || 0, max: +document.getElementById('ed-bless-max').value || 5 };
+}
+
+let autoSaveTimer = null;
+function scheduleAutoSave() {
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(autoSaveChar, 700);
+}
+function autoSaveChar() {
+    readEditorInputs();
+    localStorage.setItem('aria-character', JSON.stringify(character));
+    // Refresh non-editor UI only — avoids rebuilding editor DOM and losing focus
+    document.getElementById('char-display').textContent = `${character.name} — ${character.class}`;
+    document.title = character.name ? `ARIA – ${character.name}` : 'ARIA – Joueur';
+    renderSkills();
+    renderStats();
+    updateHPDisplay();
+    renderInventorySidebar();
+    renderCombatSidebar();
+    sendPresence();
+    flashSaveStatus();
+}
+let saveStatusTimer = null;
+function flashSaveStatus() {
+    const el = document.getElementById('cs-save-status');
+    if (!el) return;
+    el.classList.add('show');
+    clearTimeout(saveStatusTimer);
+    saveStatusTimer = setTimeout(() => el.classList.remove('show'), 2000);
+}
+function saveCharacter() {
+    readEditorInputs();
     localStorage.setItem('aria-character', JSON.stringify(character));
     renderAll();
     sendPresence();
-    alert('Personnage sauvegardé !');
+    flashSaveStatus();
 }
 
 // ═══════════════════════════════════════════

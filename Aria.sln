@@ -1,32 +1,33 @@
-
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Player", "Player", "{B1B2C3D4-E5F6-7890-ABCD-EF1234567891}"
 	ProjectSection(SolutionItems) = preProject
-		Player\aria-player.html = Player\aria-player.html
 		Player\aria-player.css = Player\aria-player.css
+		Player\aria-player.html = Player\aria-player.html
 		Player\aria-player.js = Player\aria-player.js
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "GM", "GM", "{C1B2C3D4-E5F6-7890-ABCD-EF1234567892}"
 	ProjectSection(SolutionItems) = preProject
-		GM\aria-gm.html = GM\aria-gm.html
 		GM\aria-gm.css = GM\aria-gm.css
+		GM\aria-gm.html = GM\aria-gm.html
 		GM\aria-gm.js = GM\aria-gm.js
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Overlay", "Overlay", "{D1B2C3D4-E5F6-7890-ABCD-EF1234567893}"
 	ProjectSection(SolutionItems) = preProject
-		Overlay\aria-overlay.html = Overlay\aria-overlay.html
 		Overlay\aria-overlay.css = Overlay\aria-overlay.css
+		Overlay\aria-overlay.html = Overlay\aria-overlay.html
 		Overlay\aria-overlay.js = Overlay\aria-overlay.js
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Docs", "Docs", "{E1B2C3D4-E5F6-7890-ABCD-EF1234567894}"
 	ProjectSection(SolutionItems) = preProject
+		Docs\bugs_and_issues.md = Docs\bugs_and_issues.md
 		Docs\CLAUDE.md = Docs\CLAUDE.md
+		Docs\development_plan.md = Docs\development_plan.md
 		Docs\README.md = Docs\README.md
 	EndProjectSection
 EndProject
@@ -37,5 +38,8 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {9DDAF9AB-6B46-43B3-80AF-42CA2E5005A5}
 	EndGlobalSection
 EndGlobal

@@ -123,7 +123,7 @@ This is used as `playerId` in roll and damage payloads so the GM can target the 
 { targetId, amount, hpBefore, hpAfter, maxHP, source: 'gm' }
 ```
 
-### `aria-damage` / `presence` (heartbeat every 15s)
+### `aria-damage` / `presence` (heartbeat every 5s)
 ```js
 { playerId, name, charClass, hp, maxHP, stats, ts }
 ```
@@ -184,7 +184,7 @@ This is used as `playerId` in roll and damage payloads so the GM can target the 
 `Joueurs` | `Monstres` | `Jets` | `Jet MJ` | `Cartes`
 
 ### Bonus/Malus bar
-Persistent horizontal bar between topbar and content. Buttons: +5/+10/+20/-5/-10/-20 + custom input ± + reset. Applied to all rolls. Inputs are `type="text" inputmode="numeric"` (no spinners).
+Persistent horizontal bar between topbar and content. Buttons: +10/+20/+30/-10/-20/-30 + custom input ± + reset. Applied to all rolls. Inputs are `type="text" inputmode="numeric"` (no spinners).
 
 ### HP panel (player sidebar)
 - Read-only in player panel — HP is controlled by GM only
@@ -193,7 +193,7 @@ Persistent horizontal bar between topbar and content. Buttons: +5/+10/+20/-5/-10
 - MORT screen at 0 HP
 
 ### Player presence (GM side)
-- Players send heartbeat every 15s on `aria-damage` channel
+- Players send heartbeat every 5s on `aria-damage` channel
 - GM sweeps offline players every 10s (threshold: 30s no heartbeat = offline)
 - Player cards show HP bar, stats, ⚔ damage input, ♥ heal input
 
@@ -255,6 +255,75 @@ Browser source size: 1920×1080. Both overlays transparent background.
 **No build step, no package manager, no test suite.** Open any `.html` file directly in a browser (`file://`). Chrome is recommended (required for OBS browser sources).
 
 To test changes: save the file, hard-refresh the browser (`Ctrl+Shift+R`). No compilation or server needed.
+
+---
+
+## Recent changes (implemented)
+
+### Weapon dice rolls
+- `degats` field on weapons accepts dice notation: `1d6`, `2d8+2`, `1d6-1`, `3d4`, flat numbers, compound expressions (`1d6+1d4+2`)
+- `rollDiceFormula(formula)` in `aria-player.js` — splits on `±` tokens, rolls each dice group, returns `{ total, breakdown }`
+- Weapons in the **combat sidebar** are clickable when they have a formula — hover shows `⚄ lancer`, click shows damage result in the float card
+- Damage rolls are also broadcast to the GM via `aria-rolls` (as `"WeaponName (dégâts)"`, `threshold: null`)
+
+### Character sheet (Personnage tab)
+- Refactored from single-column scrollable form → **2-column CSS grid** filling the full tab width
+- Block layout: Identité ↔ Traits physiques | Attributs (full) | Armes ↔ Protection & Blessures | Inventaire ↔ Compétences spéciales | Compétences (full, 2-col internal) | Save row
+- **Auto-save** on any `input` event (700ms debounce) — writes to `localStorage`, refreshes sidebar/skills/stats, does NOT rebuild editor DOM (avoids losing focus mid-typing)
+- `readEditorInputs()` extracts all static inputs; dynamic lists (weapons, inventory, skills, specials) already update `character.*` in real-time via inline `oninput`
+- Save button no longer shows `alert()` — a "✓ Sauvegardé" indicator fades in/out instead
+
+---
+
+## Known bugs & issues
+
+> Full details in `Docs/bugs_and_issues.md`
+
+### GM — Monster attacks
+- Attack roll result is not displayed on the monster card
+- No damage output shown when the attack succeeds
+
+### Player — Healing skill
+- On success: should heal the target for 1d6
+- On failure: should deal 1d3 damage instead
+- Currently no special behavior is wired to the skill name "Soigner"
+
+### Player — Simple dice on overlay
+- Rolls from the "Dés simples" buttons (d4, d6, d10, d20, d100) may not appear on the overlay
+- Cause: these publish with `threshold: null`; verify the overlay handles that case
+
+### Overlay — Streamlabs OBS compatibility
+- Overlay does not render correctly in Streamlabs OBS
+- Possible causes: multiple-overlay conflict, Streamlabs-specific browser source restrictions, or rendering engine difference vs standard OBS
+- Standard OBS (CEF browser source) works fine
+
+---
+
+## Development roadmap
+
+> Full details in `Docs/development_plan.md`
+
+### P0 — High priority
+- **Alchemy**: potion table, create/add custom potions
+- **Special skills**: support for special ability mechanics
+- **Combat**: parry and dodge mechanics
+- **GM interface**: view full player details (skill %, weapons, inventory, stats)
+
+### P1 — Medium priority
+- **Player notes**: text-based note system
+- **Stream integration**: display player HP on stream during combat
+- **Skill editing**: allow players to freely edit their skill percentages in the character sheet
+- **Initiative order**: roll-10-based initiative display in main UI and overlay
+
+### P2 — Low priority
+- **Magic / card system**: draw multiple cards, retrieve from deck, allow duplicate cards
+- **Special skill tracking**: usage markers, cooldown / restoration tracking
+- **File sharing**: share files between players with per-user access toggle
+
+### Feature exploration
+- **Player notes → quest log**: task list format, organized by quest, completion tracking
+- **Text chat**: in-app chat between players (or Discord integration)
+- **Dedicated combat page**: participant list (allies + enemies), dynamic add/remove, fog-of-war HP, damage/heal actions, combat overlay
 
 ---
 
