@@ -1,9 +1,16 @@
 const params = new URLSearchParams(window.location.search);
 const MODE = params.get('mode') || 'gm';
 const ABLY_KEY = params.get('ably') || '';
+const DDDICE_KEY = params.get('dddice_key') || '';
+const DDDICE_ROOM = params.get('dddice_room') || '';
 
 let rollDismiss = null;
 let cardDismiss = null;
+
+// State for synchronising Ably roll data with the dddice animation
+let pendingRollData = null;   // roll payload from Ably, waiting for animation to finish
+let diceFinished = false;     // set true when dddice RollFinished fires before Ably message arrives
+let diceConnected = false;    // true once the dddice SDK is connected to the room
 
 if (MODE === 'gm') document.getElementById('waiting').classList.add('show');
 
@@ -13,8 +20,23 @@ if (ABLY_KEY) {
 
     // Dice rolls
     const rollCh = ably.channels.get('aria-rolls');
-    // Dice rolls — wait 3s for the 3D dice animation to finish before showing the result card
-    rollCh.subscribe('roll', msg => setTimeout(() => showRoll(msg.data), 3000));
+    rollCh.subscribe('roll', msg => {
+        const data = msg.data;
+        if (diceConnected) {
+            // SDK is active: store data and wait for RollFinished to display it
+            pendingRollData = data;
+            if (diceFinished) {
+                // Animation already finished before Ably message arrived
+                diceFinished = false;
+                pendingRollData = null;
+                showRoll(data);
+            }
+            // Otherwise showRoll will be called from the RollFinished handler
+        } else {
+            // No SDK: fall back to the original 3s delay
+            setTimeout(() => showRoll(data), 3000);
+        }
+    });
 
     // Card draws
     const cardCh = ably.channels.get('aria-cards');
@@ -27,6 +49,40 @@ if (ABLY_KEY) {
     dmgCh.subscribe('heal', msg => showHeal(msg.data));
 } else {
     console.warn('No Ably key. Pass ?ably=YOUR_KEY in the URL.');
+}
+
+// ── DDDICE SDK ─────────────────────────────
+// Connects to the dddice room and renders incoming 3D dice rolls in the canvas.
+// Pass ?dddice_key=YOUR_KEY&dddice_room=YOUR_ROOM_SLUG in the overlay URL.
+if (DDDICE_KEY && DDDICE_ROOM) {
+    (async () => {
+        try {
+            const { ThreeDDice, ThreeDDiceRollEvent } = await import('https://esm.sh/dddice-js');
+            const canvas = document.getElementById('dddice-canvas');
+            const sdk = new ThreeDDice(canvas, DDDICE_KEY);
+            sdk.start();
+            await sdk.connect(DDDICE_ROOM);
+            diceConnected = true;
+            window.addEventListener('resize', () => sdk.resize());
+
+            sdk.on(ThreeDDiceRollEvent.RollFinished, () => {
+                setTimeout(() => sdk.clear(), 1500);
+                if (pendingRollData) {
+                    const data = pendingRollData;
+                    pendingRollData = null;
+                    diceFinished = false;
+                    showRoll(data);
+                } else {
+                    // Ably message hasn't arrived yet — flag it and wait briefly
+                    diceFinished = true;
+                    setTimeout(() => { diceFinished = false; }, 3000);
+                }
+            });
+        } catch (e) {
+            console.warn('dddice SDK failed to load, falling back to timer:', e);
+            diceConnected = false;
+        }
+    })();
 }
 
 // ══════════════════════════════════════════

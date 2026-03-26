@@ -28,7 +28,6 @@ const DEFAULT_CHAR = {
     inventory: [],
     weapons: [{ nom: '', degats: '' }, { nom: '', degats: '' }, { nom: '', degats: '' }],
     protection: { nom: '', valeur: 0 },
-    blessures: { max: 5, current: 0 },
     skills: [
         { name: "Artisanat, construire", link: "DEX/INT", pct: 48 },
         { name: "Combat rapproché", link: "FOR/DEX", pct: 38 },
@@ -63,13 +62,17 @@ if (!character.physical) character.physical = { age: '', taille: '', poids: '', 
 if (!character.inventory) character.inventory = [];
 if (!character.weapons) character.weapons = [{ nom: '', degats: '' }, { nom: '', degats: '' }, { nom: '', degats: '' }];
 if (!character.protection) character.protection = { nom: '', valeur: 0 };
-if (!character.blessures) character.blessures = { max: 5, current: 0 };
+if (!character.potions) character.potions = [];
 
 let config = JSON.parse(localStorage.getItem('aria-config') || '{}');
 let bonusMalus = 0;
 let multiplier = 1;
 let isRolling = false;
 let dddiceAPI = null;
+let dddiceSDK = null;            // ThreeDDice SDK instance
+let pendingDddiceRoll = null;    // { skillName, threshold } waiting for RollFinished event
+let dddiceRollSafetyTimer = null; // fallback timer in case RollFinished never fires
+let dddiceResizeHandler = null;  // stored so we can remove it before re-registering
 let ablyRolls = null, ablyCards = null, ablyDamage = null;
 let currentHP = null;
 
@@ -97,6 +100,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if (config.ablyKey) initAbly();
     // Auto-save on any input change in the character tab
     document.getElementById('tab-char').addEventListener('input', scheduleAutoSave);
+    document.getElementById('tab-alchemy').addEventListener('input', scheduleAutoSave);
     // Send presence heartbeat every 5s
     setInterval(sendPresence, 5000);
 });
@@ -280,6 +284,7 @@ function renderAll() {
     updateHPDisplay();
     renderInventorySidebar();
     renderCombatSidebar();
+    renderPotions();
     renderEditorForm();
 }
 
@@ -301,7 +306,7 @@ function renderSkills() {
         const div = document.createElement('div');
         div.className = 'skill-item';
         div.style.borderColor = 'rgba(123,63,160,.3)';
-        div.innerHTML = `<span class="skill-link" style="color:var(--card-purple)">Spéciale</span><span class="skill-name">${sp.name}${sp.desc ? ` <span style="font-size:12px;color:var(--parchment-dim)">— ${sp.desc}</span>` : ''}}</span><span class="skill-pct" style="color:var(--card-purple)">${eff}%</span>`;
+        div.innerHTML = `<span class="skill-link" style="color:var(--card-purple)">Spéciale</span><span class="skill-name">${sp.name}${sp.desc ? ` <span style="font-size:12px;color:var(--parchment-dim)">— ${sp.desc}</span>` : ''}</span><span class="skill-pct" style="color:var(--card-purple)">${eff}%</span>`;
         div.addEventListener('click', () => doRoll(sp.name, sp.pct));
         slist.appendChild(div);
     });
@@ -345,7 +350,6 @@ function renderCombatSidebar() {
     if (!body) return;
     const weapons = (character.weapons || []).filter(w => w.nom.trim());
     const prot = character.protection || {};
-    const bless = character.blessures || { max: 5, current: 0 };
     let html = '';
     if (weapons.length) {
         weapons.forEach(w => {
@@ -360,13 +364,26 @@ function renderCombatSidebar() {
     }
     html += `<div style="margin:8px 0 6px;border-top:1px solid var(--border);"></div>`;
     html += `<div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase;">Protection</span><span style="font-family:'Cinzel',serif;font-size:12px;">${prot.nom || '—'} ${prot.valeur ? `<span style="color:var(--gold)">${prot.valeur}</span>` : ''}</span></div>`;
-    const cur = bless.current || 0, max = bless.max || 5;
-    let pips = '';
-    for (let i = 0; i < max; i++) {
-        const f = i < cur;
-        pips += `<div style="width:14px;height:14px;border-radius:2px;border:1px solid ${f ? 'rgba(192,57,43,.8)' : 'rgba(255,255,255,.15)'};background:${f ? 'rgba(192,57,43,.6)' : 'rgba(0,0,0,.2)'};"></div>`;
+
+    // Reaction buttons — look up Parade and Esquiver in the character's skills/specials
+    const allSkills = [...(character.skills || []), ...(character.specials || [])];
+    const parrySkill = allSkills.find(s => /combat.rapproch/i.test(s.name));
+    const dodgeSkill = allSkills.find(s => /esquiv/i.test(s.name));
+    if (parrySkill || dodgeSkill) {
+        html += `<div style="margin:8px 0 6px;border-top:1px solid var(--border);"></div>`;
+        html += `<div style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:6px;">Réactions</div>`;
+        html += `<div class="react-btns">`;
+        if (parrySkill) {
+            const eff = Math.max(1, Math.min(100, parrySkill.pct + bonusMalus));
+            html += `<button class="react-btn" onclick="doRoll('${parrySkill.name.replace(/'/g, "\\'")}',${parrySkill.pct})">🛡 ${parrySkill.name}<br><span class="react-pct">${eff}%</span></button>`;
+        }
+        if (dodgeSkill) {
+            const eff = Math.max(1, Math.min(100, dodgeSkill.pct + bonusMalus));
+            html += `<button class="react-btn" onclick="doRoll('${dodgeSkill.name.replace(/'/g, "\\'")}',${dodgeSkill.pct})">⚡ ${dodgeSkill.name}<br><span class="react-pct">${eff}%</span></button>`;
+        }
+        html += `</div>`;
     }
-    html += `<div><span style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase;">Blessures ${cur}/${max}</span><div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">${pips}</div></div>`;
+
     body.innerHTML = html;
 }
 
@@ -596,38 +613,66 @@ function extractRoomSlug(val) {
 async function initDddice() {
     const slug = extractRoomSlug(config.dddiceRoom);
     if (!config.dddiceKey || !slug) return;
-    const h = { 'Authorization': `Bearer ${config.dddiceKey}`, 'Content-Type': 'application/json', 'Accept': 'application/json' };
     try {
-        const roomRes = await fetch(`https://dddice.com/api/1.0/room/${slug}`, { headers: h });
-        if (!roomRes.ok) throw new Error(`Room HTTP ${roomRes.status}`);
+        // Load the dddice browser SDK (embeds 3D dice renderer)
+        const { ThreeDDice, ThreeDDiceRollEvent } = await import('https://esm.sh/dddice-js');
+
+        // Fetch available themes for the dropdown
+        const h = { 'Authorization': `Bearer ${config.dddiceKey}`, 'Accept': 'application/json' };
         const boxRes = await fetch('https://dddice.com/api/1.0/dice-box', { headers: h });
         if (!boxRes.ok) throw new Error(`Dice box HTTP ${boxRes.status}`);
         const themes = (await boxRes.json()).data || [];
-        let resolved = config.dddiceTheme ? themes.find(t => t.id === config.dddiceTheme) : null;
-        if (!resolved && themes.length) resolved = themes[0];
-        if (!resolved) throw new Error('Aucun thème.');
+        if (!themes.length) throw new Error('Aucun thème.');
+
         const sel = document.getElementById('cfg-dddice-theme');
         sel.innerHTML = '';
         themes.forEach(t => { const o = document.createElement('option'); o.value = t.id; o.textContent = t.name ? `${t.name} (${t.id})` : t.id; sel.appendChild(o); });
         sel.disabled = false;
         sel.value = config.dddiceTheme && themes.find(t => t.id === config.dddiceTheme) ? config.dddiceTheme : themes[0].id;
+
+        // Create the SDK renderer on the canvas, connect to the room
+        const canvas = document.getElementById('dddice-canvas');
+        dddiceSDK = new ThreeDDice(canvas, config.dddiceKey);
+        dddiceSDK.start();
+        await dddiceSDK.connect(slug);
+
+        // When the 3D animation finishes, read the result and handle it
+        dddiceSDK.on(ThreeDDiceRollEvent.RollFinished, (roll) => {
+            clearTimeout(dddiceRollSafetyTimer);
+            setTimeout(() => dddiceSDK?.clear(), 1500);
+            if (!pendingDddiceRoll) return;
+            const { skillName, threshold } = pendingDddiceRoll;
+            pendingDddiceRoll = null;
+            const total = roll.total_value ?? 0;
+            handleResult(skillName, threshold, total === 0 ? 100 : total);
+        });
+
+        // Keep WebGL viewport in sync with window size
+        if (dddiceResizeHandler) window.removeEventListener('resize', dddiceResizeHandler);
+        dddiceResizeHandler = () => dddiceSDK?.resize();
+        window.addEventListener('resize', dddiceResizeHandler);
+
         dddiceAPI = { key: config.dddiceKey, room: slug, theme: sel.value };
         setDddiceStatus(true, themes.find(t => t.id === sel.value)?.name || sel.value);
         sel.onchange = () => { if (dddiceAPI) dddiceAPI.theme = sel.value; config.dddiceTheme = sel.value; localStorage.setItem('aria-config', JSON.stringify(config)); };
-    } catch (e) { console.error('dddice:', e); setDddiceStatus(false, e.message); dddiceAPI = null; }
+    } catch (e) { console.error('dddice:', e); setDddiceStatus(false, e.message); dddiceSDK = null; dddiceAPI = null; }
 }
 async function rollViaDddice(skillName, threshold) {
+    if (!dddiceSDK) { handleResult(skillName, threshold, Math.floor(Math.random() * 100) + 1); return; }
     try {
-        const res = await fetch('https://dddice.com/api/1.0/roll', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${config.dddiceKey}`, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({ dice: [{ type: 'd10x', theme: dddiceAPI.theme }, { type: 'd10', theme: dddiceAPI.theme }], room: dddiceAPI.room })
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
-        const roll = json.data?.total_value;
-        handleResult(skillName, threshold, roll === 0 ? 100 : roll);
-    } catch (e) { console.error('dddice roll:', e); handleResult(skillName, threshold, Math.floor(Math.random() * 100) + 1); }
+        pendingDddiceRoll = { skillName, threshold };
+        // Safety fallback: if RollFinished never fires (e.g. network drop after roll creation),
+        // unblock the UI after 12s. Cleared by the RollFinished handler on success.
+        dddiceRollSafetyTimer = setTimeout(() => {
+            if (pendingDddiceRoll?.skillName === skillName) {
+                pendingDddiceRoll = null;
+                handleResult(skillName, threshold, Math.floor(Math.random() * 100) + 1);
+            }
+        }, 12000);
+        await dddiceSDK.roll([{ type: 'd10x', theme: dddiceAPI.theme }, { type: 'd10', theme: dddiceAPI.theme }]);
+        // Do NOT clear the timer here — roll() resolves on API response (~200ms),
+        // well before the animation ends. RollFinished handles the clear.
+    } catch (e) { console.error('dddice roll:', e); pendingDddiceRoll = null; handleResult(skillName, threshold, Math.floor(Math.random() * 100) + 1); }
 }
 function setDddiceStatus(ok, detail) {
     const d = ['dddice-dot', 'cfg-dddice-dot'], s = ['dddice-status', 'cfg-dddice-status'];
@@ -671,7 +716,16 @@ function publishCard(type, extra = {}) {
 function sendPresence() {
     if (!ablyDamage) { console.warn('[ARIA] sendPresence: ablyDamage not ready'); return; }
     console.log('[ARIA] sendPresence →', playerId.slice(-6), character.name);
-    ablyDamage.publish('presence', { playerId, name: character.name, charClass: character.class, hp: currentHP, maxHP: getMaxHP(), stats: character.stats }, err => { if (err) console.error('[ARIA] publish error:', err); });
+    ablyDamage.publish('presence', {
+        playerId, name: character.name, charClass: character.class,
+        hp: currentHP, maxHP: getMaxHP(), stats: character.stats,
+        protection: character.protection,
+        skills: character.skills,
+        specials: character.specials,
+        weapons: character.weapons,
+        inventory: character.inventory,
+        potions: character.potions,
+    }, err => { if (err) console.error('[ARIA] publish error:', err); });
 }
 function setAblyStatus(ok) {
     ['ably-dot', 'cfg-ably-dot2'].forEach(id => { const el = document.getElementById(id); if (el) el.className = 'status-dot ' + (ok ? 'connected' : 'error'); });
@@ -697,6 +751,10 @@ function saveConfig() {
         ablyKey: document.getElementById('cfg-ably-key').value.trim(),
     };
     localStorage.setItem('aria-config', JSON.stringify(config));
+    if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch (_) {} dddiceSDK = null; }
+    clearTimeout(dddiceRollSafetyTimer);
+    if (dddiceResizeHandler) { window.removeEventListener('resize', dddiceResizeHandler); dddiceResizeHandler = null; }
+    pendingDddiceRoll = null;
     dddiceAPI = null; ablyRolls = null; ablyCards = null; ablyDamage = null; ablyInstance = null;
     if (config.dddiceKey && config.dddiceRoom) initDddice();
     if (config.ablyKey) initAbly();
@@ -728,9 +786,6 @@ function renderEditorForm() {
     const prot = character.protection || {};
     document.getElementById('ed-prot-nom').value = prot.nom || '';
     document.getElementById('ed-prot-val').value = prot.valeur || 0;
-    const bless = character.blessures || {};
-    document.getElementById('ed-bless-cur').value = bless.current || 0;
-    document.getElementById('ed-bless-max').value = bless.max || 5;
     renderWeaponsEditor();
     renderInventoryEditor();
     renderSkillsEditor();
@@ -760,6 +815,50 @@ function renderInventoryEditor() {
 }
 function addInventoryRow() { character.inventory.push({ name: '', qty: 1 }); renderInventoryEditor(); renderInventorySidebar(); }
 function removeInventoryRow(i) { character.inventory.splice(i, 1); renderInventoryEditor(); renderInventorySidebar(); }
+
+// ── POTIONS ──────────────────────────────────
+function renderPotions() {
+    const list = document.getElementById('potion-list');
+    const empty = document.getElementById('alchemy-empty');
+    if (!list) return;
+    const potions = character.potions || [];
+    list.innerHTML = '';
+    if (empty) empty.style.display = potions.length ? 'none' : '';
+    potions.forEach((p, i) => {
+        const row = document.createElement('div');
+        row.className = 'potion-row';
+        row.innerHTML = `
+            <input class="editor-input potion-name-input" value="${p.name || ''}" placeholder="Nom de la potion"
+                oninput="character.potions[${i}].name=this.value" />
+            <input class="editor-input potion-desc-input" value="${p.desc || ''}" placeholder="Effet…"
+                oninput="character.potions[${i}].desc=this.value" />
+            <input class="editor-input potion-ing-input" value="${p.ingredients || ''}" placeholder="Ingrédients…"
+                oninput="character.potions[${i}].ingredients=this.value" />
+            <input class="editor-input potion-qty-input" type="text" inputmode="numeric" value="${p.qty ?? 1}"
+                oninput="this.value=this.value.replace(/[^0-9]/g,'');character.potions[${i}].qty=+this.value||0;renderPotions()" />
+            <button class="potion-use-btn" onclick="usePotion(${i})" ${!p.qty ? 'disabled' : ''} title="Utiliser une dose">Utiliser</button>
+            <button class="del-btn" onclick="removePotion(${i})">✕</button>`;
+        list.appendChild(row);
+    });
+}
+function addPotion() {
+    character.potions.push({ name: '', desc: '', ingredients: '', qty: 1 });
+    localStorage.setItem('aria-character', JSON.stringify(character));
+    renderPotions();
+}
+function removePotion(i) {
+    character.potions.splice(i, 1);
+    localStorage.setItem('aria-character', JSON.stringify(character));
+    renderPotions();
+}
+function usePotion(i) {
+    const p = character.potions[i];
+    if (!p || !p.qty) return;
+    p.qty--;
+    localStorage.setItem('aria-character', JSON.stringify(character));
+    renderPotions();
+    showToast('gm-heal-toast', `${p.name || 'Potion'} utilisée${p.qty > 0 ? ` (×${p.qty} restante${p.qty > 1 ? 's' : ''})` : ' — épuisée'}`);
+}
 function renderSkillsEditor() {
     const list = document.getElementById('skills-editor-list');
     if (!list) return;
@@ -802,7 +901,6 @@ function readEditorInputs() {
         signes: document.getElementById('ed-signes').value.trim(),
     };
     character.protection = { nom: document.getElementById('ed-prot-nom').value.trim(), valeur: +document.getElementById('ed-prot-val').value || 0 };
-    character.blessures = { current: +document.getElementById('ed-bless-cur').value || 0, max: +document.getElementById('ed-bless-max').value || 5 };
 }
 
 let autoSaveTimer = null;
@@ -821,6 +919,7 @@ function autoSaveChar() {
     updateHPDisplay();
     renderInventorySidebar();
     renderCombatSidebar();
+    renderPotions();
     sendPresence();
     flashSaveStatus();
 }
@@ -866,7 +965,7 @@ function togglePill(id) {
     if (cardDrawing) return;
     const card = cardById(id);
     const name = card.isJoker ? card.label : `${card.rank} de ${SUIT_FR[card.suit.name] || card.suit.name}`;
-    if (cardExcluded.has(id)) { cardExcluded.delete(id); showCardStatus(`${name} re-inclus`); }
+    if (cardExcluded.has(id)) { cardExcluded.delete(id); cardDeck.splice(Math.floor(Math.random() * (cardDeck.length + 1)), 0, card); updateDeckCount(); showCardStatus(`${name} re-inclus`); }
     else if (cardDrawn.has(id)) { cardDrawn.delete(id); cardDeck.splice(Math.floor(Math.random() * (cardDeck.length + 1)), 0, card); updateDeckCount(); showCardStatus(`${name} remis`); }
     else { cardExcluded.add(id); const idx = cardDeck.findIndex(c => c.id === id); if (idx !== -1) { cardDeck.splice(idx, 1); updateDeckCount(); } showCardStatus(`${name} exclu`); }
     const p = document.getElementById(`pill-${id}`); if (p) refreshPill(p, id);

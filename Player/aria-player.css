@@ -1142,6 +1142,62 @@ body {
         color: var(--fail);
     }
 
+/* ALCHEMY TAB */
+.alchemy-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.potion-col-hdr {
+    display: grid;
+    grid-template-columns: 1.4fr 2fr 1.5fr 52px auto auto;
+    gap: 6px;
+    padding: 0 0 4px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+}
+
+.potion-row {
+    display: grid;
+    grid-template-columns: 1.4fr 2fr 1.5fr 52px auto auto;
+    gap: 6px;
+    align-items: center;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(201,168,76,.06);
+}
+
+    .potion-row:last-child { border-bottom: none; }
+    .potion-row .editor-input { font-size: 14px; padding: 6px 8px; }
+    .potion-qty-input { color: var(--gold); font-family: 'Cinzel',serif; font-size: 14px; text-align: center; }
+
+.potion-use-btn {
+    font-family: 'Cinzel',serif;
+    font-size: 11px;
+    letter-spacing: .05em;
+    background: linear-gradient(135deg,rgba(76,175,119,.2),rgba(40,100,65,.15));
+    border: 1px solid rgba(76,175,119,.35);
+    color: var(--success);
+    padding: 5px 10px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .15s, border-color .15s;
+}
+
+    .potion-use-btn:hover { background: rgba(76,175,119,.3); border-color: rgba(76,175,119,.6); }
+    .potion-use-btn:disabled { opacity: .35; cursor: not-allowed; }
+
+.alchemy-empty {
+    font-family: 'EB Garamond',serif;
+    font-size: 13px;
+    font-style: italic;
+    color: var(--parchment-dim);
+    opacity: .5;
+    padding: 16px 0;
+}
+
 /* FLOAT ROLL CARD */
 .roll-scrim {
     position: fixed;
@@ -1922,4 +1978,37 @@ body {
 
 #combat-sidebar-body .weap-row.weap-rollable:hover .weap-roll-hint {
     opacity: 1;
+}
+
+/* REACTION BUTTONS (parry / dodge) */
+.react-btns {
+    display: flex;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.react-btn {
+    flex: 1;
+    background: rgba(201,168,76,.08);
+    border: 1px solid rgba(201,168,76,.25);
+    border-radius: var(--radius);
+    color: var(--parchment);
+    font-family: 'Cinzel',serif;
+    font-size: 11px;
+    padding: 6px 4px;
+    cursor: pointer;
+    line-height: 1.3;
+    text-align: center;
+    transition: background .15s, border-color .15s;
+}
+
+.react-btn:hover {
+    background: rgba(201,168,76,.18);
+    border-color: rgba(201,168,76,.5);
+}
+
+.react-pct {
+    font-family: 'EB Garamond',serif;
+    font-size: 12px;
+    color: var(--parchment-dim);
 }

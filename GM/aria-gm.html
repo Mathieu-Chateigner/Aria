@@ -19,6 +19,7 @@
         <span class="topbar-badge">Maître de Jeu</span>
         <span class="topbar-spacer"></span>
         <span class="player-count" id="player-count">0 joueur(s) en ligne</span>
+        <div class="status-row"><div class="status-dot" id="dddice-dot"></div><span id="dddice-status">dddice</span></div>
         <div class="status-row"><div class="status-dot" id="ably-dot"></div><span id="ably-status">Ably</span></div>
         <button class="icon-btn" onclick="toggleConfig()" title="Configuration">⚙</button>
     </div>
@@ -175,13 +176,36 @@
         </div>
     </div>
 
+    <!-- dddice 3D dice canvas — full-screen, non-interactive -->
+    <canvas id="dddice-canvas" style="position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:50;"></canvas>
+
+    <!-- PLAYER DETAILS MODAL -->
+    <div class="modal-scrim" id="details-scrim" onclick="closePlayerDetails()"></div>
+    <div class="player-details-modal" id="player-details-modal">
+        <div class="pdm-header">
+            <div>
+                <div class="pdm-name" id="pdm-name"></div>
+                <div class="pdm-class" id="pdm-class"></div>
+            </div>
+            <button class="pdm-close-btn" onclick="closePlayerDetails()">✕</button>
+        </div>
+        <div class="pdm-body" id="pdm-body"></div>
+    </div>
+
     <!-- CONFIG MODAL -->
     <div class="modal-scrim" id="config-scrim" onclick="toggleConfig()"></div>
     <div class="config-modal" id="config-modal">
         <h2>⚙ Configuration MJ</h2>
+        <label class="config-label">Clé API dddice</label>
+        <input class="config-input" id="cfg-dddice-key" type="password" placeholder="Votre clé API…" />
+        <label class="config-label">Room dddice</label>
+        <input class="config-input" id="cfg-dddice-room" placeholder="slug ou URL complète" />
+        <label class="config-label">Thème dddice</label>
+        <select class="config-input" id="cfg-dddice-theme" disabled><option>— connectez-vous d'abord —</option></select>
         <label class="config-label">Clé Ably (même clé que les joueurs)</label>
         <input class="config-input" id="cfg-ably-key" placeholder="xxxxxxxx:xxxxxxxx" />
-        <div style="margin-top:12px;" class="status-row"><div class="status-dot" id="cfg-ably-dot"></div><span id="cfg-ably-status">Ably non connecté</span></div>
+        <div style="margin-top:12px;" class="status-row"><div class="status-dot" id="cfg-dddice-dot"></div><span id="cfg-dddice-status">dddice non connecté</span></div>
+        <div style="margin-top:6px;" class="status-row"><div class="status-dot" id="cfg-ably-dot"></div><span id="cfg-ably-status">Ably non connecté</span></div>
         <button class="config-save-btn" onclick="saveConfig()">Sauvegarder &amp; Connecter</button>
     </div>
 

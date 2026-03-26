@@ -22,6 +22,10 @@ function buildDeck() { return shuffle([...ALL_CARDS]); }
 // ═══════════════════════════════════════════
 let config = JSON.parse(localStorage.getItem('aria-gm-config') || '{}');
 let ablyInstance = null, ablyRolls = null, ablyCards = null, ablyDamage = null;
+let dddiceSDK = null;            // ThreeDDice SDK instance
+let dddiceAPI = null;            // { theme } once connected
+let pendingGMRoll = null;        // { name, threshold, atk } for GM rolls in progress
+let dddiceResizeHandler = null;  // stored so we can remove it before re-registering
 
 // Players presence map: playerId -> {name,charClass,hp,maxHP,stats,ts}
 const players = new Map();
@@ -47,6 +51,7 @@ window.addEventListener('DOMContentLoaded', () => {
     renderRollFeed();
     renderCardHistory();
     loadConfigInputs();
+    if (config.dddiceKey && config.dddiceRoom) initDddice();
     if (config.ablyKey) initAbly();
     setInterval(sweepOfflinePlayers, 10000);
     document.addEventListener('click', e => { if (!e.target.closest('.gm-select')) closeAllSelects(); });
@@ -90,6 +95,66 @@ function switchTab(id, btn) {
     document.getElementById(id).classList.add('active');
     btn.classList.add('active');
     if (id === 'tab-gm-roll') refreshMonsterSelect();
+}
+
+// ═══════════════════════════════════════════
+//  DDDICE
+// ═══════════════════════════════════════════
+function extractRoomSlug(val) {
+    if (!val) return '';
+    const m = val.match(/\/room\/([^/?#]+)/);
+    return m ? m[1] : val.trim();
+}
+async function initDddice() {
+    const slug = extractRoomSlug(config.dddiceRoom);
+    if (!config.dddiceKey || !slug) return;
+    try {
+        const { ThreeDDice, ThreeDDiceRollEvent } = await import('https://esm.sh/dddice-js');
+
+        // Fetch themes for the dropdown
+        const h = { 'Authorization': `Bearer ${config.dddiceKey}`, 'Accept': 'application/json' };
+        const boxRes = await fetch('https://dddice.com/api/1.0/dice-box', { headers: h });
+        if (!boxRes.ok) throw new Error(`Dice box HTTP ${boxRes.status}`);
+        const themes = (await boxRes.json()).data || [];
+        if (!themes.length) throw new Error('Aucun thème.');
+
+        const sel = document.getElementById('cfg-dddice-theme');
+        sel.innerHTML = '';
+        themes.forEach(t => { const o = document.createElement('option'); o.value = t.id; o.textContent = t.name ? `${t.name} (${t.id})` : t.id; sel.appendChild(o); });
+        sel.disabled = false;
+        sel.value = config.dddiceTheme && themes.find(t => t.id === config.dddiceTheme) ? config.dddiceTheme : themes[0].id;
+
+        const canvas = document.getElementById('dddice-canvas');
+        dddiceSDK = new ThreeDDice(canvas, config.dddiceKey);
+        dddiceSDK.start();
+        await dddiceSDK.connect(slug);
+
+        // RollFinished fires for both incoming player rolls and GM rolls initiated locally.
+        // Only act on it when a GM roll is pending.
+        dddiceSDK.on(ThreeDDiceRollEvent.RollFinished, (roll) => {
+            setTimeout(() => dddiceSDK?.clear(), 1500);
+            if (!pendingGMRoll) return;
+            const { name, threshold, atk } = pendingGMRoll;
+            pendingGMRoll = null;
+            const total = (roll.total_value ?? 0) === 0 ? 100 : (roll.total_value ?? 0);
+            const success = total <= threshold;
+            const dmgResult = (success && atk?.dmg?.trim()) ? rollDiceFormula(atk.dmg) : null;
+            showGMRollResult(name, threshold, total, success, dmgResult);
+        });
+
+        // Keep WebGL viewport in sync with window size
+        if (dddiceResizeHandler) window.removeEventListener('resize', dddiceResizeHandler);
+        dddiceResizeHandler = () => dddiceSDK?.resize();
+        window.addEventListener('resize', dddiceResizeHandler);
+
+        dddiceAPI = { theme: sel.value };
+        setDddiceStatus(true, themes.find(t => t.id === sel.value)?.name || sel.value);
+        sel.onchange = () => { if (dddiceAPI) dddiceAPI.theme = sel.value; config.dddiceTheme = sel.value; localStorage.setItem('aria-gm-config', JSON.stringify(config)); };
+    } catch (e) { console.error('dddice:', e); setDddiceStatus(false, e.message); dddiceSDK = null; dddiceAPI = null; }
+}
+function setDddiceStatus(ok, detail) {
+    ['dddice-dot', 'cfg-dddice-dot'].forEach(id => { const el = document.getElementById(id); if (el) el.className = 'status-dot ' + (ok ? 'connected' : 'error'); });
+    ['dddice-status', 'cfg-dddice-status'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = ok ? `dddice: ${detail || 'connecté'}` : `Erreur: ${detail || 'dddice'}`; });
 }
 
 // ═══════════════════════════════════════════
@@ -177,10 +242,11 @@ function renderPlayerCards() {
         card.innerHTML = `
           <div class="pc-header">
             <div class="pc-online-dot ${isOnline ? 'online' : ''}"></div>
-            <div>
+            <div style="flex:1;min-width:0;">
               <div class="pc-name">${p.name || playerId} <span style="font-family:monospace;font-size:9px;opacity:.35;">#${playerId.slice(-6)}</span></div>
               <div class="pc-class">${p.charClass || ''}</div>
             </div>
+            <button class="pc-btn details" onclick="openPlayerDetails('${playerId}')" title="Voir la fiche">📋</button>
           </div>
           <div class="pc-body">
             <div class="pc-hp-row">
@@ -215,6 +281,93 @@ function renderPlayerCards() {
     });
     if (focusedId) document.getElementById(focusedId)?.focus();
 }
+function openPlayerDetails(playerId) {
+    const p = players.get(playerId);
+    if (!p) return;
+    document.getElementById('pdm-name').textContent = p.name || playerId;
+    document.getElementById('pdm-class').textContent = p.charClass || '';
+
+    const hp = p.hp ?? p.maxHP ?? '?', maxHP = p.maxHP ?? '?';
+    const pct = maxHP > 0 ? hp / maxHP : 0;
+    const hpColor = pct > 0.5 ? 'var(--success)' : pct > 0.25 ? '#e8a020' : 'var(--fail)';
+    const stats = p.stats || {};
+    const skills = p.skills || [];
+    const specials = p.specials || [];
+    const weapons = p.weapons || [];
+    const inventory = p.inventory || [];
+    const potions = p.potions || [];
+
+    let html = '';
+
+    // Stats + HP row
+    html += `<div class="pdm-section">`;
+    html += `<div class="pdm-section-title">Attributs</div>`;
+    html += `<div class="pdm-stats-row">`;
+    html += `<div class="pdm-hp-block"><span class="pdm-hp-num" style="color:${hpColor}">${hp}</span><span class="pdm-hp-sep">/</span><span class="pdm-hp-max">${maxHP} PV</span></div>`;
+    const statOrder = ['FOR','DEX','END','INT','CHA'];
+    for (const k of statOrder) {
+        if (stats[k] !== undefined) html += `<div class="pdm-stat-block"><span class="pdm-stat-key">${k}</span><span class="pdm-stat-val">${stats[k]}</span></div>`;
+    }
+    if (p.protection?.nom) html += `<div class="pdm-stat-block"><span class="pdm-stat-key">Armure</span><span class="pdm-stat-val">${p.protection.nom}${p.protection.valeur ? ' '+p.protection.valeur : ''}</span></div>`;
+    html += `</div></div>`;
+
+    // Weapons
+    const realWeapons = weapons.filter(w => w.nom);
+    if (realWeapons.length) {
+        html += `<div class="pdm-section"><div class="pdm-section-title">Armes</div><div class="pdm-list">`;
+        for (const w of realWeapons) {
+            html += `<div class="pdm-list-row"><span class="pdm-list-name">${w.nom}</span><span class="pdm-list-val">${w.degats || '—'}</span></div>`;
+        }
+        html += `</div></div>`;
+    }
+
+    // Skills
+    if (skills.length) {
+        html += `<div class="pdm-section"><div class="pdm-section-title">Compétences</div><div class="pdm-skills-grid">`;
+        for (const s of skills) {
+            html += `<div class="pdm-skill-row"><span class="pdm-skill-name">${s.name}</span><span class="pdm-skill-pct">${s.pct ?? 0}%</span></div>`;
+        }
+        html += `</div></div>`;
+    }
+
+    // Specials
+    if (specials.length) {
+        html += `<div class="pdm-section"><div class="pdm-section-title">Compétences spéciales</div><div class="pdm-list">`;
+        for (const s of specials) {
+            html += `<div class="pdm-special-row"><div class="pdm-special-header"><span class="pdm-skill-name">${s.name}</span><span class="pdm-skill-pct">${s.pct ?? 0}%</span></div>${s.desc ? `<div class="pdm-special-desc">${s.desc}</div>` : ''}</div>`;
+        }
+        html += `</div></div>`;
+    }
+
+    // Inventory
+    const realInv = inventory.filter(i => i.name);
+    if (realInv.length) {
+        html += `<div class="pdm-section"><div class="pdm-section-title">Inventaire</div><div class="pdm-list">`;
+        for (const i of realInv) {
+            html += `<div class="pdm-list-row"><span class="pdm-list-name">${i.name}</span><span class="pdm-list-val">×${i.qty ?? 1}</span></div>`;
+        }
+        html += `</div></div>`;
+    }
+
+    // Potions
+    const realPotions = potions.filter(p => p.name);
+    if (realPotions.length) {
+        html += `<div class="pdm-section"><div class="pdm-section-title">Potions</div><div class="pdm-list">`;
+        for (const p of realPotions) {
+            html += `<div class="pdm-list-row"><span class="pdm-list-name">${p.name}${p.desc ? ` <span class="pdm-list-desc">— ${p.desc}</span>` : ''}${p.ingredients ? ` <span class="pdm-list-desc pdm-list-ing">⚗ ${p.ingredients}</span>` : ''}</span><span class="pdm-list-val">×${p.qty ?? 1}</span></div>`;
+        }
+        html += `</div></div>`;
+    }
+
+    document.getElementById('pdm-body').innerHTML = html;
+    document.getElementById('details-scrim').classList.add('show');
+    document.getElementById('player-details-modal').classList.add('show');
+}
+function closePlayerDetails() {
+    document.getElementById('details-scrim').classList.remove('show');
+    document.getElementById('player-details-modal').classList.remove('show');
+}
+
 function applyPlayerDamage(playerId) {
     const inp = document.getElementById(`dmg-${playerId}`);
     const dmg = parseInt(inp.value);
@@ -484,8 +637,14 @@ function doGMFreeRoll() {
     const name = document.getElementById('gm-free-name').value.trim() || 'Jet MJ';
     const t = parseInt(document.getElementById('gm-free-threshold').value);
     if (isNaN(t) || t < 1 || t > 100) { alert('Seuil invalide.'); return; }
-    const roll = Math.floor(Math.random() * 100) + 1;
-    showGMRollResult(name, t, roll, roll <= t);
+    if (dddiceSDK && dddiceAPI) {
+        pendingGMRoll = { name, threshold: t, atk: null };
+        dddiceSDK.roll([{ type: 'd10x', theme: dddiceAPI.theme }, { type: 'd10', theme: dddiceAPI.theme }])
+            .catch(e => { console.error('dddice GM roll:', e); pendingGMRoll = null; const r = Math.floor(Math.random() * 100) + 1; showGMRollResult(name, t, r, r <= t); });
+    } else {
+        const roll = Math.floor(Math.random() * 100) + 1;
+        showGMRollResult(name, t, roll, roll <= t);
+    }
 }
 function doGMMonsterRoll() {
     const mId = parseInt(getSelectValue('gm-monster-select'));
@@ -495,10 +654,23 @@ function doGMMonsterRoll() {
     const atkIdx = getSelectValue('gm-attack-select');
     const atk = (m && atkIdx !== '') ? m.attacks[parseInt(atkIdx)] : null;
     const name = atk ? `${m.name} — ${atk.name}` : m ? `${m.name} (${t}%)` : `Jet MJ (${t}%)`;
-    const roll = Math.floor(Math.random() * 100) + 1;
-    const success = roll <= t;
-    const dmgResult = (success && atk && atk.dmg && atk.dmg.trim()) ? rollDiceFormula(atk.dmg) : null;
-    showGMRollResult(name, t, roll, success, dmgResult);
+    if (dddiceSDK && dddiceAPI) {
+        pendingGMRoll = { name, threshold: t, atk };
+        dddiceSDK.roll([{ type: 'd10x', theme: dddiceAPI.theme }, { type: 'd10', theme: dddiceAPI.theme }])
+            .catch(e => {
+                console.error('dddice GM roll:', e);
+                pendingGMRoll = null;
+                const roll = Math.floor(Math.random() * 100) + 1;
+                const success = roll <= t;
+                const dmgResult = (success && atk?.dmg?.trim()) ? rollDiceFormula(atk.dmg) : null;
+                showGMRollResult(name, t, roll, success, dmgResult);
+            });
+    } else {
+        const roll = Math.floor(Math.random() * 100) + 1;
+        const success = roll <= t;
+        const dmgResult = (success && atk && atk.dmg && atk.dmg.trim()) ? rollDiceFormula(atk.dmg) : null;
+        showGMRollResult(name, t, roll, success, dmgResult);
+    }
 }
 function showGMRollResult(name, threshold, roll, success, dmgResult) {
     const type = classify(roll, threshold, success);
@@ -538,11 +710,24 @@ function applyDamageToPlayer(playerId, amount) {
 // ═══════════════════════════════════════════
 //  CONFIG
 // ═══════════════════════════════════════════
-function loadConfigInputs() { document.getElementById('cfg-ably-key').value = config.ablyKey || ''; }
+function loadConfigInputs() {
+    document.getElementById('cfg-dddice-key').value = config.dddiceKey || '';
+    document.getElementById('cfg-dddice-room').value = config.dddiceRoom || '';
+    document.getElementById('cfg-ably-key').value = config.ablyKey || '';
+}
 function saveConfig() {
-    config = { ablyKey: document.getElementById('cfg-ably-key').value.trim() };
+    config = {
+        dddiceKey: document.getElementById('cfg-dddice-key').value.trim(),
+        dddiceRoom: document.getElementById('cfg-dddice-room').value.trim(),
+        dddiceTheme: document.getElementById('cfg-dddice-theme').value || '',
+        ablyKey: document.getElementById('cfg-ably-key').value.trim(),
+    };
     localStorage.setItem('aria-gm-config', JSON.stringify(config));
+    if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch (_) {} dddiceSDK = null; }
+    if (dddiceResizeHandler) { window.removeEventListener('resize', dddiceResizeHandler); dddiceResizeHandler = null; }
+    pendingGMRoll = null; dddiceAPI = null;
     ablyInstance = null; ablyRolls = null; ablyCards = null; ablyDamage = null;
+    if (config.dddiceKey && config.dddiceRoom) initDddice();
     if (config.ablyKey) initAbly();
     toggleConfig();
 }

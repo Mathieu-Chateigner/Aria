@@ -6,9 +6,6 @@
 - Add potion table
 - Allow creation and addition of new potions
 
-### Special Skills
-- Add support for special abilities
-
 ### Combat
 - Add parry mechanic
 - Add dodge mechanic
