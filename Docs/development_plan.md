@@ -27,12 +27,6 @@
 ### Stream Integration
 - Display player HP on stream during combat
 
-### Skills
-- Allow players to modify their skill percentages:
-  - Close combat
-  - Stealth
-  - etc.
-
 ### Combat UI
 - Display initiative order:
   - In main UI
