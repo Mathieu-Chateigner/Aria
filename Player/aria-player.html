@@ -163,32 +163,19 @@
             <div class="tab-content" id="tab-char">
                 <div class="char-sheet-wrap">
 
-                    <!-- COL 1 — Identité -->
+                    <!-- Identité -->
                     <div class="cs-block">
                         <div class="cs-block-title">Identité</div>
                         <div class="cs-block-body">
-                            <div class="editor-field"><label class="editor-label">Nom du personnage</label><input class="editor-input" id="ed-name" /></div>
-                            <div class="editor-field"><label class="editor-label">Classe / Description</label><input class="editor-input" id="ed-class" /></div>
-                        </div>
-                    </div>
-
-                    <!-- COL 2 — Traits physiques -->
-                    <div class="cs-block">
-                        <div class="cs-block-title">Traits physiques</div>
-                        <div class="cs-block-body">
                             <div class="editor-form">
-                                <div class="editor-field"><label class="editor-label">Âge</label><input class="editor-input" id="ed-age" placeholder="ex: 28" /></div>
-                                <div class="editor-field"><label class="editor-label">Taille</label><input class="editor-input" id="ed-taille" placeholder="ex: 1m78" /></div>
-                                <div class="editor-field"><label class="editor-label">Poids</label><input class="editor-input" id="ed-poids" placeholder="ex: 72 kg" /></div>
-                                <div class="editor-field"><label class="editor-label">Yeux</label><input class="editor-input" id="ed-yeux" /></div>
-                                <div class="editor-field"><label class="editor-label">Cheveux</label><input class="editor-input" id="ed-cheveux" /></div>
-                                <div class="editor-field full"><label class="editor-label">Signes particuliers</label><input class="editor-input" id="ed-signes" /></div>
+                                <div class="editor-field"><label class="editor-label">Nom du personnage</label><input class="editor-input" id="ed-name" /></div>
+                                <div class="editor-field"><label class="editor-label">Classe / Description</label><input class="editor-input" id="ed-class" /></div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- FULL — Attributs -->
-                    <div class="cs-block cs-full">
+                    <!-- Attributs -->
+                    <div class="cs-block">
                         <div class="cs-block-title">Attributs</div>
                         <div class="cs-attrs-row">
                             <div class="cs-attr"><label class="cs-attr-label">FOR</label><input class="editor-input cs-attr-input" id="ed-for" type="number" min="1" /></div>
@@ -200,60 +187,76 @@
                         </div>
                     </div>
 
-                    <!-- COL 1 — Armes -->
-                    <div class="cs-block">
-                        <div class="cs-block-title">Armes <span class="cs-hint">— ex&nbsp;: 1d6+2, 2d8</span></div>
-                        <div class="cs-weapons-hdr">
-                            <span class="editor-label">Nom</span>
-                            <span class="editor-label" style="text-align:center;">Dégâts</span>
+                    <!-- Traits physiques | Protection & Blessures -->
+                    <div class="cs-pair">
+                        <div class="cs-block">
+                            <div class="cs-block-title">Traits physiques</div>
+                            <div class="cs-block-body">
+                                <div class="editor-form">
+                                    <div class="editor-field"><label class="editor-label">Âge</label><input class="editor-input" id="ed-age" placeholder="ex: 28" /></div>
+                                    <div class="editor-field"><label class="editor-label">Taille</label><input class="editor-input" id="ed-taille" placeholder="ex: 1m78" /></div>
+                                    <div class="editor-field"><label class="editor-label">Poids</label><input class="editor-input" id="ed-poids" placeholder="ex: 72 kg" /></div>
+                                    <div class="editor-field"><label class="editor-label">Yeux</label><input class="editor-input" id="ed-yeux" /></div>
+                                    <div class="editor-field"><label class="editor-label">Cheveux</label><input class="editor-input" id="ed-cheveux" /></div>
+                                    <div class="editor-field full"><label class="editor-label">Signes particuliers</label><input class="editor-input" id="ed-signes" /></div>
+                                </div>
+                            </div>
                         </div>
-                        <div id="weapons-editor-list" style="padding:4px 14px 14px;"></div>
-                    </div>
-
-                    <!-- COL 2 — Protection & Blessures -->
-                    <div class="cs-block">
-                        <div class="cs-block-title">Protection &amp; Blessures</div>
-                        <div class="cs-block-body">
-                            <div class="editor-form">
-                                <div class="editor-field full"><label class="editor-label">Armure</label><input class="editor-input" id="ed-prot-nom" /></div>
-                                <div class="editor-field"><label class="editor-label">Valeur armure</label><input class="editor-input" id="ed-prot-val" type="number" min="0" /></div>
-                                <div class="editor-field"><label class="editor-label">Blessures act.</label><input class="editor-input" id="ed-bless-cur" type="number" min="0" /></div>
-                                <div class="editor-field full"><label class="editor-label">Seuil max blessures</label><input class="editor-input" id="ed-bless-max" type="number" min="1" /></div>
+                        <div class="cs-block">
+                            <div class="cs-block-title">Protection &amp; Blessures</div>
+                            <div class="cs-block-body">
+                                <div class="editor-form">
+                                    <div class="editor-field full"><label class="editor-label">Armure</label><input class="editor-input" id="ed-prot-nom" /></div>
+                                    <div class="editor-field"><label class="editor-label">Valeur armure</label><input class="editor-input" id="ed-prot-val" type="number" min="0" /></div>
+                                    <div class="editor-field"><label class="editor-label">Blessures actuelles</label><input class="editor-input" id="ed-bless-cur" type="number" min="0" /></div>
+                                    <div class="editor-field full"><label class="editor-label">Seuil max blessures</label><input class="editor-input" id="ed-bless-max" type="number" min="1" /></div>
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- COL 1 — Inventaire -->
-                    <div class="cs-block">
-                        <div class="cs-block-title">Inventaire</div>
-                        <div id="inv-editor-list" style="padding:6px 14px 2px;"></div>
-                        <div style="padding:0 14px 14px;"><button class="add-skill-btn" onclick="addInventoryRow()">+ Ajouter un objet</button></div>
+                    <!-- Armes | Inventaire -->
+                    <div class="cs-pair">
+                        <div class="cs-block">
+                            <div class="cs-block-title">Armes <span class="cs-hint">— ex&nbsp;: 1d6+2, 2d8</span></div>
+                            <div class="cs-col-hdr cs-weapons-hdr">
+                                <span class="editor-label">Nom</span>
+                                <span class="editor-label center">Dégâts</span>
+                            </div>
+                            <div class="cs-list-body" id="weapons-editor-list"></div>
+                        </div>
+                        <div class="cs-block">
+                            <div class="cs-block-title">Inventaire</div>
+                            <div class="cs-col-hdr cs-inv-hdr">
+                                <span class="editor-label">Objet</span>
+                                <span class="editor-label center">Qté</span>
+                                <span></span>
+                            </div>
+                            <div class="cs-list-body" id="inv-editor-list"></div>
+                            <div class="cs-block-footer"><button class="add-skill-btn" onclick="addInventoryRow()">+ Ajouter un objet</button></div>
+                        </div>
                     </div>
 
-                    <!-- COL 2 — Compétences spéciales -->
+                    <!-- Compétences -->
+                    <div class="cs-block">
+                        <div class="cs-block-title">Compétences — seuils (%)</div>
+                        <div class="cs-skills-grid" id="skills-editor-list"></div>
+                    </div>
+
+                    <!-- Compétences spéciales -->
                     <div class="cs-block">
                         <div class="cs-block-title">Compétences spéciales</div>
-                        <div class="cs-specials-hdr">
+                        <div class="cs-col-hdr cs-specials-hdr">
                             <span class="editor-label">Nom</span>
-                            <span class="editor-label" style="text-align:center;">%</span>
+                            <span class="editor-label center">%</span>
                             <span class="editor-label">Description</span>
                             <span></span>
                         </div>
-                        <div id="specials-editor-list" style="padding:0 14px 6px;"></div>
-                        <div style="padding:0 14px 14px;"><button class="add-skill-btn" onclick="addSpecialRow()">+ Ajouter</button></div>
+                        <div class="cs-list-body" id="specials-editor-list"></div>
+                        <div class="cs-block-footer"><button class="add-skill-btn" onclick="addSpecialRow()">+ Ajouter</button></div>
                     </div>
 
-                    <!-- FULL — Compétences (2-col internal) -->
-                    <div class="cs-block cs-full">
-                        <div class="cs-block-title">Compétences — seuils (%)</div>
-                        <div id="skills-editor-list" style="padding:6px 14px 14px;"></div>
-                    </div>
-
-                    <!-- FULL — Save -->
-                    <div class="cs-full cs-save-row">
-                        <button class="save-btn" onclick="saveCharacter()">Sauvegarder</button>
-                        <span class="cs-save-status" id="cs-save-status">✓ Sauvegardé</span>
-                    </div>
+                    <span class="cs-save-status" id="cs-save-status">✓ Sauvegardé</span>
 
                 </div>
             </div>

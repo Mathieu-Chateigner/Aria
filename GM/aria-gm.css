@@ -552,13 +552,7 @@ body {
     background: rgba(0,0,0,.2);
     border-radius: 3px;
     border: 1px solid rgba(192,57,43,.1);
-    cursor: pointer;
-    transition: background .15s;
 }
-
-    .mc-attack-row:hover {
-        background: rgba(192,57,43,.1);
-    }
 
 .mc-atk-name {
     font-family: 'EB Garamond',serif;
@@ -579,77 +573,225 @@ body {
     color: var(--gold-dim);
 }
 
-.mc-actions {
+/* Editable attack rows in monster card */
+.mc-atk-section {
+    border-top: 1px solid rgba(192,57,43,.12);
+    padding: 8px 10px 6px;
+}
+
+.mc-atk-hdr {
+    display: grid;
+    grid-template-columns: 1fr 52px 62px 24px;
+    gap: 4px;
+    margin-bottom: 4px;
+}
+
+.mc-atk-col-label {
+    font-family: 'Cinzel',serif;
+    font-size: 9px;
+    letter-spacing: .12em;
+    color: rgba(255,150,150,.4);
+    text-transform: uppercase;
+}
+
+    .mc-atk-col-label.center { text-align: center; }
+
+.mc-atk-edit-row {
+    display: grid;
+    grid-template-columns: 1fr 52px 62px 24px;
+    gap: 4px;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.mc-atk-input {
+    background: rgba(0,0,0,.3);
+    border: 1px solid rgba(192,57,43,.18);
+    color: var(--parchment);
+    font-family: 'EB Garamond',serif;
+    font-size: 13px;
+    padding: 4px 6px;
+    border-radius: var(--radius);
+    width: 100%;
+}
+
+    .mc-atk-input:focus { outline: none; border-color: rgba(192,57,43,.5); }
+    .mc-atk-input.center { text-align: center; font-family: 'Cinzel',serif; font-size: 12px; color: rgba(255,170,170,.9); }
+
+.mc-add-atk {
+    margin-top: 4px;
+    border-color: rgba(192,57,43,.2);
+    color: rgba(255,150,150,.5);
+    font-size: 10px;
+}
+
+/* Custom select dropdown */
+.gm-select {
+    position: relative;
+    width: 100%;
+    margin-bottom: 8px;
+}
+
+.gm-select-trigger {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    background: rgba(0,0,0,.3);
+    border: 1px solid var(--border);
+    color: var(--parchment);
+    font-family: 'EB Garamond',serif;
+    font-size: 15px;
+    padding: 7px 10px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    text-align: left;
+    transition: border-color .15s;
+}
+
+    .gm-select-trigger:hover { border-color: var(--gold-dim); }
+
+.gm-select-arrow {
+    font-size: 9px;
+    color: var(--gold-dim);
+    margin-left: 8px;
+    flex-shrink: 0;
+}
+
+.gm-select-panel {
+    display: none;
+    position: absolute;
+    top: calc(100% + 3px);
+    left: 0; right: 0;
+    z-index: 300;
+    background: var(--bg2);
+    border: 1px solid var(--gold-dim);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: 0 8px 24px rgba(0,0,0,.7);
+}
+
+    .gm-select-panel.open { display: block; }
+
+.gm-select-opt {
+    padding: 8px 12px;
+    font-family: 'EB Garamond',serif;
+    font-size: 14px;
+    color: var(--parchment);
+    cursor: pointer;
+    transition: background .1s;
+}
+
+    .gm-select-opt:not(:first-child) { border-top: 1px solid rgba(201,168,76,.06); }
+    .gm-select-opt:hover { background: rgba(201,168,76,.1); color: var(--gold-light); }
+
+/* GM Roll — combat section */
+.gm-combat-sep {
+    border-top: 1px solid rgba(201,168,76,.08);
+    margin: 10px 0 6px;
+}
+
+.gm-combat-row {
     display: flex;
     gap: 6px;
+    margin-bottom: 6px;
+    align-items: stretch;
 }
 
-.mc-input {
-    flex: 1;
-    background: rgba(120,0,0,.15);
-    border: 1px solid rgba(192,57,43,.25);
-    color: #ffbbbb;
+    .gm-combat-row .gm-input { flex: 1; min-width: 0; margin-bottom: 0; }
+    .gm-combat-row .gm-action-btn { align-self: stretch; }
+
+.gm-action-btn {
     font-family: 'Cinzel',serif;
-    font-size: 14px;
-    padding: 6px 8px;
-    border-radius: var(--radius);
-    text-align: center;
-    min-width: 0;
-}
-
-    .mc-input:focus {
-        outline: none;
-        border-color: rgba(192,57,43,.5);
-    }
-
-.mc-heal-input {
-    flex: 1;
-    background: rgba(0,60,20,.2);
-    border: 1px solid rgba(76,175,119,.2);
-    color: #aaffcc;
-    font-family: 'Cinzel',serif;
-    font-size: 14px;
-    padding: 6px 8px;
-    border-radius: var(--radius);
-    text-align: center;
-    min-width: 0;
-}
-
-    .mc-heal-input:focus {
-        outline: none;
-        border-color: rgba(76,175,119,.4);
-    }
-
-.mc-btn {
-    font-family: 'Cinzel',serif;
-    font-size: 13px;
-    font-weight: 700;
+    font-size: 11px;
+    font-weight: 600;
     padding: 6px 12px;
     cursor: pointer;
     border-radius: var(--radius);
     transition: all .15s;
+    white-space: nowrap;
     flex-shrink: 0;
 }
 
-    .mc-btn.dmg {
-        background: rgba(80,10,10,.5);
-        border: 1px solid rgba(192,57,43,.4);
-        color: #ffaaaa;
-    }
+.gm-action-dmg {
+    background: rgba(80,10,10,.5);
+    border: 1px solid rgba(192,57,43,.4);
+    color: #ffaaaa;
+}
 
-        .mc-btn.dmg:hover {
-            background: rgba(120,15,15,.6);
-        }
+    .gm-action-dmg:hover { background: rgba(120,15,15,.6); }
 
-    .mc-btn.heal {
-        background: rgba(20,70,40,.4);
-        border: 1px solid rgba(76,175,119,.3);
+.gm-action-heal {
+    background: rgba(20,70,40,.4);
+    border: 1px solid rgba(76,175,119,.3);
+    color: #aaffcc;
+}
+
+    .gm-action-heal:hover { background: rgba(30,90,55,.5); }
+
+/* Player target buttons (after successful attack) */
+.gm-target-section {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(192,57,43,.2);
+}
+
+.gm-target-label {
+    font-family: 'Cinzel',serif;
+    font-size: 9px;
+    letter-spacing: .15em;
+    color: var(--parchment-dim);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+}
+
+.gm-target-btns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.gm-target-btn {
+    font-family: 'EB Garamond',serif;
+    font-size: 14px;
+    background: rgba(80,10,10,.4);
+    border: 1px solid rgba(192,57,43,.35);
+    color: #ffaaaa;
+    padding: 5px 14px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all .15s;
+}
+
+    .gm-target-btn:hover:not(:disabled) { background: rgba(120,15,15,.55); border-color: rgba(192,57,43,.6); }
+
+    .gm-target-btn.applied {
+        background: rgba(20,70,40,.35);
+        border-color: rgba(76,175,119,.3);
         color: #aaffcc;
+        cursor: default;
     }
 
-        .mc-btn.heal:hover {
-            background: rgba(30,90,55,.5);
-        }
+/* GM Roll result extras */
+.gm-rr-name {
+    font-family: 'Cinzel',serif;
+    font-size: 11px;
+    color: var(--parchment-dim);
+}
+
+.gm-rr-dmg {
+    font-family: 'Cinzel',serif;
+    font-size: 13px;
+    color: var(--gold);
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(201,168,76,.1);
+}
+
+.gm-rr-breakdown {
+    font-size: 11px;
+    color: var(--gold-dim);
+}
 
 /* Add Monster Form */
 .add-monster-form {

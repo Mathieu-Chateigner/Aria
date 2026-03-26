@@ -109,14 +109,35 @@
                             <button class="gm-roll-btn" onclick="doGMFreeRoll()">⚄ Lancer</button>
                         </div>
                         <div class="gm-roll-form" style="margin-top:12px;">
-                            <h3>Jet pour un monstre</h3>
+                            <h3>Combat — Monstre</h3>
                             <label class="field-label">Monstre</label>
-                            <select class="gm-input monster-roll-target" id="gm-monster-select">
-                                <option value="">— Aucun monstre —</option>
-                            </select>
-                            <label class="field-label">Attaque / Seuil personnalisé (%)</label>
+                            <div class="gm-select" id="gm-monster-select" data-value="">
+                                <button class="gm-select-trigger" onclick="toggleSelect(this)" type="button">
+                                    <span class="gm-select-label">— Aucun monstre —</span>
+                                    <span class="gm-select-arrow">▾</span>
+                                </button>
+                                <div class="gm-select-panel"></div>
+                            </div>
+                            <label class="field-label">Attaque</label>
+                            <div class="gm-select" id="gm-attack-select" data-value="">
+                                <button class="gm-select-trigger" onclick="toggleSelect(this)" type="button">
+                                    <span class="gm-select-label">— Attaque personnalisée —</span>
+                                    <span class="gm-select-arrow">▾</span>
+                                </button>
+                                <div class="gm-select-panel"></div>
+                            </div>
+                            <label class="field-label">Seuil (%)</label>
                             <input class="gm-input" id="gm-monster-threshold" type="number" min="1" max="100" placeholder="50" />
-                            <button class="gm-roll-btn" onclick="doGMMonsterRoll()">⚄ Jet monstre</button>
+                            <button class="gm-roll-btn" onclick="doGMMonsterRoll()">⚄ Lancer l'attaque</button>
+                            <div class="gm-combat-sep"></div>
+                            <div class="gm-combat-row">
+                                <input class="gm-input" id="gm-monster-dmg-input" type="text" inputmode="numeric" placeholder="Dégâts" oninput="this.value=this.value.replace(/[^0-9]/g,'')" onkeydown="if(event.key==='Enter')doGMMonsterDamage()" />
+                                <button class="gm-action-btn gm-action-dmg" onclick="doGMMonsterDamage()">⚔ Appliquer</button>
+                            </div>
+                            <div class="gm-combat-row">
+                                <input class="gm-input" id="gm-monster-heal-input" type="text" inputmode="numeric" placeholder="Soins" oninput="this.value=this.value.replace(/[^0-9]/g,'')" onkeydown="if(event.key==='Enter')doGMMonsterHeal()" />
+                                <button class="gm-action-btn gm-action-heal" onclick="doGMMonsterHeal()">♥ Soigner</button>
+                            </div>
                         </div>
                     </div>
                     <div>

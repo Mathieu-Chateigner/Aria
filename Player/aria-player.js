@@ -472,6 +472,35 @@ function handleResult(skillName, threshold, roll) {
     setRolling(false);
     showFloatCard(data);
     publishRoll(data);
+    if (skillName === 'Soigner') applySoigner(success);
+}
+function applySoigner(success) {
+    // Small delay so the float card resolves first
+    setTimeout(() => {
+        const max = getMaxHP();
+        const before = currentHP;
+        if (success) {
+            const heal = Math.floor(Math.random() * 6) + 1;
+            const after = Math.min(max, before + heal);
+            animateHPChange(before, after, max);
+            currentHP = after;
+            localStorage.setItem('aria-current-hp', currentHP);
+            updateHPDisplay();
+            showHealNumber(heal);
+            showToast('gm-heal-toast', `♥ Soins : +${heal} PV`);
+        } else {
+            const dmg = Math.floor(Math.random() * 3) + 1;
+            const after = Math.max(0, before - dmg);
+            animateHPChange(before, after, max);
+            currentHP = after;
+            localStorage.setItem('aria-current-hp', currentHP);
+            updateHPDisplay();
+            triggerDamageVFX(dmg, true);
+            showToast('gm-dmg-toast', `⚔ Blessure : -${dmg} PV`);
+            if (after <= 0) showMort();
+        }
+        sendPresence();
+    }, 1500);
 }
 function classify(roll, threshold, success) {
     if (roll <= 10 && success) return 'crit-success';
@@ -713,8 +742,8 @@ function renderWeaponsEditor() {
     list.innerHTML = '';
     (character.weapons || []).forEach((w, i) => {
         const row = document.createElement('div');
-        row.style.cssText = 'display:grid;grid-template-columns:1fr 80px;gap:6px;align-items:center;margin-bottom:6px;';
-        row.innerHTML = `<input value="${w.nom}" placeholder="Nom de l'arme" oninput="character.weapons[${i}].nom=this.value" style="background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--parchment);font-family:'EB Garamond',serif;font-size:14px;padding:6px 8px;border-radius:var(--radius);" /><input value="${w.degats}" placeholder="ex: 2d6+2" oninput="character.weapons[${i}].degats=this.value" style="background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--gold);font-family:'Cinzel',serif;font-size:13px;font-weight:600;padding:6px 6px;border-radius:var(--radius);text-align:center;" />`;
+        row.className = 'weap-row';
+        row.innerHTML = `<input class="editor-input" value="${w.nom}" placeholder="Nom de l'arme" oninput="character.weapons[${i}].nom=this.value" /><input class="editor-input weap-dmg" value="${w.degats}" placeholder="ex: 2d6+2" oninput="character.weapons[${i}].degats=this.value" />`;
         list.appendChild(row);
     });
 }
@@ -724,8 +753,8 @@ function renderInventoryEditor() {
     list.innerHTML = '';
     (character.inventory || []).forEach((it, i) => {
         const row = document.createElement('div');
-        row.style.cssText = 'display:grid;grid-template-columns:1fr 70px auto;gap:6px;align-items:center;margin-bottom:6px;';
-        row.innerHTML = `<input value="${it.name || ''}" placeholder="Nom de l'objet" oninput="character.inventory[${i}].name=this.value;renderInventorySidebar()" style="background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--parchment);font-family:'EB Garamond',serif;font-size:14px;padding:6px 8px;border-radius:var(--radius);" /><input type="number" min="1" value="${it.qty || 1}" oninput="character.inventory[${i}].qty=+this.value;renderInventorySidebar()" style="background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--gold);font-family:'Cinzel',serif;font-size:14px;padding:6px 6px;border-radius:var(--radius);text-align:center;" /><button class="del-btn" onclick="removeInventoryRow(${i})">✕</button>`;
+        row.className = 'inv-row';
+        row.innerHTML = `<input class="editor-input" value="${it.name || ''}" placeholder="Nom de l'objet" oninput="character.inventory[${i}].name=this.value;renderInventorySidebar()" /><input class="editor-input inv-qty" type="number" min="1" value="${it.qty || 1}" oninput="character.inventory[${i}].qty=+this.value;renderInventorySidebar()" /><button class="del-btn" onclick="removeInventoryRow(${i})">✕</button>`;
         list.appendChild(row);
     });
 }
@@ -749,7 +778,7 @@ function renderSpecialsEditor() {
     (character.specials || []).forEach((sp, i) => {
         const row = document.createElement('div');
         row.className = 'specials-row';
-        row.innerHTML = `<input value="${sp.name || ''}" placeholder="Nom" oninput="character.specials[${i}].name=this.value" style="font-size:13px;" /><input type="number" min="0" max="100" value="${sp.pct || 0}" oninput="character.specials[${i}].pct=+this.value" style="text-align:center;font-size:13px;" /><input value="${sp.desc || ''}" placeholder="Description" oninput="character.specials[${i}].desc=this.value" style="font-size:12px;" /><button class="del-btn" onclick="removeSpecial(${i})">✕</button>`;
+        row.innerHTML = `<input value="${sp.name || ''}" placeholder="Nom" oninput="character.specials[${i}].name=this.value" /><input type="number" min="0" max="100" value="${sp.pct || 0}" oninput="character.specials[${i}].pct=+this.value" /><input value="${sp.desc || ''}" placeholder="Description" oninput="character.specials[${i}].desc=this.value" /><button class="del-btn" onclick="removeSpecial(${i})">✕</button>`;
         list.appendChild(row);
     });
 }
@@ -802,13 +831,6 @@ function flashSaveStatus() {
     el.classList.add('show');
     clearTimeout(saveStatusTimer);
     saveStatusTimer = setTimeout(() => el.classList.remove('show'), 2000);
-}
-function saveCharacter() {
-    readEditorInputs();
-    localStorage.setItem('aria-character', JSON.stringify(character));
-    renderAll();
-    sendPresence();
-    flashSaveStatus();
 }
 
 // ═══════════════════════════════════════════

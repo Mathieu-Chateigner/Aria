@@ -28,6 +28,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Docs", "Docs", "{E1B2C3D4-E
 		Docs\bugs_and_issues.md = Docs\bugs_and_issues.md
 		Docs\CLAUDE.md = Docs\CLAUDE.md
 		Docs\development_plan.md = Docs\development_plan.md
+		Docs\keys.txt = Docs\keys.txt
 		Docs\README.md = Docs\README.md
 	EndProjectSection
 EndProject

@@ -49,7 +49,37 @@ window.addEventListener('DOMContentLoaded', () => {
     loadConfigInputs();
     if (config.ablyKey) initAbly();
     setInterval(sweepOfflinePlayers, 10000);
+    document.addEventListener('click', e => { if (!e.target.closest('.gm-select')) closeAllSelects(); });
 });
+
+// ═══════════════════════════════════════════
+//  CUSTOM SELECT
+// ═══════════════════════════════════════════
+function closeAllSelects() {
+    document.querySelectorAll('.gm-select-panel.open').forEach(p => p.classList.remove('open'));
+}
+function toggleSelect(trigger) {
+    const panel = trigger.closest('.gm-select').querySelector('.gm-select-panel');
+    const isOpen = panel.classList.contains('open');
+    closeAllSelects();
+    if (!isOpen) panel.classList.add('open');
+}
+function getSelectValue(id) { return document.getElementById(id)?.dataset.value ?? ''; }
+function setSelectValue(id, value, label) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.dataset.value = value;
+    const lbl = el.querySelector('.gm-select-label');
+    if (lbl) lbl.textContent = label;
+    closeAllSelects();
+}
+function addSelectOpt(panel, value, label, onClick) {
+    const opt = document.createElement('div');
+    opt.className = 'gm-select-opt';
+    opt.textContent = label;
+    opt.addEventListener('click', e => { e.stopPropagation(); onClick(); });
+    panel.appendChild(opt);
+}
 
 // ═══════════════════════════════════════════
 //  TABS
@@ -263,24 +293,69 @@ function removeAmfAttack(idx) {
         list.appendChild(row);
     });
 }
-function applyMonsterDamage(id) {
-    const m = monsters.find(m => m.id === id); if (!m) return;
-    const dmg = parseInt(document.getElementById(`mc-dmg-${id}`).value); if (!dmg || dmg <= 0) return;
+function doGMMonsterDamage() {
+    const mId = parseInt(getSelectValue('gm-monster-select'));
+    const m = monsters.find(m => m.id === mId); if (!m) return;
+    const dmg = parseInt(document.getElementById('gm-monster-dmg-input').value); if (!dmg || dmg <= 0) return;
     m.pv = Math.max(0, m.pv - dmg);
-    document.getElementById(`mc-dmg-${id}`).value = '';
+    document.getElementById('gm-monster-dmg-input').value = '';
     saveMonsters(); renderMonsters();
 }
-function applyMonsterHeal(id) {
-    const m = monsters.find(m => m.id === id); if (!m) return;
-    const amt = parseInt(document.getElementById(`mc-heal-${id}`).value); if (!amt || amt <= 0) return;
+function doGMMonsterHeal() {
+    const mId = parseInt(getSelectValue('gm-monster-select'));
+    const m = monsters.find(m => m.id === mId); if (!m) return;
+    const amt = parseInt(document.getElementById('gm-monster-heal-input').value); if (!amt || amt <= 0) return;
     m.pv = Math.min(m.maxPV, m.pv + amt);
-    document.getElementById(`mc-heal-${id}`).value = '';
+    document.getElementById('gm-monster-heal-input').value = '';
     saveMonsters(); renderMonsters();
 }
-function rollMonsterAttack(mId, pct, atkName) {
-    const roll = Math.floor(Math.random() * 100) + 1;
-    const success = roll <= pct;
-    showGMRollResult(atkName, pct, roll, success);
+function rollDiceFormula(formula) {
+    const expr = (formula || '').replace(/\s+/g, '').toLowerCase();
+    if (!expr) return { total: 0, breakdown: '' };
+    const tokens = expr.split(/(?=[+-])/);
+    let total = 0;
+    const parts = [];
+    for (const token of tokens) {
+        if (!token) continue;
+        const sign = token[0] === '-' ? -1 : 1;
+        const raw = token.replace(/^[+-]/, '');
+        const m = raw.match(/^(\d+)d(\d+)$/);
+        if (m) {
+            const rolls = [];
+            for (let i = 0; i < parseInt(m[1]); i++) rolls.push(Math.floor(Math.random() * parseInt(m[2])) + 1);
+            const sub = rolls.reduce((a, b) => a + b, 0);
+            total += sign * sub;
+            parts.push(`${sign < 0 ? '−' : parts.length ? '+' : ''}[${rolls.join('+')}]`);
+        } else {
+            const num = parseInt(raw);
+            if (!isNaN(num)) { total += sign * num; parts.push(`${sign < 0 ? '−' : parts.length ? '+' : ''}${num}`); }
+        }
+    }
+    return { total, breakdown: parts.join(' ') };
+}
+function onMonsterSelectChange() {
+    const mId = parseInt(getSelectValue('gm-monster-select'));
+    const panel = document.getElementById('gm-attack-select')?.querySelector('.gm-select-panel');
+    if (!panel) return;
+    panel.innerHTML = '';
+    setSelectValue('gm-attack-select', '', '— Attaque personnalisée —');
+    document.getElementById('gm-monster-threshold').value = '';
+    const m = monsters.find(m => m.id === mId);
+    if (!m) return;
+    addSelectOpt(panel, '', '— Attaque personnalisée —', () => setSelectValue('gm-attack-select', '', '— Attaque personnalisée —'));
+    m.attacks.forEach((a, i) => {
+        const label = `${a.name} (${a.pct}%)${a.dmg ? ' · ' + a.dmg : ''}`;
+        addSelectOpt(panel, String(i), label, () => { setSelectValue('gm-attack-select', String(i), label); onAttackSelectChange(); });
+    });
+}
+function onAttackSelectChange() {
+    const mId = parseInt(getSelectValue('gm-monster-select'));
+    const atkIdx = getSelectValue('gm-attack-select');
+    if (atkIdx === '') return;
+    const m = monsters.find(m => m.id === mId);
+    if (!m) return;
+    const atk = m.attacks[parseInt(atkIdx)];
+    if (atk) document.getElementById('gm-monster-threshold').value = atk.pct;
 }
 function renderMonsters() {
     const grid = document.getElementById('monsters-grid');
@@ -307,26 +382,59 @@ function renderMonsters() {
             <div class="mc-stats">
               ${Object.entries(m.stats).map(([k, v]) => `<span class="mc-stat">${k} <span>${v}</span></span>`).join('')}
             </div>
-            ${m.attacks.length ? `<div class="mc-attacks">${m.attacks.map(a => `<div class="mc-attack-row" onclick="rollMonsterAttack(${m.id},${a.pct},'${m.name}: ${a.name}')"><span class="mc-atk-name">${a.name}</span><span class="mc-atk-pct">${a.pct}%</span><span class="mc-atk-dmg">${a.dmg || '—'}</span></div>`).join('')}</div>` : ''}
-            <div class="mc-actions">
-              <input class="mc-input" id="mc-dmg-${m.id}" type="text" inputmode="numeric" placeholder="Dégâts"
-                oninput="this.value=this.value.replace(/[^0-9]/g,'')"
-                onkeydown="if(event.key==='Enter')applyMonsterDamage(${m.id})" />
-              <button class="mc-btn dmg" onclick="applyMonsterDamage(${m.id})">⚔</button>
-              <input class="mc-heal-input" id="mc-heal-${m.id}" type="text" inputmode="numeric" placeholder="Soins"
-                oninput="this.value=this.value.replace(/[^0-9]/g,'')"
-                onkeydown="if(event.key==='Enter')applyMonsterHeal(${m.id})" />
-              <button class="mc-btn heal" onclick="applyMonsterHeal(${m.id})">♥</button>
+            <div class="mc-atk-section">
+              <div class="mc-atk-hdr">
+                <span class="mc-atk-col-label">Nom</span>
+                <span class="mc-atk-col-label center">%</span>
+                <span class="mc-atk-col-label center">Dégâts</span>
+                <span></span>
+              </div>
+              ${m.attacks.map((a, i) => `
+              <div class="mc-atk-edit-row">
+                <input class="mc-atk-input" value="${a.name}" placeholder="Nom" oninput="updateMonsterAttack(${m.id},${i},'name',this.value)" />
+                <input class="mc-atk-input center" type="number" min="1" max="100" value="${a.pct}" placeholder="%" oninput="updateMonsterAttack(${m.id},${i},'pct',+this.value)" />
+                <input class="mc-atk-input center" value="${a.dmg || ''}" placeholder="1d6" oninput="updateMonsterAttack(${m.id},${i},'dmg',this.value)" />
+                <button class="del-btn" onclick="removeMonsterAttack(${m.id},${i})">✕</button>
+              </div>`).join('')}
+              <button class="add-atk-btn mc-add-atk" onclick="addMonsterAttack(${m.id})">+ Attaque</button>
             </div>
           </div>`;
         grid.appendChild(card);
     });
 }
+function addMonsterAttack(mId) {
+    const m = monsters.find(m => m.id === mId); if (!m) return;
+    m.attacks.push({ name: '', pct: 50, dmg: '' });
+    saveMonsters(); renderMonsters(); refreshMonsterSelect();
+}
+function removeMonsterAttack(mId, idx) {
+    const m = monsters.find(m => m.id === mId); if (!m) return;
+    m.attacks.splice(idx, 1);
+    saveMonsters(); renderMonsters(); refreshMonsterSelect();
+}
+function updateMonsterAttack(mId, idx, field, value) {
+    const m = monsters.find(m => m.id === mId); if (!m || !m.attacks[idx]) return;
+    m.attacks[idx][field] = value;
+    saveMonsters();
+    // Silently refresh GM roll dropdowns without re-rendering cards (preserves focus)
+    const prevMonster = getSelectValue('gm-monster-select');
+    refreshMonsterSelect();
+    if (prevMonster) setSelectValue('gm-monster-select', prevMonster, monsters.find(x => String(x.id) === prevMonster)?.name || '');
+}
 function refreshMonsterSelect() {
-    const sel = document.getElementById('gm-monster-select');
-    if (!sel) return;
-    sel.innerHTML = '<option value="">— Aucun monstre —</option>';
-    monsters.forEach(m => { const o = document.createElement('option'); o.value = m.id; o.textContent = m.name; sel.appendChild(o); });
+    const wrapper = document.getElementById('gm-monster-select');
+    if (!wrapper) return;
+    const prevId = wrapper.dataset.value;
+    const panel = wrapper.querySelector('.gm-select-panel');
+    panel.innerHTML = '';
+    addSelectOpt(panel, '', '— Aucun monstre —', () => { setSelectValue('gm-monster-select', '', '— Aucun monstre —'); onMonsterSelectChange(); });
+    monsters.forEach(m => {
+        addSelectOpt(panel, String(m.id), m.name, () => { setSelectValue('gm-monster-select', String(m.id), m.name); onMonsterSelectChange(); });
+    });
+    if (!monsters.find(m => String(m.id) === prevId)) {
+        setSelectValue('gm-monster-select', '', '— Aucun monstre —');
+        onMonsterSelectChange();
+    }
 }
 
 // ═══════════════════════════════════════════
@@ -380,24 +488,51 @@ function doGMFreeRoll() {
     showGMRollResult(name, t, roll, roll <= t);
 }
 function doGMMonsterRoll() {
-    const mId = parseInt(document.getElementById('gm-monster-select').value);
+    const mId = parseInt(getSelectValue('gm-monster-select'));
     const t = parseInt(document.getElementById('gm-monster-threshold').value);
     if (isNaN(t) || t < 1 || t > 100) { alert('Seuil invalide.'); return; }
     const m = monsters.find(m => m.id === mId);
-    const name = m ? `${m.name} (${t}%)` : (`Jet MJ (${t}%)`);
+    const atkIdx = getSelectValue('gm-attack-select');
+    const atk = (m && atkIdx !== '') ? m.attacks[parseInt(atkIdx)] : null;
+    const name = atk ? `${m.name} — ${atk.name}` : m ? `${m.name} (${t}%)` : `Jet MJ (${t}%)`;
     const roll = Math.floor(Math.random() * 100) + 1;
-    showGMRollResult(name, t, roll, roll <= t);
+    const success = roll <= t;
+    const dmgResult = (success && atk && atk.dmg && atk.dmg.trim()) ? rollDiceFormula(atk.dmg) : null;
+    showGMRollResult(name, t, roll, success, dmgResult);
 }
-function showGMRollResult(name, threshold, roll, success) {
+function showGMRollResult(name, threshold, roll, success, dmgResult) {
     const type = classify(roll, threshold, success);
     const verdicts = { success: 'SUCCÈS', fail: 'ÉCHEC', 'crit-success': 'SUCCÈS CRITIQUE', 'crit-fail': 'ÉCHEC CRITIQUE' };
     const colors = { success: 'var(--success)', fail: 'var(--fail)', 'crit-success': '#a8ff78', 'crit-fail': '#ff4444' };
+    const dmgHtml = dmgResult
+        ? `<div class="gm-rr-dmg">⚔ Dégâts : <strong>${dmgResult.total}</strong>${dmgResult.breakdown && dmgResult.breakdown !== String(dmgResult.total) ? ` <span class="gm-rr-breakdown">${dmgResult.breakdown}</span>` : ''}</div>`
+        : '';
+    let targetHtml = '';
+    if (dmgResult) {
+        const online = [...players.entries()].filter(([, p]) => p.online !== false && Date.now() - p.ts < PRESENCE_TIMEOUT);
+        if (online.length) {
+            const btns = online.map(([id, p]) => `<button class="gm-target-btn" data-pid="${id}" onclick="applyDamageToPlayer('${id}',${dmgResult.total})">${p.name || id.slice(-4)}</button>`).join('');
+            targetHtml = `<div class="gm-target-section"><div class="gm-target-label">Appliquer à :</div><div class="gm-target-btns">${btns}</div></div>`;
+        }
+    }
     const el = document.getElementById('gm-roll-result');
     el.innerHTML = `
-        <div style="font-family:'Cinzel',serif;font-size:11px;color:var(--parchment-dim);">${name}</div>
+        <div class="gm-rr-name">${name}</div>
         <div class="gm-rr-roll">${roll}</div>
         <div class="gm-rr-detail">Seuil : ${threshold}%</div>
-        <div class="gm-rr-verdict" style="color:${colors[type]};">${verdicts[type]}</div>`;
+        <div class="gm-rr-verdict" style="color:${colors[type]};">${verdicts[type]}</div>
+        ${dmgHtml}${targetHtml}`;
+}
+function applyDamageToPlayer(playerId, amount) {
+    const p = players.get(playerId);
+    if (!p) return;
+    const hpBefore = p.hp ?? p.maxHP ?? 0;
+    const hpAfter = Math.max(0, hpBefore - amount);
+    p.hp = hpAfter;
+    publishDamage(playerId, amount, hpBefore, hpAfter, p.maxHP || hpBefore);
+    renderPlayerCards();
+    const btn = document.querySelector(`.gm-target-btn[data-pid="${playerId}"]`);
+    if (btn) { btn.disabled = true; btn.classList.add('applied'); btn.textContent = `✓ ${p.name || playerId}`; }
 }
 
 // ═══════════════════════════════════════════
