@@ -1686,3 +1686,163 @@ body {
     white-space: nowrap;
     margin-left: 10px;
 }
+
+/* ═══════════════════════════════════════════
+   SELECTION SCREEN
+═══════════════════════════════════════════ */
+.sel-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 28px;
+    max-width: 780px;
+    width: 100%;
+}
+.sel-brand {
+    font-family: 'Cinzel Decorative', serif;
+    font-size: 32px;
+    color: var(--gold);
+    letter-spacing: .08em;
+}
+.sel-subtitle {
+    font-family: 'Cinzel', serif;
+    font-size: 12px;
+    color: var(--parchment-dim);
+    letter-spacing: .18em;
+    text-transform: uppercase;
+}
+.sel-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    justify-content: center;
+    min-height: 60px;
+}
+.sel-empty {
+    font-family: 'EB Garamond', serif;
+    font-size: 15px;
+    font-style: italic;
+    color: var(--parchment-dim);
+    opacity: .65;
+    text-align: center;
+    padding: 20px 0;
+}
+.sel-card {
+    position: relative;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px 20px 18px;
+    cursor: pointer;
+    min-width: 150px;
+    max-width: 220px;
+    text-align: center;
+    transition: border-color .2s, background .2s;
+    user-select: none;
+}
+.sel-card:hover { border-color: var(--gm-accent); background: var(--bg3); }
+.sel-card-name {
+    font-family: 'Cinzel', serif;
+    font-size: 14px;
+    color: var(--parchment);
+    word-break: break-word;
+}
+.sel-card-delete {
+    position: absolute;
+    top: 5px;
+    right: 7px;
+    background: none;
+    border: none;
+    color: var(--parchment-dim);
+    cursor: pointer;
+    font-size: 12px;
+    opacity: .4;
+    line-height: 1;
+    padding: 2px 4px;
+    transition: opacity .2s, color .2s;
+}
+.sel-card-delete:hover { opacity: 1; color: var(--fail); }
+.sel-add-btn {
+    background: transparent;
+    border: 1px dashed var(--gold-dim);
+    border-radius: var(--radius);
+    color: var(--gold-dim);
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    letter-spacing: .14em;
+    padding: 10px 28px;
+    cursor: pointer;
+    transition: border-color .2s, color .2s;
+}
+.sel-add-btn:hover { border-color: var(--gm-accent); color: var(--gm-accent); }
+.sel-new-form {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    width: 100%;
+    max-width: 360px;
+}
+.sel-new-input {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--parchment);
+    font-family: 'EB Garamond', serif;
+    font-size: 14px;
+    padding: 8px 12px;
+    width: 100%;
+    outline: none;
+    transition: border-color .2s;
+}
+.sel-new-input:focus { border-color: var(--gm-accent); }
+.sel-new-btns { display: flex; gap: 8px; justify-content: center; }
+.sel-confirm-btn {
+    background: var(--gm-accent);
+    border: none;
+    border-radius: var(--radius);
+    color: #fff;
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    letter-spacing: .1em;
+    padding: 8px 20px;
+    cursor: pointer;
+    opacity: .85;
+    transition: opacity .2s;
+}
+.sel-confirm-btn:hover { opacity: 1; }
+.sel-cancel-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--parchment-dim);
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    letter-spacing: .1em;
+    padding: 8px 20px;
+    cursor: pointer;
+    transition: border-color .2s, color .2s;
+}
+.sel-cancel-btn:hover { border-color: var(--parchment-dim); color: var(--parchment); }
+#app-wrapper { flex: 1; flex-direction: column; min-height: 0; }
+
+/* Editable campaign name in topbar */
+.campaign-name-input {
+    background: none;
+    border: none;
+    border-bottom: 1px solid transparent;
+    color: var(--parchment-dim);
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    letter-spacing: .08em;
+    padding: 0 2px;
+    width: 140px;
+    outline: none;
+    cursor: pointer;
+    transition: border-color .2s, color .2s;
+}
+.campaign-name-input:hover { border-bottom-color: rgba(201,168,76,.3); }
+.campaign-name-input:focus { border-bottom-color: var(--gold-dim); color: var(--parchment); cursor: text; }

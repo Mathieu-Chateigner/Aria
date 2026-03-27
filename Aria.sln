@@ -25,6 +25,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Overlay", "Overlay", "{D1B2
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Docs", "Docs", "{E1B2C3D4-E5F6-7890-ABCD-EF1234567894}"
 	ProjectSection(SolutionItems) = preProject
+		Docs\Aide aux combats.pdf = Docs\Aide aux combats.pdf
 		Docs\bugs_and_issues.md = Docs\bugs_and_issues.md
 		Docs\development_plan.md = Docs\development_plan.md
 		Docs\keys.txt = Docs\keys.txt

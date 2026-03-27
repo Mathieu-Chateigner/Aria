@@ -31,31 +31,165 @@ let dddiceResizeHandler = null;  // stored so we can remove it before re-registe
 const players = new Map();
 const PRESENCE_TIMEOUT = 30000; // 30s offline threshold
 
-// Monsters array
-let monsters = JSON.parse(localStorage.getItem('aria-gm-monsters') || '[]');
+// Campaign state — loaded after selection
+let currentCampaignId = null;
+let monsters = [];
 let newMonsterAttacks = [];
+let rollFeed = [];
+let cardHistory = [];
+let sweepIntervalId = null;
+let gmClickHandlerRegistered = false;
 
-// Roll feed
-let rollFeed = JSON.parse(localStorage.getItem('aria-gm-rolls') || '[]');
+// ═══════════════════════════════════════════
+//  CAMPAIGN MANAGEMENT
+// ═══════════════════════════════════════════
+function monstersKey()  { return 'aria-gm-monsters-'    + currentCampaignId; }
+function rollsKey()     { return 'aria-gm-rolls-'        + currentCampaignId; }
+function cardHistKey()  { return 'aria-gm-card-history-' + currentCampaignId; }
 
-// Card history
-let cardHistory = JSON.parse(localStorage.getItem('aria-gm-card-history') || '[]');
+function getCampaigns() { return JSON.parse(localStorage.getItem('aria-gm-campaigns') || '[]'); }
+function saveCampaigns(campaigns) { localStorage.setItem('aria-gm-campaigns', JSON.stringify(campaigns)); }
 
+function migrateGMIfNeeded() {
+    if (localStorage.getItem('aria-gm-campaigns')) return;
+    const oldMonsters = localStorage.getItem('aria-gm-monsters');
+    const oldRolls    = localStorage.getItem('aria-gm-rolls');
+    const oldCards    = localStorage.getItem('aria-gm-card-history');
+    if (!oldMonsters && !oldRolls && !oldCards) return;
+    const id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+    saveCampaigns([{ id, name: 'Campagne 1' }]);
+    if (oldMonsters) localStorage.setItem('aria-gm-monsters-' + id, oldMonsters);
+    if (oldRolls)    localStorage.setItem('aria-gm-rolls-' + id, oldRolls);
+    if (oldCards)    localStorage.setItem('aria-gm-card-history-' + id, oldCards);
+}
+
+function loadCampaignState(id) {
+    const campaigns = getCampaigns();
+    if (!campaigns.find(c => c.id === id)) return false;
+    currentCampaignId = id;
+    monsters  = JSON.parse(localStorage.getItem(monstersKey())  || '[]');
+    rollFeed  = JSON.parse(localStorage.getItem(rollsKey())     || '[]');
+    cardHistory = JSON.parse(localStorage.getItem(cardHistKey()) || '[]');
+    return true;
+}
+
+function renderCampaignScreen() {
+    const campaigns = getCampaigns();
+    const grid = document.getElementById('campaign-grid');
+    grid.innerHTML = '';
+    if (campaigns.length === 0) {
+        grid.innerHTML = '<div class="sel-empty">Aucune campagne. Créez-en une pour commencer.</div>';
+        return;
+    }
+    campaigns.forEach(c => {
+        const card = document.createElement('div');
+        card.className = 'sel-card';
+        card.innerHTML = `<button class="sel-card-delete" onclick="event.stopPropagation();deleteCampaign('${c.id}')" title="Supprimer">✕</button><div class="sel-card-name">${c.name}</div>`;
+        card.addEventListener('click', () => selectCampaign(c.id));
+        grid.appendChild(card);
+    });
+}
+
+function showSelectionScreen() {
+    document.getElementById('selection-screen').style.display = 'flex';
+    document.getElementById('app-wrapper').style.display = 'none';
+    document.getElementById('new-campaign-form').style.display = 'none';
+    renderCampaignScreen();
+}
+
+function showApp() {
+    document.getElementById('selection-screen').style.display = 'none';
+    document.getElementById('app-wrapper').style.display = 'flex';
+}
+
+function selectCampaign(id) {
+    if (!loadCampaignState(id)) return;
+    showApp();
+    initApp();
+}
+
+function deleteCampaign(id) {
+    if (!confirm('Supprimer cette campagne ? Tous les monstres et données seront perdus.')) return;
+    const campaigns = getCampaigns().filter(c => c.id !== id);
+    saveCampaigns(campaigns);
+    localStorage.removeItem('aria-gm-monsters-' + id);
+    localStorage.removeItem('aria-gm-rolls-' + id);
+    localStorage.removeItem('aria-gm-card-history-' + id);
+    renderCampaignScreen();
+}
+
+function createCampaign() {
+    document.getElementById('new-campaign-form').style.display = 'flex';
+    document.getElementById('new-campaign-name').value = '';
+    document.getElementById('new-campaign-name').focus();
+}
+
+function confirmCreateCampaign() {
+    const name = document.getElementById('new-campaign-name').value.trim() || 'Nouvelle campagne';
+    const id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+    const campaigns = getCampaigns();
+    campaigns.push({ id, name });
+    saveCampaigns(campaigns);
+    document.getElementById('new-campaign-form').style.display = 'none';
+    selectCampaign(id);
+}
+
+function cancelCreateCampaign() {
+    document.getElementById('new-campaign-form').style.display = 'none';
+}
+
+function saveCampaignName(input) {
+    const name = input.value.trim();
+    const campaigns = getCampaigns();
+    const camp = campaigns.find(c => c.id === currentCampaignId);
+    if (!camp) return;
+    if (!name) { input.value = camp.name; return; }
+    camp.name = name;
+    saveCampaigns(campaigns);
+}
+
+function switchCampaign() {
+    if (currentCampaignId) {
+        saveMonsters();
+        localStorage.setItem(rollsKey(), JSON.stringify(rollFeed));
+        localStorage.setItem(cardHistKey(), JSON.stringify(cardHistory));
+    }
+    if (sweepIntervalId) { clearInterval(sweepIntervalId); sweepIntervalId = null; }
+    if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch(_){} dddiceSDK = null; }
+    if (ablyInstance) { try { ablyInstance.close(); } catch(_){} ablyInstance = null; }
+    ablyRolls = null; ablyCards = null; ablyDamage = null;
+    players.clear();
+    currentCampaignId = null;
+    showSelectionScreen();
+}
 
 // ═══════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', () => {
+    migrateGMIfNeeded();
     document.getElementById('version-display').textContent = 'v' + VERSION;
+    showSelectionScreen();
+});
+
+function initApp() {
     renderMonsters();
     renderRollFeed();
     renderCardHistory();
     loadConfigInputs();
     if (config.dddiceKey && config.dddiceRoom) initDddice();
     if (config.ablyKey) initAbly();
-    setInterval(sweepOfflinePlayers, 10000);
-    document.addEventListener('click', e => { if (!e.target.closest('.gm-select')) closeAllSelects(); });
-});
+    if (sweepIntervalId) clearInterval(sweepIntervalId);
+    sweepIntervalId = setInterval(sweepOfflinePlayers, 10000);
+    if (!gmClickHandlerRegistered) {
+        document.addEventListener('click', e => { if (!e.target.closest('.gm-select')) closeAllSelects(); });
+        gmClickHandlerRegistered = true;
+    }
+    const campaigns = getCampaigns();
+    const camp = campaigns.find(c => c.id === currentCampaignId);
+    const el = document.getElementById('campaign-display');
+    if (el && camp) el.value = camp.name;
+}
 
 // ═══════════════════════════════════════════
 //  CUSTOM SELECT
@@ -398,7 +532,7 @@ function applyPlayerHeal(playerId) {
 // ═══════════════════════════════════════════
 //  MONSTERS
 // ═══════════════════════════════════════════
-function saveMonsters() { localStorage.setItem('aria-gm-monsters', JSON.stringify(monsters)); }
+function saveMonsters() { localStorage.setItem(monstersKey(), JSON.stringify(monsters)); }
 function addMonster() {
     const name = document.getElementById('amf-name').value.trim();
     if (!name) { alert('Entrez un nom.'); return; }
@@ -597,7 +731,7 @@ function handleIncomingRoll(data) {
     if (!data) return;
     rollFeed.unshift({ ...data, receivedAt: Date.now() });
     if (rollFeed.length > 50) rollFeed.pop();
-    localStorage.setItem('aria-gm-rolls', JSON.stringify(rollFeed));
+    localStorage.setItem(rollsKey(), JSON.stringify(rollFeed));
     renderRollFeed();
 }
 function classify(roll, threshold, success) {
@@ -628,7 +762,7 @@ function renderRollFeed() {
         feed.appendChild(row);
     });
 }
-function clearRolls() { rollFeed = []; localStorage.removeItem('aria-gm-rolls'); renderRollFeed(); }
+function clearRolls() { rollFeed = []; localStorage.removeItem(rollsKey()); renderRollFeed(); }
 
 // ═══════════════════════════════════════════
 //  GM ROLLS
@@ -770,7 +904,7 @@ function renderCardHistory() {
 }
 function clearCardHistory() {
     cardHistory = [];
-    localStorage.removeItem('aria-gm-card-history');
+    localStorage.removeItem(cardHistKey());
     renderCardHistory();
 }
 async function handlePlayerCard(data) {
@@ -781,7 +915,7 @@ async function handlePlayerCard(data) {
     const who = data.playerName ? `${data.playerName} — ${label}` : label;
     document.getElementById('gm-card-info').textContent = who;
     cardHistory.unshift({ cardId: data.cardId, playerName: data.playerName || '?', ts: Date.now() });
-    localStorage.setItem('aria-gm-card-history', JSON.stringify(cardHistory));
+    localStorage.setItem(cardHistKey(), JSON.stringify(cardHistory));
     renderCardHistory();
     const flipWrap = document.getElementById('flip-wrap');
     const flipInner = flipWrap.querySelector('.flip-inner');

@@ -12,9 +12,30 @@
 </head>
 <body>
 
+    <!-- SELECTION SCREEN -->
+    <div id="selection-screen" style="position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9999;overflow-y:auto;padding:24px;">
+        <div class="sel-container">
+            <div class="sel-brand">♛ ARIA</div>
+            <div class="sel-subtitle">Choisissez votre personnage</div>
+            <div class="sel-grid" id="char-grid"></div>
+            <div class="sel-new-form" id="new-char-form" style="display:none;">
+                <input class="sel-new-input" id="new-char-name" placeholder="Nom du personnage" onkeydown="if(event.key==='Enter')confirmCreateCharacter()" />
+                <input class="sel-new-input" id="new-char-class" placeholder="Classe / Description" onkeydown="if(event.key==='Enter')confirmCreateCharacter()" />
+                <div class="sel-new-btns">
+                    <button class="sel-confirm-btn" onclick="confirmCreateCharacter()">Créer</button>
+                    <button class="sel-cancel-btn" onclick="cancelCreateCharacter()">Annuler</button>
+                </div>
+            </div>
+            <button class="sel-add-btn" onclick="createCharacter()">+ Nouveau personnage</button>
+        </div>
+    </div>
+
+    <!-- APP -->
+    <div id="app-wrapper" style="display:none;flex-direction:column;flex:1;">
+
     <!-- TOP BAR -->
     <div class="topbar">
-        <div class="topbar-title">♛ ARIA</div>
+        <div class="topbar-title" onclick="switchCharacter()" title="Changer de personnage" style="cursor:pointer;">♛ ARIA</div>
         <span style="font-family:'Cinzel',serif;font-size:9px;color:var(--gold-dim);letter-spacing:.1em;" id="version-display"></span>
         <span style="font-family:monospace;font-size:9px;color:var(--parchment-dim);opacity:.4;" id="pid-display"></span>
         <span class="topbar-badge">Joueur</span>
@@ -338,6 +359,8 @@
 
     <!-- dddice 3D dice canvas — full-screen, non-interactive -->
     <canvas id="dddice-canvas" style="position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:50;"></canvas>
+
+    </div><!-- /#app-wrapper -->
 
     <script src="aria-player.js"></script>
 

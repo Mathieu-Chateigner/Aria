@@ -12,11 +12,32 @@
 </head>
 <body>
 
+    <!-- SELECTION SCREEN -->
+    <div id="selection-screen" style="position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9999;overflow-y:auto;padding:24px;">
+        <div class="sel-container">
+            <div class="sel-brand">♛ ARIA</div>
+            <div class="sel-subtitle" style="color:var(--gm-accent);">Choisissez une campagne</div>
+            <div class="sel-grid" id="campaign-grid"></div>
+            <div class="sel-new-form" id="new-campaign-form" style="display:none;">
+                <input class="sel-new-input" id="new-campaign-name" placeholder="Nom de la campagne" onkeydown="if(event.key==='Enter')confirmCreateCampaign()" />
+                <div class="sel-new-btns">
+                    <button class="sel-confirm-btn" onclick="confirmCreateCampaign()">Créer</button>
+                    <button class="sel-cancel-btn" onclick="cancelCreateCampaign()">Annuler</button>
+                </div>
+            </div>
+            <button class="sel-add-btn" onclick="createCampaign()">+ Nouvelle campagne</button>
+        </div>
+    </div>
+
+    <!-- APP -->
+    <div id="app-wrapper" style="display:none;flex-direction:column;flex:1;">
+
     <!-- TOP BAR -->
     <div class="topbar">
-        <div class="topbar-title">♛ ARIA</div>
+        <div class="topbar-title" onclick="switchCampaign()" title="Changer de campagne" style="cursor:pointer;">♛ ARIA</div>
         <span style="font-family:'Cinzel',serif;font-size:9px;color:var(--gold-dim);letter-spacing:.1em;" id="version-display"></span>
         <span class="topbar-badge">Maître de Jeu</span>
+        <input class="campaign-name-input" id="campaign-display" value="" placeholder="Campagne" onblur="saveCampaignName(this)" onkeydown="if(event.key==='Enter')this.blur()" />
         <span class="topbar-spacer"></span>
         <span class="player-count" id="player-count">0 joueur(s) en ligne</span>
         <div class="status-row"><div class="status-dot" id="dddice-dot"></div><span id="dddice-status">dddice</span></div>
@@ -209,6 +230,8 @@
         <button class="config-save-btn" onclick="saveConfig()">Sauvegarder &amp; Connecter</button>
     </div>
 
+
+    </div><!-- /#app-wrapper -->
 
     <script src="aria-gm.js"></script>
 </body>

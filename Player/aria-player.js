@@ -21,48 +21,45 @@ function buildDeck() { return shuffle([...ALL_CARDS]); }
 //  STATE
 // ═══════════════════════════════════════════
 const DEFAULT_CHAR = {
-    name: "Ewald Asrahan",
-    class: "Disciple étranger à l'académie",
-    stats: { FOR: 9, DEX: 10, END: 15, INT: 14, CHA: 11, PV: 14 },
-    physical: { age: "28", taille: "", poids: "", yeux: "", cheveux: "", signes: "" },
+    name: "",
+    class: "",
+    stats: { FOR: 0, DEX: 0, END: 0, INT: 0, CHA: 0, PV: 0 },
+    physical: { age: "", taille: "", poids: "", yeux: "", cheveux: "", signes: "" },
     inventory: [],
     weapons: [{ nom: '', degats: '' }, { nom: '', degats: '' }, { nom: '', degats: '' }],
     protection: { nom: '', valeur: 0 },
     skills: [
-        { name: "Artisanat, construire", link: "DEX/INT", pct: 48 },
-        { name: "Combat rapproché", link: "FOR/DEX", pct: 38 },
-        { name: "Combat à distance", link: "FOR/DEX", pct: 38 },
-        { name: "Connaissance de la nature", link: "DEX/INT", pct: 58 },
-        { name: "Connaissance des secrets", link: "INT/CHA", pct: 70 },
-        { name: "Courir, sauter", link: "DEX/END", pct: 50 },
-        { name: "Discrétion", link: "DEX/CHA", pct: 50 },
-        { name: "Droit", link: "INT/CHA", pct: 40 },
-        { name: "Esquiver", link: "DEX/INT", pct: 48 },
-        { name: "Intimider", link: "FOR/CHA", pct: 40 },
-        { name: "Lire, écrire", link: "INT/CHA", pct: 70 },
-        { name: "Mentir, convaincre", link: "INT/CHA", pct: 50 },
-        { name: "Perception", link: "INT/CHA", pct: 70 },
-        { name: "Piloter", link: "DEX/END", pct: 50 },
-        { name: "Psychologie", link: "END/INT", pct: 58 },
-        { name: "Réflexes", link: "DEX/INT", pct: 38 },
-        { name: "Serrures et pièges", link: "DEX/END", pct: 50 },
-        { name: "Soigner", link: "INT/CHA", pct: 50 },
-        { name: "Survie", link: "END/INT", pct: 50 },
-        { name: "Voler", link: "DEX/INT", pct: 58 },
+        { name: "Artisanat, construire", link: "DEX/INT", pct: 0 },
+        { name: "Combat rapproché", link: "FOR/DEX", pct: 0 },
+        { name: "Combat à distance", link: "FOR/DEX", pct: 0 },
+        { name: "Connaissance de la nature", link: "DEX/INT", pct: 0 },
+        { name: "Connaissance des secrets", link: "INT/CHA", pct: 0 },
+        { name: "Courir, sauter", link: "DEX/END", pct: 0 },
+        { name: "Discrétion", link: "DEX/CHA", pct: 0 },
+        { name: "Droit", link: "INT/CHA", pct: 0 },
+        { name: "Esquiver", link: "DEX/INT", pct: 0 },
+        { name: "Intimider", link: "FOR/CHA", pct: 0 },
+        { name: "Lire, écrire", link: "INT/CHA", pct: 0 },
+        { name: "Mentir, convaincre", link: "INT/CHA", pct: 0 },
+        { name: "Perception", link: "INT/CHA", pct: 0 },
+        { name: "Piloter", link: "DEX/END", pct: 0 },
+        { name: "Psychologie", link: "END/INT", pct: 0 },
+        { name: "Réflexes", link: "DEX/INT", pct: 0 },
+        { name: "Serrures et pièges", link: "DEX/END", pct: 0 },
+        { name: "Soigner", link: "INT/CHA", pct: 0 },
+        { name: "Survie", link: "END/INT", pct: 0 },
+        { name: "Voler", link: "DEX/INT", pct: 0 },
     ],
-    specials: [{ name: "Bonneteau", desc: "Intervertir 2 petits objets dans le champ de vision", pct: 50 }]
+    specials: []
 };
 
-let character = JSON.parse(localStorage.getItem('aria-character') || 'null') || DEFAULT_CHAR;
+// Character will be loaded after selection
+let character = null;
+let currentCharId = null;
 
 // Per-tab unique ID — persists across refreshes (sessionStorage) but differs between tabs
 let playerId = sessionStorage.getItem('aria-player-id');
 if (!playerId) { playerId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 9); sessionStorage.setItem('aria-player-id', playerId); }
-if (!character.physical) character.physical = { age: '', taille: '', poids: '', yeux: '', cheveux: '', signes: '' };
-if (!character.inventory) character.inventory = [];
-if (!character.weapons) character.weapons = [{ nom: '', degats: '' }, { nom: '', degats: '' }, { nom: '', degats: '' }];
-if (!character.protection) character.protection = { nom: '', valeur: 0 };
-if (!character.potions) character.potions = [];
 
 let config = JSON.parse(localStorage.getItem('aria-config') || '{}');
 let bonusMalus = 0;
@@ -73,22 +70,155 @@ let dddiceSDK = null;            // ThreeDDice SDK instance
 let pendingDddiceRoll = null;    // { skillName, threshold } waiting for RollFinished event
 let dddiceRollSafetyTimer = null; // fallback timer in case RollFinished never fires
 let ablyRolls = null, ablyCards = null, ablyDamage = null;
+let ablyInstance = null;
 let currentHP = null;
+let presenceIntervalId = null;
 
-// card state
-const saved = JSON.parse(localStorage.getItem('aria-cards') || 'null');
-let cardDeck = saved?.deckIds?.map(id => cardById(id)).filter(Boolean) || buildDeck();
-let cardDrawn = new Set(saved?.drawn || []);
-let cardExcluded = new Set(saved?.excluded || []);
-let lastCardId = saved?.lastCardId || null;
+// Card state — initialized after character selection
+let cardDeck = null, cardDrawn = null, cardExcluded = null, lastCardId = null;
 let cardDrawing = false;
+
+// ═══════════════════════════════════════════
+//  CHARACTER MANAGEMENT
+// ═══════════════════════════════════════════
+function hpKey()   { return 'aria-current-hp-' + currentCharId; }
+function cardKey() { return 'aria-cards-'       + currentCharId; }
+
+function getCharacters() { return JSON.parse(localStorage.getItem('aria-characters') || '[]'); }
+function saveCharacters(chars) { localStorage.setItem('aria-characters', JSON.stringify(chars)); }
+function saveCurrentCharacter() {
+    if (!currentCharId) return;
+    const chars = getCharacters();
+    const idx = chars.findIndex(c => c.id === currentCharId);
+    const entry = { ...character, id: currentCharId };
+    if (idx >= 0) chars[idx] = entry;
+    else chars.push(entry);
+    saveCharacters(chars);
+}
+
+function migrateIfNeeded() {
+    if (localStorage.getItem('aria-characters')) return;
+    const oldChar = JSON.parse(localStorage.getItem('aria-character') || 'null');
+    if (!oldChar) return;
+    const id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+    saveCharacters([{ ...oldChar, id }]);
+    const oldHp = localStorage.getItem('aria-current-hp');
+    if (oldHp !== null) localStorage.setItem('aria-current-hp-' + id, oldHp);
+    const oldCards = localStorage.getItem('aria-cards');
+    if (oldCards !== null) localStorage.setItem('aria-cards-' + id, oldCards);
+}
+
+function loadCharacterState(id) {
+    const chars = getCharacters();
+    const data = chars.find(c => c.id === id);
+    if (!data) return false;
+    currentCharId = id;
+    character = { ...data };
+    delete character.id;
+    if (!character.physical) character.physical = { age:'', taille:'', poids:'', yeux:'', cheveux:'', signes:'' };
+    if (!character.inventory) character.inventory = [];
+    if (!character.weapons) character.weapons = [{ nom:'', degats:'' },{ nom:'', degats:'' },{ nom:'', degats:'' }];
+    if (!character.protection) character.protection = { nom:'', valeur:0 };
+    if (!character.potions) character.potions = [];
+    if (!character.specials) character.specials = [];
+    const saved = JSON.parse(localStorage.getItem(cardKey()) || 'null');
+    cardDeck = saved?.deckIds?.map(cid => cardById(cid)).filter(Boolean) || buildDeck();
+    cardDrawn = new Set(saved?.drawn || []);
+    cardExcluded = new Set(saved?.excluded || []);
+    lastCardId = saved?.lastCardId || null;
+    return true;
+}
+
+function renderSelectionScreen() {
+    const chars = getCharacters();
+    const grid = document.getElementById('char-grid');
+    grid.innerHTML = '';
+    if (chars.length === 0) {
+        grid.innerHTML = '<div class="sel-empty">Aucun personnage. Créez-en un pour commencer.</div>';
+        return;
+    }
+    chars.forEach(c => {
+        const card = document.createElement('div');
+        card.className = 'sel-card';
+        card.innerHTML = `<button class="sel-card-delete" onclick="event.stopPropagation();deleteCharacter('${c.id}')" title="Supprimer">✕</button><div class="sel-card-name">${c.name || '—'}</div><div class="sel-card-class">${c.class || ''}</div>`;
+        card.addEventListener('click', () => selectCharacter(c.id));
+        grid.appendChild(card);
+    });
+}
+
+function showSelectionScreen() {
+    document.getElementById('selection-screen').style.display = 'flex';
+    document.getElementById('app-wrapper').style.display = 'none';
+    document.getElementById('new-char-form').style.display = 'none';
+    renderSelectionScreen();
+}
+
+function showApp() {
+    document.getElementById('selection-screen').style.display = 'none';
+    document.getElementById('app-wrapper').style.display = 'flex';
+}
+
+function selectCharacter(id) {
+    if (!loadCharacterState(id)) return;
+    showApp();
+    initApp();
+}
+
+function deleteCharacter(id) {
+    if (!confirm('Supprimer ce personnage ? Cette action est irréversible.')) return;
+    const chars = getCharacters().filter(c => c.id !== id);
+    saveCharacters(chars);
+    localStorage.removeItem('aria-current-hp-' + id);
+    localStorage.removeItem('aria-cards-' + id);
+    renderSelectionScreen();
+}
+
+function createCharacter() {
+    document.getElementById('new-char-form').style.display = 'flex';
+    document.getElementById('new-char-name').value = '';
+    document.getElementById('new-char-class').value = '';
+    document.getElementById('new-char-name').focus();
+}
+
+function confirmCreateCharacter() {
+    const name = document.getElementById('new-char-name').value.trim() || 'Nouveau personnage';
+    const cls  = document.getElementById('new-char-class').value.trim();
+    const id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+    const chars = getCharacters();
+    chars.push({ ...JSON.parse(JSON.stringify(DEFAULT_CHAR)), name, class: cls, id });
+    saveCharacters(chars);
+    document.getElementById('new-char-form').style.display = 'none';
+    selectCharacter(id);
+}
+
+function cancelCreateCharacter() {
+    document.getElementById('new-char-form').style.display = 'none';
+}
+
+function switchCharacter() {
+    if (currentCharId) saveCurrentCharacter();
+    if (presenceIntervalId) { clearInterval(presenceIntervalId); presenceIntervalId = null; }
+    if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch(_){} dddiceSDK = null; }
+    clearTimeout(dddiceRollSafetyTimer);
+    pendingDddiceRoll = null; dddiceAPI = null;
+    if (ablyInstance) { try { ablyInstance.close(); } catch(_){} ablyInstance = null; }
+    ablyRolls = null; ablyCards = null; ablyDamage = null;
+    currentHP = null; bonusMalus = 0;
+    showSelectionScreen();
+}
 
 // ═══════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', () => {
+    migrateIfNeeded();
     document.getElementById('version-display').textContent = 'v' + VERSION;
     document.getElementById('pid-display').textContent = '#' + playerId.slice(-6);
+    showSelectionScreen();
+});
+
+function initApp() {
+    currentHP = null;
     initCurrentHP();
     renderAll();
     buildTracker();
@@ -97,12 +227,11 @@ window.addEventListener('DOMContentLoaded', () => {
     loadConfigInputs();
     if (config.dddiceKey && config.dddiceRoom) initDddice();
     if (config.ablyKey) initAbly();
-    // Auto-save on any input change in the character tab
     document.getElementById('tab-char').addEventListener('input', scheduleAutoSave);
     document.getElementById('tab-alchemy').addEventListener('input', scheduleAutoSave);
-    // Send presence heartbeat every 5s
-    setInterval(sendPresence, 5000);
-});
+    presenceIntervalId = setInterval(sendPresence, 5000);
+    document.title = character.name ? `ARIA – ${character.name}` : 'ARIA – Joueur';
+}
 
 // ═══════════════════════════════════════════
 //  TABS
@@ -119,7 +248,7 @@ function switchTab(id, btn) {
 // ═══════════════════════════════════════════
 function getMaxHP() { return character.stats.PV || 14; }
 function initCurrentHP() {
-    if (currentHP === null) currentHP = parseInt(localStorage.getItem('aria-current-hp'));
+    if (currentHP === null) currentHP = parseInt(localStorage.getItem(hpKey()));
     if (currentHP === null || isNaN(currentHP)) currentHP = getMaxHP();
 }
 function updateHPDisplay() {
@@ -156,7 +285,7 @@ function handleGMDamage(data) {
     const { damage, hpBefore, hpAfter, maxHP } = data;
     animateHPChange(hpBefore, hpAfter, maxHP);
     currentHP = hpAfter;
-    localStorage.setItem('aria-current-hp', currentHP);
+    localStorage.setItem(hpKey(), currentHP);
     updateHPDisplay();
     triggerDamageVFX(damage, false);
     showToast('gm-dmg-toast', `⚔ Dégâts reçus : -${damage} PV`);
@@ -166,7 +295,7 @@ function handleGMHeal(data) {
     const { amount, hpBefore, hpAfter, maxHP } = data;
     animateHPChange(hpBefore, hpAfter, maxHP);
     currentHP = hpAfter;
-    localStorage.setItem('aria-current-hp', currentHP);
+    localStorage.setItem(hpKey(), currentHP);
     updateHPDisplay();
     showHealNumber(amount);
     showToast('gm-heal-toast', `♥ Soins reçus : +${amount} PV`);
@@ -500,7 +629,7 @@ function applySoigner(success) {
             const after = Math.min(max, before + heal);
             animateHPChange(before, after, max);
             currentHP = after;
-            localStorage.setItem('aria-current-hp', currentHP);
+            localStorage.setItem(hpKey(), currentHP);
             updateHPDisplay();
             showHealNumber(heal);
             showToast('gm-heal-toast', `♥ Soins : +${heal} PV`);
@@ -509,7 +638,7 @@ function applySoigner(success) {
             const after = Math.max(0, before - dmg);
             animateHPChange(before, after, max);
             currentHP = after;
-            localStorage.setItem('aria-current-hp', currentHP);
+            localStorage.setItem(hpKey(), currentHP);
             updateHPDisplay();
             triggerDamageVFX(dmg, true);
             showToast('gm-dmg-toast', `⚔ Blessure : -${dmg} PV`);
@@ -688,7 +817,6 @@ function setDddiceStatus(ok, detail) {
 // ═══════════════════════════════════════════
 //  ABLY
 // ═══════════════════════════════════════════
-let ablyInstance = null;
 function initAbly() {
     try {
         ablyInstance = new Ably.Realtime({ key: config.ablyKey });
@@ -860,19 +988,19 @@ function renderPotions() {
 }
 function addPotion() {
     character.potions.push({ name: '', desc: '', ingredients: '', qty: 1 });
-    localStorage.setItem('aria-character', JSON.stringify(character));
+    saveCurrentCharacter();
     renderPotions();
 }
 function removePotion(i) {
     character.potions.splice(i, 1);
-    localStorage.setItem('aria-character', JSON.stringify(character));
+    saveCurrentCharacter();
     renderPotions();
 }
 function usePotion(i) {
     const p = character.potions[i];
     if (!p || !p.qty) return;
     p.qty--;
-    localStorage.setItem('aria-character', JSON.stringify(character));
+    saveCurrentCharacter();
     renderPotions();
     showToast('gm-heal-toast', `${p.name || 'Potion'} utilisée${p.qty > 0 ? ` (×${p.qty} restante${p.qty > 1 ? 's' : ''})` : ' — épuisée'}`);
 }
@@ -927,7 +1055,7 @@ function scheduleAutoSave() {
 }
 function autoSaveChar() {
     readEditorInputs();
-    localStorage.setItem('aria-character', JSON.stringify(character));
+    saveCurrentCharacter();
     // Refresh non-editor UI only — avoids rebuilding editor DOM and losing focus
     document.getElementById('char-display').textContent = `${character.name} — ${character.class}`;
     document.title = character.name ? `ARIA – ${character.name}` : 'ARIA – Joueur';
@@ -989,7 +1117,7 @@ function togglePill(id) {
     updateClearBtn(); saveCardState();
 }
 function clearExclusions() { if (cardDrawing) return; cardExcluded.clear(); refreshAllPills(); updateClearBtn(); saveCardState(); showCardStatus('Exclusions effacées'); }
-function saveCardState() { localStorage.setItem('aria-cards', JSON.stringify({ excluded: [...cardExcluded], drawn: [...cardDrawn], deckIds: cardDeck.map(c => c.id), lastCardId })); }
+function saveCardState() { localStorage.setItem(cardKey(), JSON.stringify({ excluded: [...cardExcluded], drawn: [...cardDrawn], deckIds: cardDeck.map(c => c.id), lastCardId })); }
 function updateDeckCount() {
     const n = cardDeck.length;
     document.getElementById('deck-count').textContent = n === 0 ? 'Vide' : `${n} carte${n !== 1 ? 's' : ''}`;
