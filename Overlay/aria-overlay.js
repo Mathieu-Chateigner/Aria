@@ -30,8 +30,16 @@ if (ABLY_KEY) {
                 diceFinished = false;
                 pendingRollData = null;
                 showRoll(data);
+            } else {
+                // Safety: if RollFinished never fires (e.g. SDK connected but not rendering),
+                // fall back to showing the result after 8s
+                setTimeout(() => {
+                    if (pendingRollData === data) {
+                        pendingRollData = null;
+                        showRoll(data);
+                    }
+                }, 8000);
             }
-            // Otherwise showRoll will be called from the RollFinished handler
         } else {
             // No SDK: fall back to the original 3s delay
             setTimeout(() => showRoll(data), 3000);
@@ -54,6 +62,12 @@ if (ABLY_KEY) {
 // ── DDDICE SDK ─────────────────────────────
 // Connects to the dddice room and renders incoming 3D dice rolls in the canvas.
 // Pass ?dddice_key=YOUR_KEY&dddice_room=YOUR_ROOM_SLUG in the overlay URL.
+function extractRoomSlug(val) {
+    if (!val) return '';
+    const m = val.match(/\/room\/([^/?#]+)/);
+    return m ? m[1] : val.trim();
+}
+
 if (DDDICE_KEY && DDDICE_ROOM) {
     (async () => {
         try {
@@ -61,9 +75,8 @@ if (DDDICE_KEY && DDDICE_ROOM) {
             const canvas = document.getElementById('dddice-canvas');
             const sdk = new ThreeDDice(canvas, DDDICE_KEY);
             sdk.start();
-            await sdk.connect(DDDICE_ROOM);
+            await sdk.connect(extractRoomSlug(DDDICE_ROOM));
             diceConnected = true;
-            window.addEventListener('resize', () => sdk.resize());
 
             sdk.on(ThreeDDiceRollEvent.RollFinished, () => {
                 setTimeout(() => sdk.clear(), 1500);

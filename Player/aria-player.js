@@ -72,7 +72,6 @@ let dddiceAPI = null;
 let dddiceSDK = null;            // ThreeDDice SDK instance
 let pendingDddiceRoll = null;    // { skillName, threshold } waiting for RollFinished event
 let dddiceRollSafetyTimer = null; // fallback timer in case RollFinished never fires
-let dddiceResizeHandler = null;  // stored so we can remove it before re-registering
 let ablyRolls = null, ablyCards = null, ablyDamage = null;
 let currentHP = null;
 
@@ -647,14 +646,20 @@ async function initDddice() {
             handleResult(skillName, threshold, total === 0 ? 100 : total);
         });
 
-        // Keep WebGL viewport in sync with window size
-        if (dddiceResizeHandler) window.removeEventListener('resize', dddiceResizeHandler);
-        dddiceResizeHandler = () => dddiceSDK?.resize();
-        window.addEventListener('resize', dddiceResizeHandler);
-
         dddiceAPI = { key: config.dddiceKey, room: slug, theme: sel.value };
         setDddiceStatus(true, themes.find(t => t.id === sel.value)?.name || sel.value);
         sel.onchange = () => { if (dddiceAPI) dddiceAPI.theme = sel.value; config.dddiceTheme = sel.value; localStorage.setItem('aria-config', JSON.stringify(config)); };
+
+        // Preload 3D assets without creating a server-side roll, so the first real roll is instant.
+        // loadThemeResources is an internal SDK method — call it directly to warm up models/textures/sounds.
+        try {
+            if (typeof dddiceSDK.loadThemeResources === 'function') {
+                await dddiceSDK.loadThemeResources([
+                    { type: 'd10x', theme: dddiceAPI.theme },
+                    { type: 'd10', theme: dddiceAPI.theme }
+                ]);
+            }
+        } catch (_) {}
     } catch (e) { console.error('dddice:', e); setDddiceStatus(false, e.message); dddiceSDK = null; dddiceAPI = null; }
 }
 async function rollViaDddice(skillName, threshold) {
@@ -710,6 +715,19 @@ function initAbly() {
     } catch (e) { console.error('Ably:', e); setAblyStatus(false); }
 }
 function publishRoll(data) { if (ablyRolls) ablyRolls.publish('roll', data); }
+function copyOverlayUrl() {
+    const base = window.location.href.replace(/\/Player\/[^/]+$/, '/Overlay/aria-overlay.html');
+    const params = new URLSearchParams({ mode: 'player', ably: config.ablyKey || '' });
+    if (config.dddiceKey) params.set('dddice_key', config.dddiceKey);
+    if (config.dddiceRoom) params.set('dddice_room', extractRoomSlug(config.dddiceRoom));
+    const url = `${base}?${params}`;
+    navigator.clipboard.writeText(url).then(() => {
+        const btn = document.querySelector('.config-modal button[onclick="copyOverlayUrl()"]');
+        const orig = btn.textContent;
+        btn.textContent = '✓ Copié !';
+        setTimeout(() => btn.textContent = orig, 2000);
+    });
+}
 function publishCard(type, extra = {}) {
     if (ablyCards) ablyCards.publish(type, { ...extra, excluded: [...cardExcluded], drawn: [...cardDrawn], deckIds: cardDeck.map(c => c.id), lastCardId });
 }
@@ -753,7 +771,6 @@ function saveConfig() {
     localStorage.setItem('aria-config', JSON.stringify(config));
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch (_) {} dddiceSDK = null; }
     clearTimeout(dddiceRollSafetyTimer);
-    if (dddiceResizeHandler) { window.removeEventListener('resize', dddiceResizeHandler); dddiceResizeHandler = null; }
     pendingDddiceRoll = null;
     dddiceAPI = null; ablyRolls = null; ablyCards = null; ablyDamage = null; ablyInstance = null;
     if (config.dddiceKey && config.dddiceRoom) initDddice();
