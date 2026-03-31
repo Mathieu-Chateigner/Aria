@@ -62,6 +62,7 @@ let playerId = sessionStorage.getItem('aria-player-id');
 if (!playerId) { playerId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 9); sessionStorage.setItem('aria-player-id', playerId); }
 
 let config = JSON.parse(localStorage.getItem('aria-config') || '{}');
+if (config.lightMode) document.body.classList.add('light-mode');
 let bonusMalus = 0;
 let multiplier = 1;
 let isRolling = false;
@@ -948,6 +949,9 @@ function setAblyStatus(ok) {
 // ═══════════════════════════════════════════
 //  CONFIG
 // ═══════════════════════════════════════════
+function applyTheme(light) {
+    document.body.classList.toggle('light-mode', !!light);
+}
 function loadConfigInputs() {
     const idEl = document.getElementById('cfg-identity-display');
     if (idEl) idEl.textContent = character.name || '—';
@@ -955,6 +959,7 @@ function loadConfigInputs() {
     document.getElementById('cfg-dddice-room').value = config.dddiceRoom || '';
     document.getElementById('cfg-dddice-theme').value = config.dddiceTheme || '';
     document.getElementById('cfg-ably-key').value = config.ablyKey || '';
+    document.getElementById('cfg-light-mode').checked = !!config.lightMode;
 }
 function saveConfig() {
     config = {
@@ -962,6 +967,7 @@ function saveConfig() {
         dddiceRoom: document.getElementById('cfg-dddice-room').value.trim(),
         dddiceTheme: document.getElementById('cfg-dddice-theme').value || '',
         ablyKey: document.getElementById('cfg-ably-key').value.trim(),
+        lightMode: document.getElementById('cfg-light-mode').checked,
     };
     localStorage.setItem('aria-config', JSON.stringify(config));
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch (_) {} dddiceSDK = null; }

@@ -21,6 +21,7 @@ function buildDeck() { return shuffle([...ALL_CARDS]); }
 //  STATE
 // ═══════════════════════════════════════════
 let config = JSON.parse(localStorage.getItem('aria-gm-config') || '{}');
+if (config.lightMode) document.body.classList.add('light-mode');
 let ablyInstance = null, ablyRolls = null, ablyCards = null, ablyDamage = null;
 let dddiceSDK = null;            // ThreeDDice SDK instance
 let dddiceAPI = null;            // { theme } once connected
@@ -890,10 +891,14 @@ function applyDamageToPlayer(playerId, amount) {
 // ═══════════════════════════════════════════
 //  CONFIG
 // ═══════════════════════════════════════════
+function applyTheme(light) {
+    document.body.classList.toggle('light-mode', !!light);
+}
 function loadConfigInputs() {
     document.getElementById('cfg-dddice-key').value = config.dddiceKey || '';
     document.getElementById('cfg-dddice-room').value = config.dddiceRoom || '';
     document.getElementById('cfg-ably-key').value = config.ablyKey || '';
+    document.getElementById('cfg-light-mode').checked = !!config.lightMode;
 }
 function saveConfig() {
     config = {
@@ -901,6 +906,7 @@ function saveConfig() {
         dddiceRoom: document.getElementById('cfg-dddice-room').value.trim(),
         dddiceTheme: document.getElementById('cfg-dddice-theme').value || '',
         ablyKey: document.getElementById('cfg-ably-key').value.trim(),
+        lightMode: document.getElementById('cfg-light-mode').checked,
     };
     localStorage.setItem('aria-gm-config', JSON.stringify(config));
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch (_) {} dddiceSDK = null; }

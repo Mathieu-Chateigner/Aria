@@ -258,6 +258,13 @@
         <input class="config-input" id="cfg-ably-key" placeholder="xxxxxxxx:xxxxxxxx" />
         <div style="margin-top:12px;" class="status-row"><div class="status-dot" id="cfg-dddice-dot"></div><span id="cfg-dddice-status">dddice non connecté</span></div>
         <div style="margin-top:6px;" class="status-row"><div class="status-dot" id="cfg-ably-dot"></div><span id="cfg-ably-status">Ably non connecté</span></div>
+        <div class="config-theme-row">
+            <span class="config-label" style="margin-bottom:0;">Mode clair</span>
+            <label class="theme-toggle">
+                <input type="checkbox" id="cfg-light-mode" onchange="applyTheme(this.checked)">
+                <span class="theme-toggle-slider"></span>
+            </label>
+        </div>
         <button class="config-save-btn" onclick="saveConfig()">Sauvegarder &amp; Connecter</button>
     </div>
 
