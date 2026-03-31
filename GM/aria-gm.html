@@ -54,6 +54,7 @@
                 <button class="tab-btn" onclick="switchTab('tab-rolls',this)">⚄ Jets</button>
                 <button class="tab-btn" onclick="switchTab('tab-gm-roll',this)">⚄ Jet MJ</button>
                 <button class="tab-btn" onclick="switchTab('tab-cards',this)">🂠 Cartes</button>
+                <button class="tab-btn" onclick="switchTab('tab-alchemy',this)">⚗ Alchimie</button>
             </div>
 
             <!-- JOUEURS -->
@@ -192,6 +193,36 @@
                     <div class="card-history-feed" id="card-history-feed">
                         <div class="rolls-empty">Aucun tirage pour l'instant…</div>
                     </div>
+                </div>
+            </div>
+            <!-- ALCHIMIE -->
+            <div class="tab-content" id="tab-alchemy">
+                <div class="add-monster-form">
+                    <h3>+ Nouvelle potion</h3>
+                    <div class="gm-pot-form-grid">
+                        <div>
+                            <label class="amf-label">Nom</label>
+                            <input class="amf-input" id="apf-name" placeholder="ex: Potion de soin" />
+                        </div>
+                        <div>
+                            <label class="amf-label">Succès (%)</label>
+                            <input class="amf-input" id="apf-chance" type="text" inputmode="numeric" placeholder="60" oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
+                        </div>
+                    </div>
+                    <div style="margin-top:8px;">
+                        <label class="amf-label">Description / Effet</label>
+                        <input class="amf-input" id="apf-desc" placeholder="ex: Restaure 1d6+2 PV" />
+                    </div>
+                    <div style="margin-top:8px;">
+                        <label class="amf-label">Ingrédients</label>
+                        <input class="amf-input" id="apf-ingredients" placeholder="ex: Herbe d'éclat, eau de source" />
+                    </div>
+                    <div style="margin-top:14px;">
+                        <button class="amf-add-btn" onclick="addGMPotion()">Ajouter au grimoire</button>
+                    </div>
+                </div>
+                <div class="gm-pot-list" id="gm-pot-list">
+                    <div class="alchemy-empty" id="gm-pot-empty">Aucune potion dans le grimoire.</div>
                 </div>
             </div>
         </div>

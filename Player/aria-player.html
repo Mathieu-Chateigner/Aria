@@ -108,8 +108,9 @@
                 <button class="tab-btn active" onclick="switchTab('tab-skills',this)">Compétences</button>
                 <button class="tab-btn" onclick="switchTab('tab-stats',this)">Caractéristiques</button>
                 <button class="tab-btn" onclick="switchTab('tab-free',this)">Jet libre</button>
-                <button class="tab-btn" onclick="switchTab('tab-cards',this)">Cartes</button>
-                <button class="tab-btn" onclick="switchTab('tab-alchemy',this)">⚗ Alchimie</button>
+                <button class="tab-btn" onclick="switchTab('tab-inventory',this)">Inventaire</button>
+                <button class="tab-btn" id="tab-btn-cards" onclick="switchTab('tab-cards',this)">Cartes</button>
+                <button class="tab-btn" id="tab-btn-alchemy" onclick="switchTab('tab-alchemy',this)">Alchimie</button>
                 <button class="tab-btn" onclick="switchTab('tab-char',this)">Personnage</button>
             </div>
 
@@ -153,6 +154,18 @@
                 </div>
             </div>
 
+            <!-- INVENTAIRE -->
+            <div class="tab-content" id="tab-inventory">
+                <div id="inv-vials-section"></div>
+                <div class="cs-col-hdr cs-inv-hdr">
+                    <span class="editor-label">Objet</span>
+                    <span class="editor-label center">Qté</span>
+                    <span></span>
+                </div>
+                <div class="cs-list-body" id="inv-editor-list"></div>
+                <div class="cs-block-footer"><button class="add-skill-btn" onclick="addInventoryRow()">+ Ajouter un objet</button></div>
+            </div>
+
             <!-- CARTES -->
             <div class="tab-content" id="tab-cards">
                 <div class="card-tab-layout">
@@ -185,17 +198,9 @@
             <div class="tab-content" id="tab-alchemy">
                 <div class="alchemy-header">
                     <div class="section-title" style="margin-bottom:0;">Potions</div>
-                    <button class="add-skill-btn" onclick="addPotion()">+ Ajouter</button>
-                </div>
-                <div class="potion-col-hdr">
-                    <span class="editor-label">Nom</span>
-                    <span class="editor-label">Description / Effet</span>
-                    <span class="editor-label">Ingrédients</span>
-                    <span class="editor-label center">Qté</span>
-                    <span></span>
                 </div>
                 <div id="potion-list"></div>
-                <div class="alchemy-empty" id="alchemy-empty">Aucune potion dans l'inventaire.</div>
+                <div class="alchemy-empty" id="alchemy-empty">Aucune potion. Le MJ vous accordera accès aux potions découvertes.</div>
             </div>
 
             <!-- PERSONNAGE -->
@@ -226,52 +231,40 @@
                         </div>
                     </div>
 
-                    <!-- Traits physiques | Protection & Blessures -->
-                    <div class="cs-pair">
-                        <div class="cs-block">
-                            <div class="cs-block-title">Traits physiques</div>
-                            <div class="cs-block-body">
-                                <div class="editor-form">
-                                    <div class="editor-field"><label class="editor-label">Âge</label><input class="editor-input" id="ed-age" placeholder="ex: 28" /></div>
-                                    <div class="editor-field"><label class="editor-label">Taille</label><input class="editor-input" id="ed-taille" placeholder="ex: 1m78" /></div>
-                                    <div class="editor-field"><label class="editor-label">Poids</label><input class="editor-input" id="ed-poids" placeholder="ex: 72 kg" /></div>
-                                    <div class="editor-field"><label class="editor-label">Yeux</label><input class="editor-input" id="ed-yeux" /></div>
-                                    <div class="editor-field"><label class="editor-label">Cheveux</label><input class="editor-input" id="ed-cheveux" /></div>
-                                    <div class="editor-field full"><label class="editor-label">Signes particuliers</label><input class="editor-input" id="ed-signes" /></div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="cs-block">
-                            <div class="cs-block-title">Protection</div>
-                            <div class="cs-block-body">
-                                <div class="editor-form">
-                                    <div class="editor-field full"><label class="editor-label">Armure</label><input class="editor-input" id="ed-prot-nom" /></div>
-                                    <div class="editor-field full"><label class="editor-label">Valeur armure</label><input class="editor-input" id="ed-prot-val" type="number" min="0" /></div>
-                                </div>
+                    <!-- Traits physiques -->
+                    <div class="cs-block">
+                        <div class="cs-block-title">Traits physiques</div>
+                        <div class="cs-block-body">
+                            <div class="editor-form">
+                                <div class="editor-field"><label class="editor-label">Âge</label><input class="editor-input" id="ed-age" placeholder="ex: 28" /></div>
+                                <div class="editor-field"><label class="editor-label">Taille</label><input class="editor-input" id="ed-taille" placeholder="ex: 1m78" /></div>
+                                <div class="editor-field"><label class="editor-label">Poids</label><input class="editor-input" id="ed-poids" placeholder="ex: 72 kg" /></div>
+                                <div class="editor-field"><label class="editor-label">Yeux</label><input class="editor-input" id="ed-yeux" /></div>
+                                <div class="editor-field"><label class="editor-label">Cheveux</label><input class="editor-input" id="ed-cheveux" /></div>
+                                <div class="editor-field full"><label class="editor-label">Signes particuliers</label><input class="editor-input" id="ed-signes" /></div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Armes | Inventaire -->
-                    <div class="cs-pair">
-                        <div class="cs-block">
-                            <div class="cs-block-title">Armes <span class="cs-hint">— ex&nbsp;: 1d6+2, 2d8</span></div>
-                            <div class="cs-col-hdr cs-weapons-hdr">
-                                <span class="editor-label">Nom</span>
-                                <span class="editor-label center">Dégâts</span>
+                    <!-- Protection -->
+                    <div class="cs-block">
+                        <div class="cs-block-title">Protection</div>
+                        <div class="cs-block-body">
+                            <div class="editor-form">
+                                <div class="editor-field full"><label class="editor-label">Armure</label><input class="editor-input" id="ed-prot-nom" /></div>
+                                <div class="editor-field full"><label class="editor-label">Valeur armure</label><input class="editor-input" id="ed-prot-val" type="number" min="0" /></div>
                             </div>
-                            <div class="cs-list-body" id="weapons-editor-list"></div>
                         </div>
-                        <div class="cs-block">
-                            <div class="cs-block-title">Inventaire</div>
-                            <div class="cs-col-hdr cs-inv-hdr">
-                                <span class="editor-label">Objet</span>
-                                <span class="editor-label center">Qté</span>
-                                <span></span>
-                            </div>
-                            <div class="cs-list-body" id="inv-editor-list"></div>
-                            <div class="cs-block-footer"><button class="add-skill-btn" onclick="addInventoryRow()">+ Ajouter un objet</button></div>
+                    </div>
+
+                    <!-- Armes -->
+                    <div class="cs-block">
+                        <div class="cs-block-title">Armes <span class="cs-hint">— ex&nbsp;: 1d6+2, 2d8</span></div>
+                        <div class="cs-col-hdr cs-weapons-hdr">
+                            <span class="editor-label">Nom</span>
+                            <span class="editor-label center">Dégâts</span>
                         </div>
+                        <div class="cs-list-body" id="weapons-editor-list"></div>
                     </div>
 
                     <!-- Compétences -->

@@ -1,7 +1,7 @@
 :root {
     --gold: #c9a84c;
     --gold-light: #e8c97a;
-    --gold-dim: #6b5020;
+    --gold-dim: #a07830;
     --parchment: #f0e6c8;
     --success: #4caf77;
     --success-crit: #a8ff78;
@@ -63,7 +63,7 @@ body {
 
 .wait-text {
     font-family: 'Cinzel',serif;
-    font-size: 9px;
+    font-size: 13px;
     letter-spacing: 0.25em;
     text-transform: uppercase;
     color: var(--gold-dim);
@@ -92,6 +92,7 @@ body {
     min-width: 400px;
     text-align: center;
     z-index: 10;
+    will-change: transform, opacity;
 }
 
     #roll-card.show {
@@ -382,7 +383,7 @@ body {
 }
 
 .card-bonus {
-    font-size: 11px;
+    font-size: 13px;
     color: var(--gold-dim);
     font-style: italic;
     margin-top: 8px;
@@ -534,6 +535,7 @@ body {
     position: fixed;
     top: 22%;
     left: 50%;
+    will-change: transform, opacity;
     transform: translateX(-50%);
     z-index: 202;
     font-family: 'Cinzel Decorative', serif;
@@ -622,7 +624,7 @@ body {
 
 .dmg-char-name {
     font-family: 'Cinzel', serif;
-    font-size: 11px;
+    font-size: 13px;
     letter-spacing: 0.2em;
     color: rgba(240,230,200,0.6);
     text-transform: uppercase;
@@ -845,6 +847,7 @@ body.shake {
     position: fixed;
     top: 28%;
     left: 50%;
+    will-change: transform, opacity;
     transform: translateX(-50%);
     z-index: 202;
     font-family: 'Cinzel Decorative', serif;

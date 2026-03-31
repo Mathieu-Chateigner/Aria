@@ -1,13 +1,13 @@
 :root {
     --gold: #c9a84c;
     --gold-light: #e8c97a;
-    --gold-dim: #6b5020;
+    --gold-dim: #a07830;
     --ink: #0d0b08;
     --bg: #111009;
     --bg2: #1a1610;
     --bg3: #221e14;
     --parchment: #f0e6c8;
-    --parchment-dim: #9e8e6a;
+    --parchment-dim: #c4b48a;
     --success: #4caf77;
     --fail: #c0392b;
     --border: rgba(201,168,76,0.15);
@@ -88,7 +88,7 @@ body {
     align-items: center;
     gap: 6px;
     font-family: 'Cinzel',serif;
-    font-size: 10px;
+    font-size: 12px;
     color: var(--parchment-dim);
 }
 
@@ -137,7 +137,7 @@ body {
 
 .bm-bar-label {
     font-family: 'Cinzel',serif;
-    font-size: 9px;
+    font-size: 13px;
     letter-spacing: .2em;
     color: var(--gold-dim);
     text-transform: uppercase;
@@ -204,7 +204,7 @@ body {
 
     .bm-btn.reset-btn {
         color: var(--parchment-dim);
-        font-size: 11px;
+        font-size: 13px;
     }
 
 .bm-custom-row {
@@ -258,7 +258,7 @@ body {
 
 .panel-header {
     font-family: 'Cinzel',serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: .2em;
     text-transform: uppercase;
     color: var(--gold-dim);
@@ -432,7 +432,7 @@ body {
 
 .skill-link {
     font-family: 'Cinzel',serif;
-    font-size: 10px;
+    font-size: 12px;
     color: var(--gold-dim);
     min-width: 54px;
 }
@@ -471,7 +471,7 @@ body {
 
 .stat-key {
     font-family: 'Cinzel',serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: .18em;
     color: var(--gold-dim);
     text-transform: uppercase;
@@ -494,7 +494,7 @@ body {
 
 .mult-bar-label {
     font-family: 'Cinzel',serif;
-    font-size: 9px;
+    font-size: 13px;
     letter-spacing: .2em;
     color: var(--gold-dim);
     text-transform: uppercase;
@@ -503,7 +503,7 @@ body {
 
 .mult-btn {
     font-family: 'Cinzel',serif;
-    font-size: 11px;
+    font-size: 13px;
     padding: 5px 12px;
     background: rgba(201,168,76,.07);
     border: 1px solid var(--border);
@@ -528,7 +528,7 @@ body {
 
 .field-label {
     font-family: 'Cinzel',serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: .15em;
     color: var(--gold-dim);
     text-transform: uppercase;
@@ -666,13 +666,13 @@ body {
 
 .deck-count {
     font-family: 'Cinzel',serif;
-    font-size: 11px;
+    font-size: 13px;
     color: var(--parchment-dim);
 }
 
 .card-action-btn {
     font-family: 'Cinzel',serif;
-    font-size: 11px;
+    font-size: 13px;
     padding: 5px 14px;
     background: rgba(201,168,76,.08);
     border: 1px solid var(--gold-dim);
@@ -694,7 +694,7 @@ body {
 
 .card-status {
     font-family: 'Cinzel',serif;
-    font-size: 11px;
+    font-size: 13px;
     color: var(--parchment-dim);
     min-height: 18px;
     text-align: center;
@@ -716,6 +716,7 @@ body {
     height: 100%;
     transform-style: preserve-3d;
     transition: transform .55s cubic-bezier(.4,0,.2,1);
+    will-change: transform;
 }
 
 .flip-wrap.flipped .flip-inner {
@@ -804,6 +805,7 @@ body {
     border-radius: 8px;
     background: linear-gradient(145deg,#1a1508,#0e0c06);
     border: 2px solid var(--gold-dim);
+    will-change: transform, opacity;
 }
 
     .fly-card.flying {
@@ -943,7 +945,7 @@ body {
 
 .rank-pill {
     font-family: 'Cinzel',serif;
-    font-size: 10px;
+    font-size: 12px;
     padding: 2px 6px;
     border: 1px solid rgba(201,168,76,.2);
     border-radius: 3px;
@@ -979,7 +981,7 @@ body {
 /* PERSONNAGE TAB — shared inputs */
 .editor-label {
     font-family: 'Cinzel',serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: .12em;
     color: var(--gold-dim);
     text-transform: uppercase;
@@ -1111,7 +1113,7 @@ body {
 /* buttons */
 .add-skill-btn {
     font-family: 'Cinzel',serif;
-    font-size: 11px;
+    font-size: 13px;
     background: none;
     border: 1px dashed var(--border);
     color: var(--parchment-dim);
@@ -1150,31 +1152,179 @@ body {
     margin-bottom: 10px;
 }
 
-.potion-col-hdr {
-    display: grid;
-    grid-template-columns: 1.4fr 2fr 1.5fr 52px auto auto;
-    gap: 6px;
-    padding: 0 0 4px;
+.alchemy-vials {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(201,168,76,.06);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 14px;
+    margin-bottom: 14px;
+}
+.alchemy-vials-label {
+    font-family: 'Cinzel', serif;
+    font-size: 13px;
+    color: var(--parchment-dim);
+    letter-spacing: .05em;
+}
+.alchemy-vials-ctrl {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.vial-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--gold);
+    font-family: 'Cinzel', serif;
+    font-size: 16px;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color .15s, color .15s;
+}
+.vial-btn:hover:not(:disabled) { border-color: var(--gold); color: var(--gold-light); }
+.vial-btn:disabled { opacity: .3; cursor: not-allowed; }
+.vial-count {
+    font-family: 'Cinzel', serif;
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--gold);
+    min-width: 32px;
+    text-align: center;
+}
+
+/* Vials row in inventory tab */
+.inv-vials-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 4px 12px;
     border-bottom: 1px solid var(--border);
-    margin-bottom: 4px;
+    margin-bottom: 8px;
+}
+.inv-vials-label {
+    font-family: 'Cinzel', serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--parchment);
+    letter-spacing: .04em;
+}
+
+/* Recipe rows — single line */
+.recipe-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 4px;
+    border-bottom: 1px solid var(--border);
+}
+.recipe-row:last-child { border-bottom: none; }
+.recipe-name {
+    font-family: 'Cinzel', serif;
+    font-size: 14px;
+    color: var(--parchment);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.recipe-meta {
+    flex: 1;
+    font-family: 'EB Garamond', serif;
+    font-size: 14px;
+    font-style: italic;
+    color: var(--parchment-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+.recipe-chance {
+    font-family: 'Cinzel', serif;
+    font-size: 13px;
+    color: var(--gold);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.recipe-craft-btn {
+    font-family: 'Cinzel', serif;
+    font-size: 12px;
+    letter-spacing: .05em;
+    background: rgba(201,168,76,.1);
+    border: 1px solid rgba(201,168,76,.25);
+    color: var(--gold);
+    padding: 5px 12px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: background .15s, border-color .15s;
+}
+.recipe-craft-btn:hover:not(:disabled) { background: rgba(201,168,76,.2); border-color: var(--gold-dim); }
+.recipe-craft-btn:disabled { opacity: .3; cursor: not-allowed; }
+
+.alchemy-section-hdr {
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--gold-dim);
+    padding: 8px 0 6px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 6px;
 }
 
 .potion-row {
-    display: grid;
-    grid-template-columns: 1.4fr 2fr 1.5fr 52px auto auto;
-    gap: 6px;
-    align-items: center;
-    padding: 4px 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 0;
     border-bottom: 1px solid rgba(201,168,76,.06);
 }
+.potion-row:last-child { border-bottom: none; }
 
-    .potion-row:last-child { border-bottom: none; }
-    .potion-row .editor-input { font-size: 14px; padding: 6px 8px; }
-    .potion-qty-input { color: var(--gold); font-family: 'Cinzel',serif; font-size: 14px; text-align: center; }
+.potion-info {
+    flex: 1;
+    min-width: 0;
+}
+.potion-name {
+    font-family: 'Cinzel', serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--parchment);
+    margin-bottom: 3px;
+}
+.potion-detail {
+    font-family: 'EB Garamond', serif;
+    font-size: 13px;
+    color: var(--parchment-dim);
+    margin-bottom: 1px;
+}
+.potion-ing { color: var(--gold-dim); }
+.potion-chance { color: var(--gold); font-family: 'Cinzel', serif; font-size: 12px; }
+
+.potion-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+.potion-qty {
+    font-family: 'Cinzel', serif;
+    font-size: 14px;
+    color: var(--gold);
+    min-width: 28px;
+    text-align: center;
+}
+.potion-qty.depleted { color: var(--parchment-dim); opacity: .5; }
 
 .potion-use-btn {
     font-family: 'Cinzel',serif;
-    font-size: 11px;
+    font-size: 13px;
     letter-spacing: .05em;
     background: linear-gradient(135deg,rgba(76,175,119,.2),rgba(40,100,65,.15));
     border: 1px solid rgba(76,175,119,.35);
@@ -1232,6 +1382,7 @@ body {
     padding: 40px 72px 48px;
     min-width: 400px;
     text-align: center;
+    will-change: transform, opacity;
 }
 
     .float-roll-card::before {
@@ -1539,7 +1690,7 @@ body {
 }
 
 .fc-bonus {
-    font-size: 11px;
+    font-size: 13px;
     color: var(--gold-dim);
     font-style: italic;
     margin-top: 6px;
@@ -1548,7 +1699,7 @@ body {
 
 .fc-dismiss {
     font-family: 'Cinzel',serif;
-    font-size: 10px;
+    font-size: 12px;
     color: var(--parchment-dim);
     text-align: center;
     margin-top: 16px;
@@ -1664,7 +1815,7 @@ body {
 /* ROLLING INDICATOR */
 .rolling-ind {
     font-family: 'Cinzel',serif;
-    font-size: 11px;
+    font-size: 13px;
     color: var(--gold-dim);
     display: none;
 }
@@ -1716,7 +1867,7 @@ body {
 
 .config-label {
     font-family: 'Cinzel',serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: .12em;
     color: var(--gold-dim);
     text-transform: uppercase;
@@ -1835,7 +1986,7 @@ body {
 
 .cs-block-title {
     font-family: 'Cinzel',serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: .2em;
     text-transform: uppercase;
     color: var(--gold-dim);
@@ -1914,7 +2065,7 @@ body {
 
 .cs-attr-label {
     font-family: 'Cinzel',serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: .15em;
     color: var(--gold-dim);
     text-transform: uppercase;
@@ -1940,7 +2091,7 @@ body {
 
 .cs-save-status {
     font-family: 'Cinzel',serif;
-    font-size: 11px;
+    font-size: 13px;
     letter-spacing: .12em;
     color: var(--success);
     opacity: 0;
@@ -1968,7 +2119,7 @@ body {
 
 .weap-roll-hint {
     font-family: 'Cinzel',serif;
-    font-size: 9px;
+    font-size: 13px;
     letter-spacing: .1em;
     color: var(--gold-dim);
     opacity: 0;
@@ -1994,7 +2145,7 @@ body {
     border-radius: var(--radius);
     color: var(--parchment);
     font-family: 'Cinzel',serif;
-    font-size: 11px;
+    font-size: 13px;
     padding: 6px 4px;
     cursor: pointer;
     line-height: 1.3;
@@ -2105,7 +2256,7 @@ body {
     border-radius: var(--radius);
     color: var(--gold-dim);
     font-family: 'Cinzel', serif;
-    font-size: 11px;
+    font-size: 13px;
     letter-spacing: .14em;
     padding: 10px 28px;
     cursor: pointer;
@@ -2143,7 +2294,7 @@ body {
     border-radius: var(--radius);
     color: var(--bg);
     font-family: 'Cinzel', serif;
-    font-size: 11px;
+    font-size: 13px;
     letter-spacing: .1em;
     padding: 8px 20px;
     cursor: pointer;
@@ -2156,7 +2307,7 @@ body {
     border-radius: var(--radius);
     color: var(--parchment-dim);
     font-family: 'Cinzel', serif;
-    font-size: 11px;
+    font-size: 13px;
     letter-spacing: .1em;
     padding: 8px 20px;
     cursor: pointer;

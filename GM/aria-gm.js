@@ -39,6 +39,9 @@ let rollFeed = [];
 let cardHistory = [];
 let sweepIntervalId = null;
 let gmClickHandlerRegistered = false;
+let renderPlayerCardsTimer = null;
+let renderMonstersTimer = null;
+let gmPotions = [];
 
 // ═══════════════════════════════════════════
 //  CAMPAIGN MANAGEMENT
@@ -46,6 +49,7 @@ let gmClickHandlerRegistered = false;
 function monstersKey()  { return 'aria-gm-monsters-'    + currentCampaignId; }
 function rollsKey()     { return 'aria-gm-rolls-'        + currentCampaignId; }
 function cardHistKey()  { return 'aria-gm-card-history-' + currentCampaignId; }
+function potionsKey()   { return 'aria-gm-potions-'      + currentCampaignId; }
 
 function getCampaigns() { return JSON.parse(localStorage.getItem('aria-gm-campaigns') || '[]'); }
 function saveCampaigns(campaigns) { localStorage.setItem('aria-gm-campaigns', JSON.stringify(campaigns)); }
@@ -67,9 +71,10 @@ function loadCampaignState(id) {
     const campaigns = getCampaigns();
     if (!campaigns.find(c => c.id === id)) return false;
     currentCampaignId = id;
-    monsters  = JSON.parse(localStorage.getItem(monstersKey())  || '[]');
-    rollFeed  = JSON.parse(localStorage.getItem(rollsKey())     || '[]');
+    monsters    = JSON.parse(localStorage.getItem(monstersKey())  || '[]');
+    rollFeed    = JSON.parse(localStorage.getItem(rollsKey())     || '[]');
     cardHistory = JSON.parse(localStorage.getItem(cardHistKey()) || '[]');
+    gmPotions   = JSON.parse(localStorage.getItem(potionsKey())  || '[]');
     return true;
 }
 
@@ -115,6 +120,7 @@ function deleteCampaign(id) {
     localStorage.removeItem('aria-gm-monsters-' + id);
     localStorage.removeItem('aria-gm-rolls-' + id);
     localStorage.removeItem('aria-gm-card-history-' + id);
+    localStorage.removeItem('aria-gm-potions-' + id);
     renderCampaignScreen();
 }
 
@@ -151,10 +157,14 @@ function saveCampaignName(input) {
 function switchCampaign() {
     if (currentCampaignId) {
         saveMonsters();
+        saveGMPotions();
         localStorage.setItem(rollsKey(), JSON.stringify(rollFeed));
         localStorage.setItem(cardHistKey(), JSON.stringify(cardHistory));
     }
+    gmPotions = [];
     if (sweepIntervalId) { clearInterval(sweepIntervalId); sweepIntervalId = null; }
+    if (renderPlayerCardsTimer) { clearTimeout(renderPlayerCardsTimer); renderPlayerCardsTimer = null; }
+    if (renderMonstersTimer) { clearTimeout(renderMonstersTimer); renderMonstersTimer = null; }
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch(_){} dddiceSDK = null; }
     if (ablyInstance) { try { ablyInstance.close(); } catch(_){} ablyInstance = null; }
     ablyRolls = null; ablyCards = null; ablyDamage = null;
@@ -176,6 +186,7 @@ function initApp() {
     renderMonsters();
     renderRollFeed();
     renderCardHistory();
+    renderGMPotions();
     loadConfigInputs();
     if (config.dddiceKey && config.dddiceRoom) initDddice();
     if (config.ablyKey) initAbly();
@@ -308,7 +319,7 @@ function initAbly() {
         ablyCards.subscribe('draw', msg => handlePlayerCard(msg.data));
         ablyCards.subscribe('reshuffle', () => handlePlayerReshuffle());
         // Listen for player presence heartbeats (published every 5s)
-        ablyDamage.subscribe('presence', msg => { console.log('[ARIA] presence received:', msg.data?.playerId?.slice(-6), msg.data?.name); handlePresence(msg.data); });
+        ablyDamage.subscribe('presence', msg => { handlePresence(msg.data); });
     } catch (e) { console.error('Ably:', e); setAblyStatus(false); }
 }
 function setAblyStatus(ok) {
@@ -330,7 +341,8 @@ function publishHeal(targetId, amount, hpBefore, hpAfter, maxHP) {
 function handlePresence(data) {
     if (!data?.playerId) return;
     players.set(data.playerId, { ...data, ts: Date.now() });
-    renderPlayerCards();
+    clearTimeout(renderPlayerCardsTimer);
+    renderPlayerCardsTimer = setTimeout(renderPlayerCards, 150);
 }
 function sweepOfflinePlayers() {
     const now = Date.now();
@@ -430,8 +442,29 @@ function openPlayerDetails(playerId) {
     const weapons = p.weapons || [];
     const inventory = p.inventory || [];
     const potions = p.potions || [];
+    const tabs = p.tabs || { cards: false, alchemy: false };
+    const grantedRecipeIds = new Set(p.potionRecipeIds || []);
 
     let html = '';
+
+    // Tab access toggles
+    html += `<div class="pdm-section">`;
+    html += `<div class="pdm-section-title">Accès aux onglets</div>`;
+    html += `<div class="pdm-tab-toggles">`;
+    html += `<button class="pdm-tab-toggle${tabs.cards ? ' active' : ''}" onclick="sendTabConfig('${playerId}','cards',${!tabs.cards})">🂠 Cartes</button>`;
+    html += `<button class="pdm-tab-toggle${tabs.alchemy ? ' active' : ''}" onclick="sendTabConfig('${playerId}','alchemy',${!tabs.alchemy})">⚗ Alchimie</button>`;
+    html += `</div></div>`;
+
+    // Alchemy — only show recipe grants if alchemy tab is enabled for this player
+    if (tabs.alchemy && gmPotions.length) {
+        html += `<div class="pdm-section"><div class="pdm-section-title">Recettes alchimiques</div><div class="pdm-tab-toggles">`;
+        for (const pot of gmPotions) {
+            const granted = grantedRecipeIds.has(pot.id);
+            const safeTitle = (pot.desc || '').replace(/"/g, '&quot;');
+            html += `<button class="pdm-tab-toggle${granted ? ' active' : ''}" onclick="sendPotionGrant('${playerId}','${pot.id}')" title="${safeTitle}">⚗ ${pot.name}</button>`;
+        }
+        html += `</div></div>`;
+    }
 
     // Stats + HP row
     html += `<div class="pdm-section">`;
@@ -500,6 +533,15 @@ function openPlayerDetails(playerId) {
 function closePlayerDetails() {
     document.getElementById('details-scrim').classList.remove('show');
     document.getElementById('player-details-modal').classList.remove('show');
+}
+function sendTabConfig(playerId, tab, enabled) {
+    if (!ablyDamage) return;
+    const p = players.get(playerId);
+    if (!p) return;
+    if (!p.tabs) p.tabs = { cards: false, alchemy: false };
+    p.tabs[tab] = enabled;
+    ablyDamage.publish('tab-config', { playerId, tabs: p.tabs });
+    openPlayerDetails(playerId); // refresh modal to reflect new state
 }
 
 function applyPlayerDamage(playerId) {
@@ -586,7 +628,8 @@ function doGMMonsterDamage() {
     const dmg = parseInt(document.getElementById('gm-monster-dmg-input').value); if (!dmg || dmg <= 0) return;
     m.pv = Math.max(0, m.pv - dmg);
     document.getElementById('gm-monster-dmg-input').value = '';
-    saveMonsters(); renderMonsters();
+    saveMonsters();
+    clearTimeout(renderMonstersTimer); renderMonstersTimer = setTimeout(renderMonsters, 50);
 }
 function doGMMonsterHeal() {
     const mId = parseInt(getSelectValue('gm-monster-select'));
@@ -594,7 +637,8 @@ function doGMMonsterHeal() {
     const amt = parseInt(document.getElementById('gm-monster-heal-input').value); if (!amt || amt <= 0) return;
     m.pv = Math.min(m.maxPV, m.pv + amt);
     document.getElementById('gm-monster-heal-input').value = '';
-    saveMonsters(); renderMonsters();
+    saveMonsters();
+    clearTimeout(renderMonstersTimer); renderMonstersTimer = setTimeout(renderMonsters, 50);
 }
 function rollDiceFormula(formula) {
     const expr = (formula || '').replace(/\s+/g, '').toLowerCase();
@@ -647,10 +691,12 @@ function onAttackSelectChange() {
 function renderMonsters() {
     const grid = document.getElementById('monsters-grid');
     const noM = document.getElementById('no-monsters');
+    grid.innerHTML = '';
     if (!monsters.length) {
-        grid.innerHTML = ''; grid.appendChild(noM); noM.style.display = ''; return;
+        if (noM) { noM.style.display = ''; grid.appendChild(noM); }
+        return;
     }
-    noM.style.display = 'none'; grid.innerHTML = '';
+    if (noM) noM.style.display = 'none';
     monsters.forEach(m => {
         const pct = m.maxPV > 0 ? m.pv / m.maxPV : 0;
         const hpColor = pct > 0.5 ? 'var(--fail)' : pct > 0.25 ? '#e85020' : '#ff4444';
@@ -939,4 +985,72 @@ function handlePlayerReshuffle() {
     flipWrap.classList.remove('flipped'); flipWrap.classList.add('hidden');
     document.getElementById('drawn-card').classList.remove('ready');
     document.getElementById('gm-card-info').textContent = 'Jeu mélangé par le joueur';
+}
+
+// ═══════════════════════════════════════════
+//  GM ALCHEMY
+// ═══════════════════════════════════════════
+function saveGMPotions() { if (currentCampaignId) localStorage.setItem(potionsKey(), JSON.stringify(gmPotions)); }
+
+function addGMPotion() {
+    const name = document.getElementById('apf-name').value.trim();
+    if (!name) { alert('Entrez un nom.'); return; }
+    const desc = document.getElementById('apf-desc').value.trim();
+    const ingredients = document.getElementById('apf-ingredients').value.trim();
+    const successChance = parseInt(document.getElementById('apf-chance').value) || 0;
+    const id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+    gmPotions.push({ id, name, desc, ingredients, successChance });
+    saveGMPotions();
+    ['apf-name', 'apf-desc', 'apf-ingredients', 'apf-chance'].forEach(eid => { const el = document.getElementById(eid); if (el) el.value = ''; });
+    renderGMPotions();
+}
+
+function removeGMPotion(id) {
+    gmPotions = gmPotions.filter(p => p.id !== id);
+    saveGMPotions();
+    renderGMPotions();
+}
+
+function updateGMPotion(id, field, value) {
+    const p = gmPotions.find(p => p.id === id);
+    if (!p) return;
+    p[field] = value;
+    saveGMPotions();
+}
+
+function renderGMPotions() {
+    const list = document.getElementById('gm-pot-list');
+    const empty = document.getElementById('gm-pot-empty');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!gmPotions.length) {
+        if (empty) { empty.style.display = ''; list.appendChild(empty); }
+        return;
+    }
+    if (empty) empty.style.display = 'none';
+    gmPotions.forEach(p => {
+        const row = document.createElement('div');
+        row.className = 'gm-pot-row';
+        row.innerHTML = `
+            <div class="gm-pot-fields">
+                <input class="amf-input" value="${p.name}" placeholder="Nom" oninput="updateGMPotion('${p.id}','name',this.value)" />
+                <input class="amf-input" value="${p.desc || ''}" placeholder="Description / Effet" oninput="updateGMPotion('${p.id}','desc',this.value)" />
+                <input class="amf-input" value="${p.ingredients || ''}" placeholder="Ingrédients" oninput="updateGMPotion('${p.id}','ingredients',this.value)" />
+                <input class="amf-input gm-pot-chance" type="text" inputmode="numeric" value="${p.successChance || ''}" placeholder="%" oninput="this.value=this.value.replace(/[^0-9]/g,'');updateGMPotion('${p.id}','successChance',+this.value||0)" />
+            </div>
+            <button class="del-btn" onclick="removeGMPotion('${p.id}')">✕</button>`;
+        list.appendChild(row);
+    });
+}
+
+function sendPotionGrant(playerId, potionId) {
+    if (!ablyDamage) return;
+    const p = gmPotions.find(p => p.id === potionId);
+    if (!p) return;
+    ablyDamage.publish('potion-grant', { playerId, potion: { ...p } });
+    openPlayerDetails(playerId); // refresh to show granted state
+}
+function sendVialGrant(playerId, qty) {
+    if (!ablyDamage) return;
+    ablyDamage.publish('vial-grant', { playerId, qty });
 }

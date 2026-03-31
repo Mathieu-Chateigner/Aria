@@ -77,6 +77,13 @@ let presenceIntervalId = null;
 // Card state — initialized after character selection
 let cardDeck = null, cardDrawn = null, cardExcluded = null, lastCardId = null;
 let cardDrawing = false;
+let cardStatusTimer = null;
+
+// tab access granted by GM — stored per character in localStorage
+let playerTabs = { cards: false, alchemy: false };
+
+// pending craft recipe index — set before a roll, cleared by handleResult
+let pendingCraft = null;
 
 // ═══════════════════════════════════════════
 //  CHARACTER MANAGEMENT
@@ -120,6 +127,8 @@ function loadCharacterState(id) {
     if (!character.weapons) character.weapons = [{ nom:'', degats:'' },{ nom:'', degats:'' },{ nom:'', degats:'' }];
     if (!character.protection) character.protection = { nom:'', valeur:0 };
     if (!character.potions) character.potions = [];
+    if (!character.potionRecipes) character.potionRecipes = [];
+    if (character.vials === undefined || character.vials === null) character.vials = 0;
     if (!character.specials) character.specials = [];
     const saved = JSON.parse(localStorage.getItem(cardKey()) || 'null');
     cardDeck = saved?.deckIds?.map(cid => cardById(cid)).filter(Boolean) || buildDeck();
@@ -219,6 +228,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
 function initApp() {
     currentHP = null;
+    playerTabs = JSON.parse(localStorage.getItem('aria-player-tabs-' + currentCharId) || '{"cards":false,"alchemy":false}');
     initCurrentHP();
     renderAll();
     buildTracker();
@@ -227,8 +237,11 @@ function initApp() {
     loadConfigInputs();
     if (config.dddiceKey && config.dddiceRoom) initDddice();
     if (config.ablyKey) initAbly();
+    applyTabVisibility();
     document.getElementById('tab-char').addEventListener('input', scheduleAutoSave);
+    document.getElementById('tab-inventory').addEventListener('input', scheduleAutoSave);
     document.getElementById('tab-alchemy').addEventListener('input', scheduleAutoSave);
+    if (presenceIntervalId) clearInterval(presenceIntervalId);
     presenceIntervalId = setInterval(sendPresence, 5000);
     document.title = character.name ? `ARIA – ${character.name}` : 'ARIA – Joueur';
 }
@@ -241,6 +254,20 @@ function switchTab(id, btn) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.getElementById(id).classList.add('active');
     btn.classList.add('active');
+}
+function applyTabVisibility() {
+    const btnCards = document.getElementById('tab-btn-cards');
+    const btnAlchemy = document.getElementById('tab-btn-alchemy');
+    if (!btnCards || !btnAlchemy) return;
+    btnCards.style.display = playerTabs.cards ? '' : 'none';
+    btnAlchemy.style.display = playerTabs.alchemy ? '' : 'none';
+    // If the currently active tab was just hidden, fall back to Compétences
+    if (!playerTabs.cards && document.getElementById('tab-cards').classList.contains('active')) {
+        switchTab('tab-skills', document.querySelector('.tab-btn'));
+    }
+    if (!playerTabs.alchemy && document.getElementById('tab-alchemy').classList.contains('active')) {
+        switchTab('tab-skills', document.querySelector('.tab-btn'));
+    }
 }
 
 // ═══════════════════════════════════════════
@@ -398,7 +425,15 @@ function updateBMDisplay() {
     const el = document.getElementById('bm-display');
     el.textContent = (bonusMalus > 0 ? '+' : '') + bonusMalus;
     el.className = 'bm-display' + (bonusMalus > 0 ? ' positive' : bonusMalus < 0 ? ' negative' : '');
-    renderSkills();
+    // Update only the percentage text in existing skill elements — no DOM rebuild
+    document.getElementById('skill-list').querySelectorAll('.skill-item').forEach((div, i) => {
+        const skill = (character.skills || [])[i];
+        if (skill) div.querySelector('.skill-pct').textContent = Math.max(1, Math.min(100, skill.pct + bonusMalus)) + '%';
+    });
+    document.getElementById('special-list').querySelectorAll('.skill-item').forEach((div, i) => {
+        const sp = (character.specials || [])[i];
+        if (sp) div.querySelector('.skill-pct').textContent = Math.max(1, Math.min(100, sp.pct + bonusMalus)) + '%';
+    });
 }
 
 // ═══════════════════════════════════════════
@@ -413,6 +448,7 @@ function renderAll() {
     renderInventorySidebar();
     renderCombatSidebar();
     renderPotions();
+    renderVialsInInventory();
     renderEditorForm();
 }
 
@@ -618,6 +654,7 @@ function handleResult(skillName, threshold, roll) {
     showFloatCard(data);
     publishRoll(data);
     if (skillName === 'Soigner') applySoigner(success);
+    if (pendingCraft !== null) { applyCraft(success, pendingCraft); pendingCraft = null; }
 }
 function applySoigner(success) {
     // Small delay so the float card resolves first
@@ -830,6 +867,34 @@ function initAbly() {
         ablyDamage.subscribe(msg => {
             const d = msg.data;
             if (!d || d.source === 'player') return;
+            if (msg.name === 'tab-config') {
+                if (d.playerId !== myId) return;
+                playerTabs = { ...playerTabs, ...d.tabs };
+                localStorage.setItem('aria-player-tabs-' + currentCharId, JSON.stringify(playerTabs));
+                applyTabVisibility();
+                return;
+            }
+            if (msg.name === 'potion-grant') {
+                if (d.playerId !== myId) return;
+                if (!d.potion) return;
+                if (!character.potionRecipes) character.potionRecipes = [];
+                if (!character.potionRecipes.find(r => r.id === d.potion.id)) {
+                    character.potionRecipes.push({ ...d.potion });
+                    saveCurrentCharacter();
+                    renderPotions();
+                    showToast('gm-heal-toast', `Recette reçue : ${d.potion.name}`);
+                }
+                return;
+            }
+            if (msg.name === 'vial-grant') {
+                if (d.playerId !== myId) return;
+                character.vials = (character.vials ?? 0) + (d.qty || 1);
+                saveCurrentCharacter();
+                renderPotions();
+                const n = d.qty || 1;
+                showToast('gm-heal-toast', `${n} fiole${n > 1 ? 's' : ''} reçue${n > 1 ? 's' : ''}`);
+                return;
+            }
             if (d.targetId && d.targetId !== myId) return;
             if (msg.name === 'damage') handleGMDamage(d);
             if (msg.name === 'heal') handleGMHeal(d);
@@ -861,7 +926,6 @@ function publishCard(type, extra = {}) {
 }
 function sendPresence() {
     if (!ablyDamage) { console.warn('[ARIA] sendPresence: ablyDamage not ready'); return; }
-    console.log('[ARIA] sendPresence →', playerId.slice(-6), character.name);
     ablyDamage.publish('presence', {
         playerId, name: character.name, charClass: character.class,
         hp: currentHP, maxHP: getMaxHP(), stats: character.stats,
@@ -871,6 +935,9 @@ function sendPresence() {
         weapons: character.weapons,
         inventory: character.inventory,
         potions: character.potions,
+        vials: character.vials ?? 0,
+        potionRecipeIds: (character.potionRecipes || []).map(r => r.id),
+        tabs: playerTabs,
     }, err => { if (err) console.error('[ARIA] publish error:', err); });
 }
 function setAblyStatus(ok) {
@@ -963,33 +1030,121 @@ function removeInventoryRow(i) { character.inventory.splice(i, 1); renderInvento
 
 // ── POTIONS ──────────────────────────────────
 function renderPotions() {
-    const list = document.getElementById('potion-list');
+    const container = document.getElementById('potion-list');
     const empty = document.getElementById('alchemy-empty');
-    if (!list) return;
+    if (!container) return;
+    const recipes = character.potionRecipes || [];
     const potions = character.potions || [];
-    list.innerHTML = '';
-    if (empty) empty.style.display = potions.length ? 'none' : '';
-    potions.forEach((p, i) => {
-        const row = document.createElement('div');
-        row.className = 'potion-row';
-        row.innerHTML = `
-            <input class="editor-input potion-name-input" value="${p.name || ''}" placeholder="Nom de la potion"
-                oninput="character.potions[${i}].name=this.value" />
-            <input class="editor-input potion-desc-input" value="${p.desc || ''}" placeholder="Effet…"
-                oninput="character.potions[${i}].desc=this.value" />
-            <input class="editor-input potion-ing-input" value="${p.ingredients || ''}" placeholder="Ingrédients…"
-                oninput="character.potions[${i}].ingredients=this.value" />
-            <input class="editor-input potion-qty-input" type="text" inputmode="numeric" value="${p.qty ?? 1}"
-                oninput="this.value=this.value.replace(/[^0-9]/g,'');character.potions[${i}].qty=+this.value||0;renderPotions()" />
-            <button class="potion-use-btn" onclick="usePotion(${i})" ${!p.qty ? 'disabled' : ''} title="Utiliser une dose">Utiliser</button>
-            <button class="del-btn" onclick="removePotion(${i})">✕</button>`;
-        list.appendChild(row);
-    });
+    const vials = character.vials ?? 0;
+
+    container.innerHTML = '';
+
+    // Vials counter
+    const vialsDiv = document.createElement('div');
+    vialsDiv.className = 'alchemy-vials';
+    vialsDiv.innerHTML = `
+        <span class="alchemy-vials-label">Fioles vides</span>
+        <div class="alchemy-vials-ctrl">
+            <button class="vial-btn" onclick="changeVials(-1)" ${vials <= 0 ? 'disabled' : ''}>−</button>
+            <span class="vial-count">${vials}</span>
+            <button class="vial-btn" onclick="changeVials(1)">+</button>
+        </div>`;
+    container.appendChild(vialsDiv);
+
+    // Recipes section
+    if (recipes.length) {
+        const hdr = document.createElement('div');
+        hdr.className = 'alchemy-section-hdr';
+        hdr.textContent = 'Recettes connues';
+        container.appendChild(hdr);
+        recipes.forEach((r, i) => {
+            const row = document.createElement('div');
+            row.className = 'recipe-row';
+            const meta = [r.ingredients || '', r.desc || ''].filter(Boolean).join(' — ');
+            row.innerHTML = `
+                <span class="recipe-name">${r.name}</span>
+                ${meta ? `<span class="recipe-meta">${meta}</span>` : '<span class="recipe-meta"></span>'}
+                <span class="recipe-chance">${r.successChance || 0}%</span>
+                <button class="recipe-craft-btn" onclick="craftPotion(${i})" ${vials <= 0 || isRolling ? 'disabled' : ''}>Créer</button>`;
+            container.appendChild(row);
+        });
+    }
+
+    // Crafted potions section
+    const stock = potions.filter(p => p.name);
+    if (stock.length) {
+        const hdr = document.createElement('div');
+        hdr.className = 'alchemy-section-hdr';
+        hdr.textContent = 'Potions en stock';
+        container.appendChild(hdr);
+        potions.forEach((p, i) => {
+            if (!p.name) return;
+            const row = document.createElement('div');
+            row.className = 'potion-row';
+            row.innerHTML = `
+                <div class="potion-info">
+                    <div class="potion-name">${p.name}</div>
+                </div>
+                <div class="potion-actions">
+                    <span class="potion-qty${!p.qty ? ' depleted' : ''}">×${p.qty ?? 0}</span>
+                    <button class="potion-use-btn" onclick="usePotion(${i})" ${!p.qty ? 'disabled' : ''}>Utiliser</button>
+                    <button class="del-btn" onclick="removePotion(${i})">✕</button>
+                </div>`;
+            container.appendChild(row);
+        });
+    }
+
+    const hasContent = recipes.length > 0 || stock.length > 0;
+    if (empty) empty.style.display = hasContent ? 'none' : '';
 }
-function addPotion() {
-    character.potions.push({ name: '', desc: '', ingredients: '', qty: 1 });
+function renderVialsInInventory() {
+    const el = document.getElementById('inv-vials-section');
+    if (!el) return;
+    const v = character.vials ?? 0;
+    el.innerHTML = `<div class="inv-vials-row">
+        <span class="inv-vials-label">Fioles vides</span>
+        <div class="alchemy-vials-ctrl">
+            <button class="vial-btn" onclick="changeVials(-1)" ${v <= 0 ? 'disabled' : ''}>−</button>
+            <span class="vial-count">${v}</span>
+            <button class="vial-btn" onclick="changeVials(1)">+</button>
+        </div>
+    </div>`;
+}
+function changeVials(delta) {
+    character.vials = Math.max(0, (character.vials ?? 0) + delta);
     saveCurrentCharacter();
+    renderVialsInInventory();
     renderPotions();
+}
+function craftPotion(recipeIdx) {
+    if ((character.vials ?? 0) <= 0 || isRolling) return;
+    const recipe = (character.potionRecipes || [])[recipeIdx];
+    if (!recipe) return;
+    character.vials = (character.vials ?? 1) - 1;
+    saveCurrentCharacter();
+    pendingCraft = recipeIdx;
+    doRoll(recipe.name, recipe.successChance || 0, true);
+}
+function applyCraft(success, recipeIdx) {
+    setTimeout(() => {
+        const recipe = (character.potionRecipes || [])[recipeIdx];
+        if (!recipe) return;
+        if (success) {
+            if (!character.potions) character.potions = [];
+            const existing = character.potions.find(p => p.recipeId === recipe.id);
+            if (existing) {
+                existing.qty = (existing.qty || 0) + 1;
+            } else {
+                character.potions.push({ recipeId: recipe.id, name: recipe.name, qty: 1 });
+            }
+            showToast('gm-heal-toast', `${recipe.name} créée avec succès !`);
+        } else {
+            showToast('gm-dmg-toast', `Création échouée — fiole brisée`);
+        }
+        saveCurrentCharacter();
+        renderPotions();
+        sendPresence();
+    }, 1500);
 }
 function removePotion(i) {
     character.potions.splice(i, 1);
@@ -1065,6 +1220,7 @@ function autoSaveChar() {
     renderInventorySidebar();
     renderCombatSidebar();
     renderPotions();
+    renderVialsInInventory();
     sendPresence();
     flashSaveStatus();
 }
@@ -1127,7 +1283,7 @@ function updateDeckCount() {
     updateClearBtn();
 }
 function updateClearBtn() { document.getElementById('clear-exclusions-btn').classList.toggle('visible', cardExcluded.size > 0); }
-function showCardStatus(msg) { const el = document.getElementById('card-status'); el.textContent = msg; clearTimeout(showCardStatus._t); showCardStatus._t = setTimeout(() => el.textContent = '', 2200); }
+function showCardStatus(msg) { const el = document.getElementById('card-status'); el.textContent = msg; clearTimeout(cardStatusTimer); cardStatusTimer = setTimeout(() => el.textContent = '', 2200); }
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 function renderCardContent(card) {
     const el = document.getElementById('drawn-card');
