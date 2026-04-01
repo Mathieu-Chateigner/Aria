@@ -293,6 +293,14 @@
         </div>
     </div>
 
+    <!-- SOIGNER TARGET PICKER -->
+    <div class="modal-scrim" id="soigner-scrim" onclick="cancelSoigner()"></div>
+    <div class="soigner-target-modal" id="soigner-target-modal">
+        <div class="stm-title">♥ Soigner — Choisir une cible</div>
+        <div id="stm-targets"></div>
+        <button class="stm-cancel" onclick="cancelSoigner()">Annuler</button>
+    </div>
+
     <!-- FLOAT ROLL CARD -->
     <div class="roll-scrim" id="roll-scrim" onclick="dismissFloatCard()"></div>
     <div class="float-roll-card" id="float-roll-card" onclick="dismissFloatCard()">
@@ -358,7 +366,10 @@
 
 
     <!-- dddice 3D dice canvas — full-screen, non-interactive -->
-    <canvas id="dddice-canvas" style="position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:50;"></canvas>
+    <!-- Wrapper controls visibility; SDK only has a ref to the canvas, not the wrapper -->
+    <div id="dddice-wrap" style="position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:50;visibility:hidden;">
+        <canvas id="dddice-canvas" style="width:100%;height:100%;display:block;"></canvas>
+    </div>
 
     </div><!-- /#app-wrapper -->
 

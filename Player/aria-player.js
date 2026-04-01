@@ -69,11 +69,15 @@ let isRolling = false;
 let dddiceAPI = null;
 let dddiceSDK = null;            // ThreeDDice SDK instance
 let pendingDddiceRoll = null;    // { skillName, threshold } waiting for RollFinished event
+let pendingSecondaryRoll = null; // { callback, mapFn } for non-d100 dice (d6, d3, weapon formula…)
 let dddiceRollSafetyTimer = null; // fallback timer in case RollFinished never fires
 let ablyRolls = null, ablyCards = null, ablyDamage = null;
 let ablyInstance = null;
 let currentHP = null;
 let presenceIntervalId = null;
+const knownPlayers = {}; // { playerId: { name, ts } } — other players seen via presence
+let soignerTarget = null; // null = self, or { playerId, name }
+let soignerPct = 0;
 
 // Card state — initialized after character selection
 let cardDeck = null, cardDrawn = null, cardExcluded = null, lastCardId = null;
@@ -210,7 +214,7 @@ function switchCharacter() {
     if (presenceIntervalId) { clearInterval(presenceIntervalId); presenceIntervalId = null; }
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch(_){} dddiceSDK = null; }
     clearTimeout(dddiceRollSafetyTimer);
-    pendingDddiceRoll = null; dddiceAPI = null;
+    pendingDddiceRoll = null; pendingSecondaryRoll = null; dddiceAPI = null;
     if (ablyInstance) { try { ablyInstance.close(); } catch(_){} ablyInstance = null; }
     ablyRolls = null; ablyCards = null; ablyDamage = null;
     currentHP = null; bonusMalus = 0;
@@ -459,9 +463,14 @@ function renderSkills() {
     (character.skills || []).forEach(skill => {
         const eff = Math.max(1, Math.min(100, skill.pct + bonusMalus));
         const div = document.createElement('div');
-        div.className = 'skill-item';
+        const isSoigner = skill.name === 'Soigner';
+        div.className = 'skill-item' + (isSoigner ? ' soigner-skill' : '');
         div.innerHTML = `<span class="skill-link">${skill.link || ''}</span><span class="skill-name">${skill.name}</span><span class="skill-pct">${eff}%</span>`;
-        div.addEventListener('click', () => doRoll(skill.name, skill.pct));
+        if (isSoigner) {
+            div.addEventListener('click', () => openSoignerTargetPicker(skill.pct));
+        } else {
+            div.addEventListener('click', () => doRoll(skill.name, skill.pct));
+        }
         list.appendChild(div);
     });
     const slist = document.getElementById('special-list');
@@ -561,10 +570,54 @@ function doFreeRoll() {
     if (isNaN(t) || t < 1 || t > 100) { alert('Seuil invalide (1-100).'); return; }
     doRoll(name, t, true);
 }
+// Roll a single die via dddice (3D animation); falls back to Math.random when SDK not ready.
+// d3 is simulated as d6 with ceil(v/2) mapping.
+async function rollDieViaDddice(sides, callback) {
+    if (!dddiceAPI || !dddiceSDK || pendingDddiceRoll || pendingSecondaryRoll) {
+        callback(Math.floor(Math.random() * sides) + 1);
+        return;
+    }
+    const dieType = sides === 3 ? 'd6' : `d${sides}`;
+    const mapFn   = sides === 3 ? v => Math.ceil(v / 2) : null;
+    pendingSecondaryRoll = { callback, mapFn };
+    showDddiceCanvas();
+    dddiceRollSafetyTimer = setTimeout(() => {
+        if (pendingSecondaryRoll) {
+            pendingSecondaryRoll = null;
+            hideDddiceCanvas();
+            const v = Math.floor(Math.random() * sides) + 1;
+            callback(v);
+        }
+    }, 12000);
+    try {
+        await dddiceSDK.roll([{ type: dieType, theme: dddiceAPI.theme }]);
+    } catch (e) {
+        clearTimeout(dddiceRollSafetyTimer);
+        pendingSecondaryRoll = null;
+        hideDddiceCanvas();
+        callback(Math.floor(Math.random() * sides) + 1);
+    }
+}
+// Parse "2d6+2" → { dice: ['d6','d6'], modifier: 2 }
+function formulaToDiceSpec(formula) {
+    const tokens = formula.replace(/\s+/g,'').toLowerCase().split(/(?=[+-])/);
+    const dice = []; let modifier = 0;
+    for (const token of tokens) {
+        if (!token) continue;
+        const sign = token[0] === '-' ? -1 : 1;
+        const raw  = token.replace(/^[+-]/,'');
+        const m = raw.match(/^(\d+)d(\d+)$/);
+        if (m) { for (let i = 0; i < +m[1]; i++) dice.push(`d${m[2]}`); }
+        else    { modifier += sign * (+raw || 0); }
+    }
+    return { dice, modifier };
+}
 function rollDie(sides) {
-    const result = Math.floor(Math.random() * sides) + 1;
-    showDieCard(`d${sides}`, result);
-    publishRoll({ skillName: `d${sides}`, threshold: null, roll: result, success: null, char: character.name, bonusMalus: 0, playerId });
+    if (pendingDddiceRoll || pendingSecondaryRoll) return;
+    rollDieViaDddice(sides, result => {
+        showDieCard(`d${sides}`, result);
+        publishRoll({ skillName: `d${sides}`, threshold: null, roll: result, success: null, char: character.name, bonusMalus: 0, playerId });
+    });
 }
 
 // Parse and roll a dice formula like "2d6+2", "1d8-1", "3d4", "5"
@@ -600,9 +653,7 @@ function rollDiceFormula(formula) {
     return { total, breakdown: parts.join(' ') };
 }
 
-function rollWeaponDamage(name, formula) {
-    if (!formula || !formula.trim()) return;
-    const result = rollDiceFormula(formula);
+function _showWeaponDamageResult(name, formula, result) {
     const card = document.getElementById('float-roll-card');
     const scrim = document.getElementById('roll-scrim');
     card.className = 'float-roll-card';
@@ -619,6 +670,39 @@ function rollWeaponDamage(name, formula) {
     card.classList.add('show');
     floatCardTimer = setTimeout(dismissFloatCard, 5000);
     publishRoll({ skillName: `${name} (dégâts)`, threshold: null, roll: result.total, success: null, char: character.name, bonusMalus: 0, playerId });
+}
+async function rollWeaponDamage(name, formula) {
+    if (!formula || !formula.trim()) return;
+    if (pendingDddiceRoll || pendingSecondaryRoll || !dddiceAPI || !dddiceSDK) {
+        _showWeaponDamageResult(name, formula, rollDiceFormula(formula));
+        return;
+    }
+    const { dice, modifier } = formulaToDiceSpec(formula);
+    if (!dice.length) { _showWeaponDamageResult(name, formula, rollDiceFormula(formula)); return; }
+    pendingSecondaryRoll = {
+        callback: diceTotal => {
+            const total = diceTotal + modifier;
+            const breakdown = modifier !== 0 ? `${diceTotal}${modifier > 0 ? '+' : ''}${modifier}` : String(diceTotal);
+            _showWeaponDamageResult(name, formula, { total, breakdown });
+        },
+        mapFn: null
+    };
+    showDddiceCanvas();
+    dddiceRollSafetyTimer = setTimeout(() => {
+        if (pendingSecondaryRoll) {
+            pendingSecondaryRoll = null;
+            hideDddiceCanvas();
+            _showWeaponDamageResult(name, formula, rollDiceFormula(formula));
+        }
+    }, 12000);
+    try {
+        await dddiceSDK.roll(dice.map(d => ({ type: d, theme: dddiceAPI.theme })));
+    } catch (e) {
+        clearTimeout(dddiceRollSafetyTimer);
+        pendingSecondaryRoll = null;
+        hideDddiceCanvas();
+        _showWeaponDamageResult(name, formula, rollDiceFormula(formula));
+    }
 }
 function showDieCard(diceName, result) {
     const card = document.getElementById('float-roll-card');
@@ -657,32 +741,82 @@ function handleResult(skillName, threshold, roll) {
     if (skillName === 'Soigner') applySoigner(success);
     if (pendingCraft !== null) { applyCraft(success, pendingCraft); pendingCraft = null; }
 }
+function openSoignerTargetPicker(pct) {
+    soignerPct = pct;
+    const now = Date.now();
+    const others = Object.entries(knownPlayers)
+        .filter(([, p]) => now - p.ts < 30000)
+        .map(([id, p]) => ({ id, name: p.name }));
+    const container = document.getElementById('stm-targets');
+    container.innerHTML = '';
+    const selfBtn = document.createElement('button');
+    selfBtn.className = 'stm-btn';
+    selfBtn.textContent = `Soi-même (${character.name})`;
+    selfBtn.onclick = () => { soignerTarget = null; closeSoignerTargetPicker(); doRoll('Soigner', soignerPct); };
+    container.appendChild(selfBtn);
+    others.forEach(({ id, name }) => {
+        const btn = document.createElement('button');
+        btn.className = 'stm-btn';
+        btn.textContent = name;
+        btn.onclick = () => { soignerTarget = { playerId: id, name }; closeSoignerTargetPicker(); doRoll('Soigner', soignerPct); };
+        container.appendChild(btn);
+    });
+    document.getElementById('soigner-scrim').classList.add('show');
+    document.getElementById('soigner-target-modal').classList.add('show');
+}
+function closeSoignerTargetPicker() {
+    document.getElementById('soigner-scrim').classList.remove('show');
+    document.getElementById('soigner-target-modal').classList.remove('show');
+}
+function cancelSoigner() {
+    soignerTarget = null;
+    closeSoignerTargetPicker();
+}
 function applySoigner(success) {
-    // Small delay so the float card resolves first
+    const target = soignerTarget; // capture before async delay
+    soignerTarget = null;
+    // Small delay so the float card resolves first, then roll the secondary die via dddice
     setTimeout(() => {
-        const max = getMaxHP();
-        const before = currentHP;
         if (success) {
-            const heal = Math.floor(Math.random() * 6) + 1;
-            const after = Math.min(max, before + heal);
-            animateHPChange(before, after, max);
-            currentHP = after;
-            localStorage.setItem(hpKey(), currentHP);
-            updateHPDisplay();
-            showHealNumber(heal);
-            showToast('gm-heal-toast', `♥ Soins : +${heal} PV`);
+            rollDieViaDddice(6, heal => {
+                publishRoll({ skillName: 'Soigner (soins)', threshold: null, roll: heal, success: null, char: character.name, bonusMalus: 0, playerId });
+                if (!target) {
+                    const max = getMaxHP();
+                    const before = currentHP;
+                    const after = Math.min(max, before + heal);
+                    animateHPChange(before, after, max);
+                    currentHP = after;
+                    localStorage.setItem(hpKey(), currentHP);
+                    updateHPDisplay();
+                    showHealNumber(heal);
+                    showToast('gm-heal-toast', `♥ Soins : +${heal} PV`);
+                    sendPresence();
+                } else {
+                    if (ablyDamage) ablyDamage.publish('heal', { targetId: target.playerId, amount: heal, source: 'player' });
+                    showToast('gm-heal-toast', `♥ Soins : +${heal} PV → ${target.name}`);
+                }
+            });
         } else {
-            const dmg = Math.floor(Math.random() * 3) + 1;
-            const after = Math.max(0, before - dmg);
-            animateHPChange(before, after, max);
-            currentHP = after;
-            localStorage.setItem(hpKey(), currentHP);
-            updateHPDisplay();
-            triggerDamageVFX(dmg, true);
-            showToast('gm-dmg-toast', `⚔ Blessure : -${dmg} PV`);
-            if (after <= 0) showMort();
+            rollDieViaDddice(3, dmg => {
+                publishRoll({ skillName: 'Soigner (blessure)', threshold: null, roll: dmg, success: null, char: character.name, bonusMalus: 0, playerId });
+                if (!target) {
+                    const max = getMaxHP();
+                    const before = currentHP;
+                    const after = Math.max(0, before - dmg);
+                    animateHPChange(before, after, max);
+                    currentHP = after;
+                    localStorage.setItem(hpKey(), currentHP);
+                    updateHPDisplay();
+                    triggerDamageVFX(dmg, true);
+                    showToast('gm-dmg-toast', `⚔ Blessure : -${dmg} PV`);
+                    if (after <= 0) showMort();
+                    sendPresence();
+                } else {
+                    if (ablyDamage) ablyDamage.publish('damage', { targetId: target.playerId, damage: dmg, source: 'player' });
+                    showToast('gm-dmg-toast', `⚔ Blessure : -${dmg} PV → ${target.name}`);
+                }
+            });
         }
-        sendPresence();
     }, 1500);
 }
 function classify(roll, threshold, success) {
@@ -802,15 +936,29 @@ async function initDddice() {
         dddiceSDK.start();
         await dddiceSDK.connect(slug);
 
-        // When the 3D animation finishes, read the result and handle it
+        // When the 3D animation finishes, read the result and handle it.
+        // Only act when this tab initiated the roll (pending state is set).
+        // Other players' roll animations never show because the wrapper div is visibility:hidden
+        // by default and only shown when this tab calls showDddiceCanvas() before rolling.
+        // The SDK holds a ref to the canvas element only, not the wrapper — so it cannot
+        // override the wrapper's visibility.
         dddiceSDK.on(ThreeDDiceRollEvent.RollFinished, (roll) => {
-            clearTimeout(dddiceRollSafetyTimer);
-            setTimeout(() => dddiceSDK?.clear(), 1500);
-            if (!pendingDddiceRoll) return;
-            const { skillName, threshold } = pendingDddiceRoll;
-            pendingDddiceRoll = null;
-            const total = roll.total_value ?? 0;
-            handleResult(skillName, threshold, total === 0 ? 100 : total);
+            if (pendingDddiceRoll) {
+                clearTimeout(dddiceRollSafetyTimer);
+                const { skillName, threshold } = pendingDddiceRoll;
+                pendingDddiceRoll = null;
+                setTimeout(() => { dddiceSDK?.clear(); hideDddiceCanvas(); }, 1500);
+                const total = roll.total_value ?? 0;
+                handleResult(skillName, threshold, total === 0 ? 100 : total);
+            } else if (pendingSecondaryRoll) {
+                clearTimeout(dddiceRollSafetyTimer);
+                const { callback, mapFn } = pendingSecondaryRoll;
+                pendingSecondaryRoll = null;
+                setTimeout(() => { dddiceSDK?.clear(); hideDddiceCanvas(); }, 1500);
+                const total = roll.total_value ?? 1;
+                callback(mapFn ? mapFn(total) : total);
+            }
+            // else: not our roll — canvas is already hidden, nothing to do
         });
 
         dddiceAPI = { key: config.dddiceKey, room: slug, theme: sel.value };
@@ -829,22 +977,27 @@ async function initDddice() {
         } catch (_) {}
     } catch (e) { console.error('dddice:', e); setDddiceStatus(false, e.message); dddiceSDK = null; dddiceAPI = null; }
 }
+function showDddiceCanvas() { const w = document.getElementById('dddice-wrap'); if (w) w.style.visibility = 'visible'; }
+function hideDddiceCanvas() { const w = document.getElementById('dddice-wrap'); if (w) w.style.visibility = 'hidden'; }
+
 async function rollViaDddice(skillName, threshold) {
     if (!dddiceSDK) { handleResult(skillName, threshold, Math.floor(Math.random() * 100) + 1); return; }
     try {
         pendingDddiceRoll = { skillName, threshold };
+        showDddiceCanvas();
         // Safety fallback: if RollFinished never fires (e.g. network drop after roll creation),
         // unblock the UI after 12s. Cleared by the RollFinished handler on success.
         dddiceRollSafetyTimer = setTimeout(() => {
             if (pendingDddiceRoll?.skillName === skillName) {
                 pendingDddiceRoll = null;
+                hideDddiceCanvas();
                 handleResult(skillName, threshold, Math.floor(Math.random() * 100) + 1);
             }
         }, 12000);
         await dddiceSDK.roll([{ type: 'd10x', theme: dddiceAPI.theme }, { type: 'd10', theme: dddiceAPI.theme }]);
         // Do NOT clear the timer here — roll() resolves on API response (~200ms),
         // well before the animation ends. RollFinished handles the clear.
-    } catch (e) { console.error('dddice roll:', e); pendingDddiceRoll = null; handleResult(skillName, threshold, Math.floor(Math.random() * 100) + 1); }
+    } catch (e) { console.error('dddice roll:', e); pendingDddiceRoll = null; hideDddiceCanvas(); handleResult(skillName, threshold, Math.floor(Math.random() * 100) + 1); }
 }
 function setDddiceStatus(ok, detail) {
     const d = ['dddice-dot', 'cfg-dddice-dot'], s = ['dddice-status', 'cfg-dddice-status'];
@@ -857,7 +1010,7 @@ function setDddiceStatus(ok, detail) {
 // ═══════════════════════════════════════════
 function initAbly() {
     try {
-        ablyInstance = new Ably.Realtime({ key: config.ablyKey });
+        ablyInstance = new Ably.Realtime({ key: config.ablyKey, transports: ['web_socket'] });
         ablyRolls = ablyInstance.channels.get('aria-rolls');
         ablyCards = ablyInstance.channels.get('aria-cards');
         ablyDamage = ablyInstance.channels.get('aria-damage');
@@ -867,7 +1020,33 @@ function initAbly() {
         const myId = playerId;
         ablyDamage.subscribe(msg => {
             const d = msg.data;
-            if (!d || d.source === 'player') return;
+            if (!d) return;
+            // Track other players' presence for Soigner targeting
+            if (msg.name === 'presence' && d.playerId && d.playerId !== myId) {
+                knownPlayers[d.playerId] = { name: d.name, ts: Date.now() };
+                return;
+            }
+            // Handle player-to-player heal/damage (from another player's Soigner)
+            if (d.source === 'player') {
+                if (d.targetId === myId) {
+                    if (msg.name === 'heal') {
+                        const amount = d.amount || 0;
+                        const max = getMaxHP();
+                        const before = currentHP;
+                        const after = Math.min(max, before + amount);
+                        handleGMHeal({ amount, hpBefore: before, hpAfter: after, maxHP: max });
+                        sendPresence();
+                    } else if (msg.name === 'damage') {
+                        const damage = d.damage || 0;
+                        const max = getMaxHP();
+                        const before = currentHP;
+                        const after = Math.max(0, before - damage);
+                        handleGMDamage({ damage, hpBefore: before, hpAfter: after, maxHP: max });
+                        sendPresence();
+                    }
+                }
+                return;
+            }
             if (msg.name === 'tab-config') {
                 if (d.playerId !== myId) return;
                 playerTabs = { ...playerTabs, ...d.tabs };
@@ -885,6 +1064,13 @@ function initAbly() {
                     renderPotions();
                     showToast('gm-heal-toast', `Recette reçue : ${d.potion.name}`);
                 }
+                return;
+            }
+            if (msg.name === 'potion-revoke') {
+                if (d.playerId !== myId) return;
+                character.potionRecipes = (character.potionRecipes || []).filter(r => r.id !== d.potionId);
+                saveCurrentCharacter();
+                renderPotions();
                 return;
             }
             if (msg.name === 'vial-grant') {

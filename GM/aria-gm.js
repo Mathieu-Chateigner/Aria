@@ -308,7 +308,7 @@ function setDddiceStatus(ok, detail) {
 // ═══════════════════════════════════════════
 function initAbly() {
     try {
-        ablyInstance = new Ably.Realtime({ key: config.ablyKey });
+        ablyInstance = new Ably.Realtime({ key: config.ablyKey, transports: ['web_socket'] });
         ablyRolls = ablyInstance.channels.get('aria-rolls');
         ablyCards = ablyInstance.channels.get('aria-cards');
         ablyDamage = ablyInstance.channels.get('aria-damage');
@@ -854,6 +854,9 @@ function doGMMonsterRoll() {
     }
 }
 function showGMRollResult(name, threshold, roll, success, dmgResult) {
+    // Add to the roll feed
+    handleIncomingRoll({ skillName: name, threshold, roll, success, char: 'MJ', bonusMalus: 0, playerId: 'gm' });
+    if (dmgResult) handleIncomingRoll({ skillName: `${name} — Dégâts`, threshold: null, roll: dmgResult.total, success: null, char: 'MJ', bonusMalus: 0, playerId: 'gm' });
     const type = classify(roll, threshold, success);
     const verdicts = { success: 'SUCCÈS', fail: 'ÉCHEC', 'crit-success': 'SUCCÈS CRITIQUE', 'crit-fail': 'ÉCHEC CRITIQUE' };
     const colors = { success: 'var(--success)', fail: 'var(--fail)', 'crit-success': '#a8ff78', 'crit-fail': '#ff4444' };
@@ -1035,26 +1038,75 @@ function renderGMPotions() {
     }
     if (empty) empty.style.display = 'none';
     gmPotions.forEach(p => {
-        const row = document.createElement('div');
-        row.className = 'gm-pot-row';
-        row.innerHTML = `
-            <div class="gm-pot-fields">
-                <input class="amf-input" value="${p.name}" placeholder="Nom" oninput="updateGMPotion('${p.id}','name',this.value)" />
-                <input class="amf-input" value="${p.desc || ''}" placeholder="Description / Effet" oninput="updateGMPotion('${p.id}','desc',this.value)" />
-                <input class="amf-input" value="${p.ingredients || ''}" placeholder="Ingrédients" oninput="updateGMPotion('${p.id}','ingredients',this.value)" />
-                <input class="amf-input gm-pot-chance" type="text" inputmode="numeric" value="${p.successChance || ''}" placeholder="%" oninput="this.value=this.value.replace(/[^0-9]/g,'');updateGMPotion('${p.id}','successChance',+this.value||0)" />
+        const card = document.createElement('div');
+        card.className = 'gm-pot-card';
+        card.innerHTML = `
+            <div class="gm-pot-card-header">
+                <span class="gm-pot-card-icon">⚗</span>
+                <input class="gm-pot-name-input" value="${p.name.replace(/"/g,'&quot;')}" placeholder="Nom" oninput="updateGMPotion('${p.id}','name',this.value)" />
+                <div class="gm-pot-chance-wrap"><input class="gm-pot-chance-badge" type="text" inputmode="numeric" value="${p.successChance || ''}" placeholder="—" oninput="this.value=this.value.replace(/[^0-9]/g,'');updateGMPotion('${p.id}','successChance',+this.value||0)" /><span class="gm-pot-chance-suffix">%</span></div>
             </div>
-            <button class="del-btn" onclick="removeGMPotion('${p.id}')">✕</button>`;
-        list.appendChild(row);
+            <div class="gm-pot-card-body">
+                <div class="gm-pot-field-row">
+                    <span class="gm-pot-field-icon">✦</span>
+                    <input class="gm-pot-text-input" value="${(p.desc||'').replace(/"/g,'&quot;')}" placeholder="Description / Effet" oninput="updateGMPotion('${p.id}','desc',this.value)" />
+                </div>
+                <div class="gm-pot-field-row">
+                    <span class="gm-pot-field-icon">◈</span>
+                    <input class="gm-pot-text-input" value="${(p.ingredients||'').replace(/"/g,'&quot;')}" placeholder="Ingrédients" oninput="updateGMPotion('${p.id}','ingredients',this.value)" />
+                </div>
+            </div>
+            <button class="gm-pot-del-btn" onclick="removeGMPotion('${p.id}')">✕</button>`;
+        list.appendChild(card);
     });
+}
+
+function toggleAlchemyImportPicker(btn) {
+    const picker = document.getElementById('alchemy-import-picker');
+    if (picker.style.display !== 'none') { picker.style.display = 'none'; return; }
+    const campaigns = getCampaigns().filter(c => c.id !== currentCampaignId);
+    if (!campaigns.length) {
+        picker.innerHTML = '<div class="alchemy-import-empty">Aucune autre campagne disponible.</div>';
+    } else {
+        picker.innerHTML = campaigns.map(c => {
+            const safeName = c.name.replace(/'/g, '\\\'').replace(/"/g, '&quot;');
+            return `<button class="alchemy-import-option" onclick="importAlchemyFrom('${c.id}','${safeName}')">${c.name}</button>`;
+        }).join('');
+    }
+    picker.style.display = '';
+}
+
+function importAlchemyFrom(sourceId, sourceName) {
+    document.getElementById('alchemy-import-picker').style.display = 'none';
+    const sourcePotions = JSON.parse(localStorage.getItem('aria-gm-potions-' + sourceId) || '[]');
+    if (!sourcePotions.length) { alert(`Aucune recette dans la campagne "${sourceName}".`); return; }
+    if (!confirm(`Remplacer le grimoire actuel par les ${sourcePotions.length} recette(s) de "${sourceName}" ?`)) return;
+    gmPotions = sourcePotions.map(p => ({
+        ...p,
+        id: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)
+    }));
+    saveGMPotions();
+    renderGMPotions();
 }
 
 function sendPotionGrant(playerId, potionId) {
     if (!ablyDamage) return;
-    const p = gmPotions.find(p => p.id === potionId);
-    if (!p) return;
-    ablyDamage.publish('potion-grant', { playerId, potion: { ...p } });
-    openPlayerDetails(playerId); // refresh to show granted state
+    const player = players.get(playerId);
+    if (!player) return;
+    if (!player.potionRecipeIds) player.potionRecipeIds = [];
+    const alreadyGranted = player.potionRecipeIds.includes(potionId);
+    if (alreadyGranted) {
+        // Revoke
+        ablyDamage.publish('potion-revoke', { playerId, potionId });
+        player.potionRecipeIds = player.potionRecipeIds.filter(id => id !== potionId);
+    } else {
+        // Grant
+        const pot = gmPotions.find(p => p.id === potionId);
+        if (!pot) return;
+        ablyDamage.publish('potion-grant', { playerId, potion: { ...pot } });
+        player.potionRecipeIds.push(potionId);
+    }
+    openPlayerDetails(playerId);
 }
 function sendVialGrant(playerId, qty) {
     if (!ablyDamage) return;

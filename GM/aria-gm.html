@@ -217,8 +217,12 @@
                         <label class="amf-label">Ingrédients</label>
                         <input class="amf-input" id="apf-ingredients" placeholder="ex: Herbe d'éclat, eau de source" />
                     </div>
-                    <div style="margin-top:14px;">
+                    <div style="margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
                         <button class="amf-add-btn" onclick="addGMPotion()">Ajouter au grimoire</button>
+                        <div class="alchemy-import-wrap">
+                            <button class="alchemy-import-btn" onclick="toggleAlchemyImportPicker(this)">↓ Importer depuis…</button>
+                            <div class="alchemy-import-picker" id="alchemy-import-picker" style="display:none;"></div>
+                        </div>
                     </div>
                 </div>
                 <div class="gm-pot-list" id="gm-pot-list">

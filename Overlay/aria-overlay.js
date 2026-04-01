@@ -16,7 +16,7 @@ if (MODE === 'gm') document.getElementById('waiting').classList.add('show');
 
 // ── ABLY ──────────────────────────────────
 if (ABLY_KEY) {
-    const ably = new Ably.Realtime({ key: ABLY_KEY });
+    const ably = new Ably.Realtime({ key: ABLY_KEY, transports: ['web_socket'] });
 
     // Dice rolls
     const rollCh = ably.channels.get('aria-rolls');

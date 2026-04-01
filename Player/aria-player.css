@@ -1934,6 +1934,98 @@ body {
 }
 
 /* ═══════════════════════════════════════════
+   SOIGNER SKILL & TARGET PICKER
+═══════════════════════════════════════════ */
+.skill-item.soigner-skill {
+    border-color: rgba(76,175,119,.3);
+}
+
+.skill-item.soigner-skill .skill-link,
+.skill-item.soigner-skill .skill-pct {
+    color: var(--success);
+}
+
+.skill-item.soigner-skill:hover {
+    background: rgba(76,175,119,.08);
+    border-color: rgba(76,175,119,.5);
+}
+
+.soigner-target-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(.92);
+    z-index: 1010;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    width: 280px;
+    max-width: 95vw;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s, transform .2s;
+}
+
+.soigner-target-modal.show {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+    pointer-events: auto;
+}
+
+.stm-title {
+    font-family: 'Cinzel', serif;
+    font-size: 13px;
+    letter-spacing: .15em;
+    color: var(--success);
+    text-align: center;
+    margin-bottom: 16px;
+    text-transform: uppercase;
+}
+
+.stm-btn {
+    display: block;
+    width: 100%;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    background: rgba(76,175,119,.08);
+    border: 1px solid rgba(76,175,119,.25);
+    color: var(--parchment);
+    font-family: 'EB Garamond', serif;
+    font-size: 15px;
+    cursor: pointer;
+    border-radius: var(--radius);
+    text-align: left;
+    transition: all .15s;
+}
+
+.stm-btn:hover {
+    background: rgba(76,175,119,.18);
+    border-color: var(--success);
+}
+
+.stm-cancel {
+    display: block;
+    width: 100%;
+    padding: 8px 14px;
+    margin-top: 4px;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--parchment-dim);
+    font-family: 'Cinzel', serif;
+    font-size: 12px;
+    letter-spacing: .08em;
+    cursor: pointer;
+    border-radius: var(--radius);
+    transition: all .15s;
+}
+
+.stm-cancel:hover {
+    border-color: var(--gold-dim);
+    color: var(--parchment);
+}
+
+/* ═══════════════════════════════════════════
    LIGHT MODE
 ═══════════════════════════════════════════ */
 body.light-mode {
@@ -2004,6 +2096,11 @@ body.light-mode .fv-crit-fail {
     color: var(--fail);
     text-shadow: 0 0 20px rgba(148,36,24,.5);
 }
+body.light-mode .crit-success .fc-crit-sub { color: rgba(42,110,68,.65); }
+body.light-mode .crit-fail .fc-crit-sub { color: rgba(148,36,24,.65); }
+body.light-mode .other-roll-toast .ort-verdict.cs { color: var(--success); }
+body.light-mode .other-roll-toast .ort-verdict.cf { color: var(--fail); }
+body.light-mode .hp-number.low { color: #8c4a08; }
 
     .config-input:focus {
         outline: none;
