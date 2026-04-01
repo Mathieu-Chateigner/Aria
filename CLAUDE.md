@@ -52,6 +52,20 @@ All three apps share **one Ably key** and use three channels:
 - State persisted in `localStorage` (character, config, cards, HP, monsters, potions)
 - `sessionStorage` holds the per-tab `playerId` (UUID, regenerates per tab)
 
+### Campaign system (GM)
+
+The GM panel supports multiple campaigns. All campaign-scoped data uses keys suffixed with `currentCampaignId`:
+
+| localStorage key | Content |
+|---|---|
+| `aria-gm-campaigns` | `[{ id, name }]` campaign list |
+| `aria-gm-monsters-{id}` | monsters for campaign |
+| `aria-gm-rolls-{id}` | roll history |
+| `aria-gm-card-history-{id}` | card draw log |
+| `aria-gm-potions-{id}` | alchemy recipes |
+
+Helper functions `monstersKey()`, `rollsKey()`, `cardHistKey()`, `potionsKey()` return the scoped key for the active campaign. Always use these — never hardcode the bare key.
+
 ### Player identity
 
 Player is identified by `character.name` from their character sheet — no manual ID input. This is used as `playerId` in roll and damage payloads.
@@ -85,6 +99,11 @@ Per `Docs/Aide aux combats.pdf`:
 
 The combat sidebar auto-discovers these via regex: `/combat.rapproch/i` for parade, `/esquiv/i` for esquive.
 
+### Special skill: Soigner
+When a skill named exactly `Soigner` is rolled, `applySoigner(success)` fires after the float card (1500ms delay):
+- **Success**: rolls `1d6`, heals self (capped at max PV), broadcasts presence
+- **Failure**: rolls `1d3`, damages self (floored at 0), triggers damage VFX; shows MORT screen if HP hits 0
+
 ---
 
 ## Character data structure (`localStorage: aria-character`)
@@ -100,7 +119,10 @@ The combat sidebar auto-discovers these via regex: `/combat.rapproch/i` for para
   protection: { nom, valeur },
   skills: [{ name, link, pct }],             // link = "FOR/DEX" etc
   specials: [{ name, desc, pct }],           // fully editable
-  potions: [{ name, desc, ingredients, qty }]
+  potions: [{ name, desc, ingredients, qty }],   // crafted stock
+  potionRecipes: [{ id, name, desc, ingredients, chance }], // GM-granted recipes
+  vials: number,                             // empty vial count for alchemy crafting
+  tabs: { alchemy: bool }                    // per-player tab visibility (set by GM)
 }
 ```
 
@@ -108,12 +130,12 @@ The combat sidebar auto-discovers these via regex: `/combat.rapproch/i` for para
 
 ### Config (`localStorage: aria-config`)
 ```js
-{ dddiceKey, dddiceRoom, dddiceTheme, ablyKey }
+{ dddiceKey, dddiceRoom, dddiceTheme, ablyKey, lightMode: bool }
 ```
 
 ### GM config (`localStorage: aria-gm-config`)
 ```js
-{ dddiceKey, dddiceRoom, dddiceTheme, ablyKey }
+{ dddiceKey, dddiceRoom, dddiceTheme, ablyKey, lightMode: bool }
 ```
 
 ### Monsters (`localStorage: aria-gm-monsters`)
@@ -141,7 +163,23 @@ The combat sidebar auto-discovers these via regex: `/combat.rapproch/i` for para
 
 ### `aria-damage` / `presence` (heartbeat every 5s)
 ```js
-{ playerId, name, charClass, hp, maxHP, stats, protection, skills, specials, weapons, inventory, potions, ts }
+{ playerId, name, charClass, hp, maxHP, stats, protection, skills, specials, weapons, inventory, potions, vials, potionRecipeIds, ts }
+```
+
+### `aria-damage` / `tab-config`
+```js
+{ playerId, tabs: { alchemy: bool } }
+```
+GM sends this to enable/disable tabs on a specific player panel.
+
+### `aria-damage` / `potion-grant`
+```js
+{ playerId, potion: { id, name, desc, ingredients, chance } }
+```
+
+### `aria-damage` / `vial-grant`
+```js
+{ playerId, qty: number }
 ```
 
 ### `aria-cards` / `draw` | `reshuffle`
@@ -160,7 +198,7 @@ The combat sidebar auto-discovers these via regex: `/combat.rapproch/i` for para
 `Compétences` | `Caractéristiques` | `Jet libre` | `Cartes` | `⚗ Alchimie` | `Personnage`
 
 ### GM panel tabs
-`Joueurs` | `Monstres` | `Jets` | `Jet MJ` | `Cartes`
+`Joueurs` | `Monstres` | `Jets` | `Jet MJ` | `Cartes` | `⚗ Alchimie`
 
 ### Bonus/Malus bar
 Persistent bar between topbar and content. Buttons: +10/+20/+30/−10/−20/−30 + custom ± + reset. Applied to all rolls.
@@ -181,10 +219,18 @@ Persistent bar between topbar and content. Buttons: +10/+20/+30/−10/−20/−3
 - GM sweeps offline players every 10s (threshold: 30s = offline)
 - Each player card has: HP bar, stats, ⚔ damage input, ♥ heal input, 📋 details button (top-right of card header)
 - 📋 opens a full modal with all character data: stats, weapons, skills, specials, inventory, potions (with ingredients)
+- GM can toggle per-player tabs (e.g. `⚗ Alchimie`) from the modal — sends `tab-config` message on `aria-damage`
+
+### GM Alchemy tab
+- GM manages a list of potion recipes scoped to the current campaign (`gmPotions`, key: `aria-gm-potions-{campaignId}`)
+- Each recipe: name, desc, ingredients, success %
+- GM grants a recipe to a player via `potion-grant` message on `aria-damage` — only shown in the modal if the player has `tabs.alchemy` enabled and there are recipes
 
 ### Alchemy tab (player)
-- Potion list: name, description/effect, ingredients, quantity
-- `Utiliser` button decrements qty and shows toast
+- **Recipes** (`character.potionRecipes`): GM-granted recipes with name, desc, ingredients, success %. Player cannot add these directly.
+- **Crafting**: `Créer` button triggers a d100 roll via `doRoll()` with `skipBM=true`. Uses `pendingCraft` flag (same pattern as `applySoigner`) — set before the roll, read in `handleResult()`, cleared immediately. A vial is always consumed regardless of outcome. Crafting disabled if 0 vials.
+- **Potions in stock** (`character.potions`): successfully crafted potions. `Utiliser` decrements qty and shows toast.
+- **Vials** (`character.vials`): integer. Shown with +/− in both the Alchemy tab and the Inventory tab (`#inv-vials-section`). Players can manually adjust their own count.
 
 ### Card system
 - 54-card French deck: ♠ ♣ ♥ ♦ + 2 Jokers
@@ -257,6 +303,26 @@ Store the handler reference and call `removeEventListener` before re-registering
 
 ### dddice init order
 Must call `.start()` before `.connect()`. The safety timer must be cleared inside `RollFinished`, not after `await sdk.roll()` (which resolves ~200ms after the API call, long before the animation ends).
+
+### Post-roll effect pattern
+Skills with side-effects after a roll (e.g. `Soigner`, crafting) use a flag set before `doRoll()` and checked at the top of `handleResult()`:
+```js
+// Before roll:
+pendingCraft = recipeIdx;   // or pendingSoigner = true
+doRoll(skillName, pct, /*skipBM=*/true);
+
+// In handleResult(success, roll, threshold, skillName):
+if (pendingCraft !== null) { applyCraft(success, pendingCraft); pendingCraft = null; }
+if (pendingSoigner)        { applySoigner(success); pendingSoigner = false; }
+```
+`applyCraft` / `applySoigner` use a 1500ms `setTimeout` so the float card shows before the effect fires.
+
+### Light mode
+Toggled via `config.lightMode` (both player and GM). Applied by adding `body.light-mode` class. **Applied at module level** (not inside `initApp`) to prevent a flash on load:
+```js
+if (config.lightMode) document.body.classList.add('light-mode');
+```
+All light-mode overrides live in a `body.light-mode` block at the bottom of each CSS file. **Never hardcode dark colors** in new CSS rules — always use CSS variables so light mode overrides work automatically.
 
 ---
 
