@@ -1,25 +1,20 @@
 # TTRPG Web Tool — Development Plan
 
-## P0 (High Priority)
+## Completed
 
-### Alchemy
-- Add potion table
-- Allow creation and addition of new potions
+### P0 — Alchemy
+- Potion table with creation and addition of new potions
 
-### Combat
-- Add parry mechanic
-- Add dodge mechanic
+### P0 — Combat
+- Parry mechanic (Parade)
+- Dodge mechanic (Esquive)
 
-### GM Interface
-- View full player details:
-  - Skill percentages
-  - Weapons
-  - Inventory
-  - Stats
+### P0 — GM Interface
+- Full player details modal: skill percentages, weapons, inventory, stats
 
 ---
 
-## P1 (Medium Priority)
+## P1 (High Priority)
 
 ### Player Notes
 - Text-based note system
@@ -28,14 +23,12 @@
 - Display player HP on stream during combat
 
 ### Combat UI
-- Display initiative order:
-  - In main UI
-  - In overlay
-  - Gonna be a roll 10, highest is first, lesser is last (so add the initiative roll)
+- Initiative order display in main UI and overlay
+- Initiative roll: roll d10, highest goes first
 
 ---
 
-## P2 (Low Priority)
+## P2 (Medium Priority)
 
 ### Magic System
 - Draw multiple cards
@@ -43,9 +36,7 @@
 - Allow multiple copies of the same card in deck
 
 ### Special Skill Tracking
-- Add usage markers:
-  - Remaining uses
-  - Cooldown / restoration tracking
+- Add usage markers: remaining uses, cooldown / restoration tracking
 
 ### File Sharing
 - Share files between players
@@ -57,18 +48,14 @@
 
 ### Player Notes System
 - Convert into task list format
-- Organize notes by quest
-- Track quest completion status
-- Link notes to quests
+- Organize notes by quest, track completion, link notes to quests
 
 ### Communication
 - Text chat between players
 - Evaluate whether Discord integration is preferable
 
 ### Combat Page
-- Dedicated combat interface:
-  - Show participants (allies & enemies)
-  - Add/remove participants dynamically
-  - Hide enemy HP (fog of war)
-  - Allow healing/damage actions
-  - Inspired by tabletop combat overlays
+- Dedicated combat interface: participants (allies & enemies), dynamic add/remove
+- Hide enemy HP (fog of war)
+- Healing/damage actions inline
+- Inspired by tabletop combat overlays
