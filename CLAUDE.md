@@ -106,10 +106,32 @@ When a skill named exactly `Soigner` is rolled, `applySoigner(success)` fires af
 
 ---
 
-## Character data structure (`localStorage: aria-character`)
+## Character data structure
+
+### Multi-character system (Player)
+
+The player panel supports multiple characters. On launch, a selection screen is shown (similar to the GM's campaign screen). Characters are stored as an array:
+
+`localStorage: aria-characters` → `[{ id, name, class, stats, ... }]`
+
+Each character carries its own `id` (UUID). HP and card state are keyed by that ID:
+
+| localStorage key | Content |
+|---|---|
+| `aria-characters` | `[{ id, ...charFields }]` full character list |
+| `aria-current-hp-{id}` | current HP integer for that character |
+| `aria-cards-{id}` | card deck state for that character |
+| `aria-player-tabs-{id}` | `{ cards: bool, alchemy: bool }` tab visibility |
+
+Tab visibility is managed separately from the character object (not inside it) and is persisted per character ID. Both `cards` and `alchemy` tabs can be toggled by the GM via `tab-config` messages.
+
+Helper functions `hpKey()` and `cardKey()` return the scoped key for the active character. Always use these — never hardcode the bare key.
+
+### Character fields (`aria-characters[n]`)
 
 ```js
 {
+  id: string,                                // UUID, added by the multi-char system
   name: string,
   class: string,
   stats: { FOR, DEX, END, INT, CHA, PV },   // all integers
@@ -122,11 +144,11 @@ When a skill named exactly `Soigner` is rolled, `applySoigner(success)` fires af
   potions: [{ name, desc, ingredients, qty }],   // crafted stock
   potionRecipes: [{ id, name, desc, ingredients, chance }], // GM-granted recipes
   vials: number,                             // empty vial count for alchemy crafting
-  tabs: { alchemy: bool }                    // per-player tab visibility (set by GM)
 }
 ```
 
 > `blessures` was removed — it is no longer part of the character schema.
+> `tabs` was removed from the character object — it is now stored separately as `aria-player-tabs-{id}`.
 
 ### Config (`localStorage: aria-config`)
 ```js
@@ -168,7 +190,7 @@ When a skill named exactly `Soigner` is rolled, `applySoigner(success)` fires af
 
 ### `aria-damage` / `tab-config`
 ```js
-{ playerId, tabs: { alchemy: bool } }
+{ playerId, tabs: { cards: bool, alchemy: bool } }
 ```
 GM sends this to enable/disable tabs on a specific player panel.
 
@@ -194,8 +216,13 @@ GM sends this to enable/disable tabs on a specific player panel.
 
 ## Key UI components
 
+### Player character selection screen
+On launch, a selection screen lists all saved characters (stored in `aria-characters`). Players can create, select, or delete characters. Selecting one calls `selectCharacter(id)` → `loadCharacterState(id)` → `initApp()`. `switchCharacter()` returns to this screen, tearing down Ably and dddice connections cleanly before re-init.
+
 ### Player panel tabs
 `Compétences` | `Caractéristiques` | `Jet libre` | `Cartes` | `⚗ Alchimie` | `Personnage`
+
+`Cartes` and `⚗ Alchimie` tabs are hidden by default — only shown when GM enables them via `tab-config`.
 
 ### GM panel tabs
 `Joueurs` | `Monstres` | `Jets` | `Jet MJ` | `Cartes` | `⚗ Alchimie`
@@ -219,7 +246,7 @@ Persistent bar between topbar and content. Buttons: +10/+20/+30/−10/−20/−3
 - GM sweeps offline players every 10s (threshold: 30s = offline)
 - Each player card has: HP bar, stats, ⚔ damage input, ♥ heal input, 📋 details button (top-right of card header)
 - 📋 opens a full modal with all character data: stats, weapons, skills, specials, inventory, potions (with ingredients)
-- GM can toggle per-player tabs (e.g. `⚗ Alchimie`) from the modal — sends `tab-config` message on `aria-damage`
+- GM can toggle per-player tabs (`Cartes`, `⚗ Alchimie`) from the modal — sends `tab-config` message on `aria-damage`
 
 ### GM Alchemy tab
 - GM manages a list of potion recipes scoped to the current campaign (`gmPotions`, key: `aria-gm-potions-{campaignId}`)
