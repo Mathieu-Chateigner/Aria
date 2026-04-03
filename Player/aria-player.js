@@ -90,14 +90,219 @@ let playerTabs = { cards: false, alchemy: false };
 // pending craft recipe index — set before a roll, cleared by handleResult
 let pendingCraft = null;
 
+let saveFileHandle = null;
+let syncTimer = null;
+
+// ═══════════════════════════════════════════
+//  FILE SAVE SYSTEM
+// ═══════════════════════════════════════════
+function _openHandleDB() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open('aria-fs', 1);
+        req.onupgradeneeded = e => e.target.result.createObjectStore('handles');
+        req.onsuccess = e => resolve(e.target.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+async function _getStoredHandle() {
+    try {
+        const db = await _openHandleDB();
+        return await new Promise(resolve => {
+            const req = db.transaction('handles', 'readonly').objectStore('handles').get('saveFile');
+            req.onsuccess = () => resolve(req.result || null);
+            req.onerror = () => resolve(null);
+        });
+    } catch(e) { return null; }
+}
+async function _storeHandle(handle) {
+    try {
+        const db = await _openHandleDB();
+        await new Promise((resolve, reject) => {
+            const tx = db.transaction('handles', 'readwrite');
+            tx.objectStore('handles').put(handle, 'saveFile');
+            tx.oncomplete = resolve;
+            tx.onerror = reject;
+        });
+    } catch(e) {}
+}
+
+function collectPlayerData() {
+    const chars = JSON.parse(localStorage.getItem('aria-characters') || '[]');
+    const perChar = {};
+    chars.forEach(c => {
+        const hp    = localStorage.getItem('aria-current-hp-'  + c.id);
+        const cards = localStorage.getItem('aria-cards-'       + c.id);
+        const notes = localStorage.getItem('aria-notes-'       + c.id);
+        const tabs  = localStorage.getItem('aria-player-tabs-' + c.id);
+        perChar[c.id] = {
+            hp:    hp    !== null ? parseInt(hp) : null,
+            cards: cards ? JSON.parse(cards) : null,
+            notes: notes ? JSON.parse(notes) : null,
+            tabs:  tabs  ? JSON.parse(tabs)  : null,
+        };
+    });
+    return { characters: chars, perChar };
+}
+
+function applyPlayerData(data) {
+    if (!data || !Array.isArray(data.characters)) return;
+    localStorage.setItem('aria-characters', JSON.stringify(data.characters));
+    if (!data.perChar) return;
+    Object.entries(data.perChar).forEach(([id, s]) => {
+        if (s.hp    !== null && s.hp    !== undefined) localStorage.setItem('aria-current-hp-'  + id, s.hp);
+        if (s.cards !== null && s.cards !== undefined) localStorage.setItem('aria-cards-'        + id, JSON.stringify(s.cards));
+        if (s.notes !== null && s.notes !== undefined) localStorage.setItem('aria-notes-'        + id, JSON.stringify(s.notes));
+        if (s.tabs  !== null && s.tabs  !== undefined) localStorage.setItem('aria-player-tabs-'  + id, JSON.stringify(s.tabs));
+    });
+}
+
+async function loadFromFile() {
+    if (!saveFileHandle) return;
+    try {
+        const text = await (await saveFileHandle.getFile()).text();
+        if (!text.trim()) return;
+        const data = JSON.parse(text);
+        if (data.player) applyPlayerData(data.player);
+        // Legacy v1 format
+        else if (Array.isArray(data.characters)) applyPlayerData(data);
+    } catch(e) { console.warn('[ARIA] Failed to read save file:', e); }
+}
+
+async function syncToFile() {
+    if (!saveFileHandle) return;
+    try {
+        const perm = await saveFileHandle.queryPermission({ mode: 'readwrite' });
+        if (perm !== 'granted') return;
+        // Read current file to preserve gm section
+        let fileData = { version: 2, player: {}, gm: {} };
+        try {
+            const text = await (await saveFileHandle.getFile()).text();
+            if (text.trim()) Object.assign(fileData, JSON.parse(text));
+        } catch(e) {}
+        fileData.version = 2;
+        fileData.player = collectPlayerData();
+        const writable = await saveFileHandle.createWritable();
+        await writable.write(JSON.stringify(fileData, null, 2));
+        await writable.close();
+    } catch(e) { console.warn('[ARIA] Failed to sync save file:', e); }
+}
+
+function debouncedSync() {
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(syncToFile, 800);
+}
+
+function showGateway(mode) {
+    const desc = document.getElementById('gateway-desc');
+    const btn  = document.getElementById('gateway-btn');
+    const hint = document.getElementById('gateway-hint');
+    if (mode === 'reconnect') {
+        desc.textContent = saveFileHandle
+            ? `Reconnectez "${saveFileHandle.name}" pour continuer.`
+            : 'Reconnectez votre fichier de sauvegarde pour continuer.';
+        btn.textContent = 'Reconnecter le fichier';
+        btn.onclick = gatewayReconnect;
+        hint.textContent = 'Requis à chaque ouverture — le fichier reste sur votre ordinateur.';
+    } else {
+        desc.textContent = 'Choisissez un fichier pour stocker vos données sur votre ordinateur. Il sera mis à jour automatiquement.';
+        btn.textContent = 'Choisir un fichier de sauvegarde…';
+        btn.onclick = gatewayNew;
+        hint.textContent = '';
+    }
+    document.getElementById('file-gateway').style.display = 'flex';
+}
+
+function hideGateway() {
+    document.getElementById('file-gateway').style.display = 'none';
+}
+
+async function gatewayNew() {
+    try {
+        const handle = await window.showSaveFilePicker({
+            suggestedName: 'aria-save.json',
+            types: [{ description: 'Sauvegarde ARIA', accept: { 'application/json': ['.json'] } }],
+        });
+        saveFileHandle = handle;
+        await _storeHandle(handle);
+        try {
+            const text = await (await handle.getFile()).text();
+            if (text.trim()) {
+                const data = JSON.parse(text);
+                const playerData = data.player || (Array.isArray(data.characters) ? data : null);
+                if (playerData) applyPlayerData(playerData);
+            }
+        } catch(e) {}
+        await syncToFile();
+        hideGateway();
+        showSelectionScreen();
+    } catch(e) { /* user cancelled */ }
+}
+
+async function gatewayReconnect() {
+    if (!saveFileHandle) { showGateway('new'); return; }
+    try {
+        const perm = await saveFileHandle.requestPermission({ mode: 'readwrite' });
+        if (perm === 'granted') {
+            await loadFromFile();
+            hideGateway();
+            showSelectionScreen();
+        }
+    } catch(e) {}
+}
+
+function updateSaveFileStatus() {
+    const label = document.getElementById('sel-save-label');
+    if (!label) return;
+    label.textContent = saveFileHandle ? saveFileHandle.name : '—';
+    label.className = 'sel-save-label' + (saveFileHandle ? ' connected' : '');
+}
+
+async function changeSaveFile() {
+    try {
+        const handle = await window.showSaveFilePicker({
+            suggestedName: 'aria-save.json',
+            types: [{ description: 'Sauvegarde ARIA', accept: { 'application/json': ['.json'] } }],
+        });
+        saveFileHandle = handle;
+        await _storeHandle(handle);
+        try {
+            const text = await (await handle.getFile()).text();
+            if (text.trim()) {
+                const data = JSON.parse(text);
+                const playerData = data.player || (Array.isArray(data.characters) ? data : null);
+                if (playerData) applyPlayerData(playerData);
+            }
+        } catch(e) {}
+        await syncToFile();
+        renderSelectionScreen();
+    } catch(e) { /* user cancelled */ }
+}
+
+async function tryRestoreFileHandle() {
+    const handle = await _getStoredHandle();
+    if (!handle) { showGateway('new'); return; }
+    saveFileHandle = handle;
+    try {
+        const perm = await handle.queryPermission({ mode: 'readwrite' });
+        if (perm === 'granted') {
+            await loadFromFile();
+            hideGateway();
+            showSelectionScreen();
+        } else {
+            showGateway('reconnect');
+        }
+    } catch(e) { saveFileHandle = null; showGateway('new'); }
+}
+
 // ═══════════════════════════════════════════
 //  CHARACTER MANAGEMENT
 // ═══════════════════════════════════════════
-function hpKey()   { return 'aria-current-hp-' + currentCharId; }
-function cardKey() { return 'aria-cards-'       + currentCharId; }
+function hpKey()    { return 'aria-current-hp-' + currentCharId; }
+function cardKey()  { return 'aria-cards-'       + currentCharId; }
+function notesKey() { return 'aria-notes-'       + currentCharId; }
 
 function getCharacters() { return JSON.parse(localStorage.getItem('aria-characters') || '[]'); }
-function saveCharacters(chars) { localStorage.setItem('aria-characters', JSON.stringify(chars)); }
+function saveCharacters(chars) { localStorage.setItem('aria-characters', JSON.stringify(chars)); debouncedSync(); }
 function saveCurrentCharacter() {
     if (!currentCharId) return;
     const chars = getCharacters();
@@ -165,6 +370,7 @@ function showSelectionScreen() {
     document.getElementById('app-wrapper').style.display = 'none';
     document.getElementById('new-char-form').style.display = 'none';
     renderSelectionScreen();
+    updateSaveFileStatus();
 }
 
 function showApp() {
@@ -184,6 +390,7 @@ function deleteCharacter(id) {
     saveCharacters(chars);
     localStorage.removeItem('aria-current-hp-' + id);
     localStorage.removeItem('aria-cards-' + id);
+    localStorage.removeItem('aria-notes-' + id);
     renderSelectionScreen();
 }
 
@@ -224,11 +431,11 @@ function switchCharacter() {
 // ═══════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
     migrateIfNeeded();
     document.getElementById('version-display').textContent = 'v' + VERSION;
     document.getElementById('pid-display').textContent = '#' + playerId.slice(-6);
-    showSelectionScreen();
+    await tryRestoreFileHandle();
 });
 
 function initApp() {
@@ -246,6 +453,7 @@ function initApp() {
     document.getElementById('tab-char').addEventListener('input', scheduleAutoSave);
     document.getElementById('tab-inventory').addEventListener('input', scheduleAutoSave);
     document.getElementById('tab-alchemy').addEventListener('input', scheduleAutoSave);
+    loadNotes();
     if (presenceIntervalId) clearInterval(presenceIntervalId);
     presenceIntervalId = setInterval(sendPresence, 5000);
     document.title = character.name ? `ARIA – ${character.name}` : 'ARIA – Joueur';
@@ -260,6 +468,124 @@ function switchTab(id, btn) {
     document.getElementById(id).classList.add('active');
     btn.classList.add('active');
 }
+// ═══════════════════════════════════════════
+//  NOTES
+// ═══════════════════════════════════════════
+let notesList = [];
+let currentNoteId = null;
+
+function loadNotes() {
+    const raw = localStorage.getItem(notesKey());
+    if (!raw) {
+        notesList = [];
+    } else {
+        try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+                notesList = parsed;
+            } else {
+                // Migrate from plain string
+                notesList = [{ id: _noteId(), name: 'Notes', content: raw }];
+            }
+        } catch(e) {
+            // Plain string (not JSON)
+            notesList = [{ id: _noteId(), name: 'Notes', content: raw }];
+        }
+    }
+    currentNoteId = notesList.length > 0 ? notesList[0].id : null;
+    renderNotesList();
+    loadNoteContent();
+}
+
+function _noteId() {
+    return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+}
+
+function persistNotes() {
+    localStorage.setItem(notesKey(), JSON.stringify(notesList));
+    debouncedSync();
+}
+
+function renderNotesList() {
+    const list = document.getElementById('notes-list');
+    if (!list) return;
+    list.innerHTML = '';
+    notesList.forEach(note => {
+        const item = document.createElement('div');
+        item.className = 'notes-item' + (note.id === currentNoteId ? ' active' : '');
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'notes-item-name';
+        nameSpan.textContent = note.name || 'Sans titre';
+        nameSpan.addEventListener('click', () => selectNote(note.id));
+        const delBtn = document.createElement('button');
+        delBtn.className = 'notes-item-delete';
+        delBtn.title = 'Supprimer';
+        delBtn.textContent = '✕';
+        delBtn.addEventListener('click', (e) => { e.stopPropagation(); deleteNote(note.id); });
+        item.appendChild(nameSpan);
+        item.appendChild(delBtn);
+        list.appendChild(item);
+    });
+}
+
+function loadNoteContent() {
+    const nameInput = document.getElementById('notes-name-input');
+    const area = document.getElementById('notes-area');
+    if (!nameInput || !area) return;
+    const note = notesList.find(n => n.id === currentNoteId);
+    if (note) {
+        nameInput.value = note.name;
+        area.value = note.content;
+        nameInput.disabled = false;
+        area.disabled = false;
+    } else {
+        nameInput.value = '';
+        area.value = '';
+        nameInput.disabled = true;
+        area.disabled = true;
+    }
+}
+
+function selectNote(id) {
+    currentNoteId = id;
+    renderNotesList();
+    loadNoteContent();
+    document.getElementById('notes-area').focus();
+}
+
+function addNote() {
+    const note = { id: _noteId(), name: 'Nouvelle note', content: '' };
+    notesList.push(note);
+    persistNotes();
+    selectNote(note.id);
+    const nameInput = document.getElementById('notes-name-input');
+    if (nameInput) { nameInput.focus(); nameInput.select(); }
+}
+
+function deleteNote(id) {
+    const idx = notesList.findIndex(n => n.id === id);
+    notesList = notesList.filter(n => n.id !== id);
+    currentNoteId = notesList[Math.min(idx, notesList.length - 1)]?.id || null;
+    persistNotes();
+    renderNotesList();
+    loadNoteContent();
+}
+
+function saveCurrentNote() {
+    const note = notesList.find(n => n.id === currentNoteId);
+    if (!note) return;
+    note.content = document.getElementById('notes-area').value;
+    persistNotes();
+}
+
+function renameCurrentNote() {
+    const note = notesList.find(n => n.id === currentNoteId);
+    if (!note) return;
+    note.name = document.getElementById('notes-name-input').value;
+    persistNotes();
+    renderNotesList();
+}
+
 function applyTabVisibility() {
     const btnCards = document.getElementById('tab-btn-cards');
     const btnAlchemy = document.getElementById('tab-btn-alchemy');
@@ -317,7 +643,7 @@ function handleGMDamage(data) {
     const { damage, hpBefore, hpAfter, maxHP } = data;
     animateHPChange(hpBefore, hpAfter, maxHP);
     currentHP = hpAfter;
-    localStorage.setItem(hpKey(), currentHP);
+    localStorage.setItem(hpKey(), currentHP); debouncedSync();
     updateHPDisplay();
     triggerDamageVFX(damage, false);
     showToast('gm-dmg-toast', `⚔ Dégâts reçus : -${damage} PV`);
@@ -327,7 +653,7 @@ function handleGMHeal(data) {
     const { amount, hpBefore, hpAfter, maxHP } = data;
     animateHPChange(hpBefore, hpAfter, maxHP);
     currentHP = hpAfter;
-    localStorage.setItem(hpKey(), currentHP);
+    localStorage.setItem(hpKey(), currentHP); debouncedSync();
     updateHPDisplay();
     showHealNumber(amount);
     showToast('gm-heal-toast', `♥ Soins reçus : +${amount} PV`);
@@ -786,7 +1112,7 @@ function applySoigner(success) {
                     const after = Math.min(max, before + heal);
                     animateHPChange(before, after, max);
                     currentHP = after;
-                    localStorage.setItem(hpKey(), currentHP);
+                    localStorage.setItem(hpKey(), currentHP); debouncedSync();
                     updateHPDisplay();
                     showHealNumber(heal);
                     showToast('gm-heal-toast', `♥ Soins : +${heal} PV`);
@@ -805,7 +1131,7 @@ function applySoigner(success) {
                     const after = Math.max(0, before - dmg);
                     animateHPChange(before, after, max);
                     currentHP = after;
-                    localStorage.setItem(hpKey(), currentHP);
+                    localStorage.setItem(hpKey(), currentHP); debouncedSync();
                     updateHPDisplay();
                     triggerDamageVFX(dmg, true);
                     showToast('gm-dmg-toast', `⚔ Blessure : -${dmg} PV`);
@@ -1051,6 +1377,7 @@ function initAbly() {
                 if (d.playerId !== myId) return;
                 playerTabs = { ...playerTabs, ...d.tabs };
                 localStorage.setItem('aria-player-tabs-' + currentCharId, JSON.stringify(playerTabs));
+                debouncedSync();
                 applyTabVisibility();
                 return;
             }
@@ -1465,7 +1792,7 @@ function togglePill(id) {
     updateClearBtn(); saveCardState();
 }
 function clearExclusions() { if (cardDrawing) return; cardExcluded.clear(); refreshAllPills(); updateClearBtn(); saveCardState(); showCardStatus('Exclusions effacées'); }
-function saveCardState() { localStorage.setItem(cardKey(), JSON.stringify({ excluded: [...cardExcluded], drawn: [...cardDrawn], deckIds: cardDeck.map(c => c.id), lastCardId })); }
+function saveCardState() { localStorage.setItem(cardKey(), JSON.stringify({ excluded: [...cardExcluded], drawn: [...cardDrawn], deckIds: cardDeck.map(c => c.id), lastCardId })); debouncedSync(); }
 function updateDeckCount() {
     const n = cardDeck.length;
     document.getElementById('deck-count').textContent = n === 0 ? 'Vide' : `${n} carte${n !== 1 ? 's' : ''}`;

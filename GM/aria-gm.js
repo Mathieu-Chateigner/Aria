@@ -43,6 +43,204 @@ let gmClickHandlerRegistered = false;
 let renderPlayerCardsTimer = null;
 let renderMonstersTimer = null;
 let gmPotions = [];
+let saveFileHandle = null;
+let syncTimer = null;
+
+// ═══════════════════════════════════════════
+//  FILE SAVE SYSTEM
+// ═══════════════════════════════════════════
+function _openHandleDB() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open('aria-fs', 1);
+        req.onupgradeneeded = e => e.target.result.createObjectStore('handles');
+        req.onsuccess = e => resolve(e.target.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+async function _getStoredHandle() {
+    try {
+        const db = await _openHandleDB();
+        return await new Promise(resolve => {
+            const req = db.transaction('handles', 'readonly').objectStore('handles').get('saveFile');
+            req.onsuccess = () => resolve(req.result || null);
+            req.onerror = () => resolve(null);
+        });
+    } catch(e) { return null; }
+}
+async function _storeHandle(handle) {
+    try {
+        const db = await _openHandleDB();
+        await new Promise((resolve, reject) => {
+            const tx = db.transaction('handles', 'readwrite');
+            tx.objectStore('handles').put(handle, 'saveFile');
+            tx.oncomplete = resolve;
+            tx.onerror = reject;
+        });
+    } catch(e) {}
+}
+
+function collectGMData() {
+    const campaigns = JSON.parse(localStorage.getItem('aria-gm-campaigns') || '[]');
+    const perCampaign = {};
+    campaigns.forEach(c => {
+        const monsters    = localStorage.getItem('aria-gm-monsters-'     + c.id);
+        const rolls       = localStorage.getItem('aria-gm-rolls-'        + c.id);
+        const cardHistory = localStorage.getItem('aria-gm-card-history-' + c.id);
+        const potions     = localStorage.getItem('aria-gm-potions-'      + c.id);
+        perCampaign[c.id] = {
+            monsters:    monsters    ? JSON.parse(monsters)    : null,
+            rolls:       rolls       ? JSON.parse(rolls)       : null,
+            cardHistory: cardHistory ? JSON.parse(cardHistory) : null,
+            potions:     potions     ? JSON.parse(potions)     : null,
+        };
+    });
+    return { campaigns, perCampaign };
+}
+
+function applyGMData(data) {
+    if (!data || !Array.isArray(data.campaigns)) return;
+    localStorage.setItem('aria-gm-campaigns', JSON.stringify(data.campaigns));
+    if (!data.perCampaign) return;
+    Object.entries(data.perCampaign).forEach(([id, s]) => {
+        if (s.monsters    !== null && s.monsters    !== undefined) localStorage.setItem('aria-gm-monsters-'     + id, JSON.stringify(s.monsters));
+        if (s.rolls       !== null && s.rolls       !== undefined) localStorage.setItem('aria-gm-rolls-'        + id, JSON.stringify(s.rolls));
+        if (s.cardHistory !== null && s.cardHistory !== undefined) localStorage.setItem('aria-gm-card-history-' + id, JSON.stringify(s.cardHistory));
+        if (s.potions     !== null && s.potions     !== undefined) localStorage.setItem('aria-gm-potions-'      + id, JSON.stringify(s.potions));
+    });
+}
+
+async function loadFromFile() {
+    if (!saveFileHandle) return;
+    try {
+        const text = await (await saveFileHandle.getFile()).text();
+        if (!text.trim()) return;
+        const data = JSON.parse(text);
+        if (data.gm) applyGMData(data.gm);
+    } catch(e) { console.warn('[ARIA] Failed to read save file:', e); }
+}
+
+async function syncToFile() {
+    if (!saveFileHandle) return;
+    try {
+        const perm = await saveFileHandle.queryPermission({ mode: 'readwrite' });
+        if (perm !== 'granted') return;
+        let fileData = { version: 2, player: {}, gm: {} };
+        try {
+            const text = await (await saveFileHandle.getFile()).text();
+            if (text.trim()) Object.assign(fileData, JSON.parse(text));
+        } catch(e) {}
+        fileData.version = 2;
+        fileData.gm = collectGMData();
+        const writable = await saveFileHandle.createWritable();
+        await writable.write(JSON.stringify(fileData, null, 2));
+        await writable.close();
+    } catch(e) { console.warn('[ARIA] Failed to sync save file:', e); }
+}
+
+function debouncedSync() {
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(syncToFile, 800);
+}
+
+function showGateway(mode) {
+    const desc = document.getElementById('gateway-desc');
+    const btn  = document.getElementById('gateway-btn');
+    const hint = document.getElementById('gateway-hint');
+    if (mode === 'reconnect') {
+        desc.textContent = saveFileHandle
+            ? `Reconnectez "${saveFileHandle.name}" pour continuer.`
+            : 'Reconnectez votre fichier de sauvegarde pour continuer.';
+        btn.textContent = 'Reconnecter le fichier';
+        btn.onclick = gatewayReconnect;
+        hint.textContent = 'Requis à chaque ouverture — le fichier reste sur votre ordinateur.';
+    } else {
+        desc.textContent = 'Choisissez un fichier pour stocker vos données sur votre ordinateur. Il sera mis à jour automatiquement.';
+        btn.textContent = 'Choisir un fichier de sauvegarde…';
+        btn.onclick = gatewayNew;
+        hint.textContent = '';
+    }
+    document.getElementById('file-gateway').style.display = 'flex';
+}
+
+function hideGateway() {
+    document.getElementById('file-gateway').style.display = 'none';
+}
+
+async function gatewayNew() {
+    try {
+        const handle = await window.showSaveFilePicker({
+            suggestedName: 'aria-save.json',
+            types: [{ description: 'Sauvegarde ARIA', accept: { 'application/json': ['.json'] } }],
+        });
+        saveFileHandle = handle;
+        await _storeHandle(handle);
+        try {
+            const text = await (await handle.getFile()).text();
+            if (text.trim()) {
+                const data = JSON.parse(text);
+                if (data.gm) applyGMData(data.gm);
+            }
+        } catch(e) {}
+        await syncToFile();
+        hideGateway();
+        showSelectionScreen();
+    } catch(e) { /* user cancelled */ }
+}
+
+async function gatewayReconnect() {
+    if (!saveFileHandle) { showGateway('new'); return; }
+    try {
+        const perm = await saveFileHandle.requestPermission({ mode: 'readwrite' });
+        if (perm === 'granted') {
+            await loadFromFile();
+            hideGateway();
+            showSelectionScreen();
+        }
+    } catch(e) {}
+}
+
+function updateSaveFileStatus() {
+    const label = document.getElementById('sel-save-label');
+    if (!label) return;
+    label.textContent = saveFileHandle ? saveFileHandle.name : '—';
+    label.className = 'sel-save-label' + (saveFileHandle ? ' connected' : '');
+}
+
+async function changeSaveFile() {
+    try {
+        const handle = await window.showSaveFilePicker({
+            suggestedName: 'aria-save.json',
+            types: [{ description: 'Sauvegarde ARIA', accept: { 'application/json': ['.json'] } }],
+        });
+        saveFileHandle = handle;
+        await _storeHandle(handle);
+        try {
+            const text = await (await handle.getFile()).text();
+            if (text.trim()) {
+                const data = JSON.parse(text);
+                if (data.gm) applyGMData(data.gm);
+            }
+        } catch(e) {}
+        await syncToFile();
+        renderCampaignScreen();
+    } catch(e) { /* user cancelled */ }
+}
+
+async function tryRestoreFileHandle() {
+    const handle = await _getStoredHandle();
+    if (!handle) { showGateway('new'); return; }
+    saveFileHandle = handle;
+    try {
+        const perm = await handle.queryPermission({ mode: 'readwrite' });
+        if (perm === 'granted') {
+            await loadFromFile();
+            hideGateway();
+            showSelectionScreen();
+        } else {
+            showGateway('reconnect');
+        }
+    } catch(e) { saveFileHandle = null; showGateway('new'); }
+}
 
 // ═══════════════════════════════════════════
 //  CAMPAIGN MANAGEMENT
@@ -53,7 +251,7 @@ function cardHistKey()  { return 'aria-gm-card-history-' + currentCampaignId; }
 function potionsKey()   { return 'aria-gm-potions-'      + currentCampaignId; }
 
 function getCampaigns() { return JSON.parse(localStorage.getItem('aria-gm-campaigns') || '[]'); }
-function saveCampaigns(campaigns) { localStorage.setItem('aria-gm-campaigns', JSON.stringify(campaigns)); }
+function saveCampaigns(campaigns) { localStorage.setItem('aria-gm-campaigns', JSON.stringify(campaigns)); debouncedSync(); }
 
 function migrateGMIfNeeded() {
     if (localStorage.getItem('aria-gm-campaigns')) return;
@@ -101,6 +299,7 @@ function showSelectionScreen() {
     document.getElementById('app-wrapper').style.display = 'none';
     document.getElementById('new-campaign-form').style.display = 'none';
     renderCampaignScreen();
+    updateSaveFileStatus();
 }
 
 function showApp() {
@@ -161,6 +360,7 @@ function switchCampaign() {
         saveGMPotions();
         localStorage.setItem(rollsKey(), JSON.stringify(rollFeed));
         localStorage.setItem(cardHistKey(), JSON.stringify(cardHistory));
+        debouncedSync();
     }
     gmPotions = [];
     if (sweepIntervalId) { clearInterval(sweepIntervalId); sweepIntervalId = null; }
@@ -177,10 +377,10 @@ function switchCampaign() {
 // ═══════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
     migrateGMIfNeeded();
     document.getElementById('version-display').textContent = 'v' + VERSION;
-    showSelectionScreen();
+    await tryRestoreFileHandle();
 });
 
 function initApp() {
@@ -575,7 +775,7 @@ function applyPlayerHeal(playerId) {
 // ═══════════════════════════════════════════
 //  MONSTERS
 // ═══════════════════════════════════════════
-function saveMonsters() { localStorage.setItem(monstersKey(), JSON.stringify(monsters)); }
+function saveMonsters() { localStorage.setItem(monstersKey(), JSON.stringify(monsters)); debouncedSync(); }
 function addMonster() {
     const name = document.getElementById('amf-name').value.trim();
     if (!name) { alert('Entrez un nom.'); return; }
@@ -779,6 +979,7 @@ function handleIncomingRoll(data) {
     rollFeed.unshift({ ...data, receivedAt: Date.now() });
     if (rollFeed.length > 50) rollFeed.pop();
     localStorage.setItem(rollsKey(), JSON.stringify(rollFeed));
+    debouncedSync();
     renderRollFeed();
 }
 function classify(roll, threshold, success) {
@@ -809,7 +1010,7 @@ function renderRollFeed() {
         feed.appendChild(row);
     });
 }
-function clearRolls() { rollFeed = []; localStorage.removeItem(rollsKey()); renderRollFeed(); }
+function clearRolls() { rollFeed = []; localStorage.removeItem(rollsKey()); debouncedSync(); renderRollFeed(); }
 
 // ═══════════════════════════════════════════
 //  GM ROLLS
@@ -960,6 +1161,7 @@ function renderCardHistory() {
 function clearCardHistory() {
     cardHistory = [];
     localStorage.removeItem(cardHistKey());
+    debouncedSync();
     renderCardHistory();
 }
 async function handlePlayerCard(data) {
@@ -971,6 +1173,7 @@ async function handlePlayerCard(data) {
     document.getElementById('gm-card-info').textContent = who;
     cardHistory.unshift({ cardId: data.cardId, playerName: data.playerName || '?', ts: Date.now() });
     localStorage.setItem(cardHistKey(), JSON.stringify(cardHistory));
+    debouncedSync();
     renderCardHistory();
     const flipWrap = document.getElementById('flip-wrap');
     const flipInner = flipWrap.querySelector('.flip-inner');
@@ -999,7 +1202,7 @@ function handlePlayerReshuffle() {
 // ═══════════════════════════════════════════
 //  GM ALCHEMY
 // ═══════════════════════════════════════════
-function saveGMPotions() { if (currentCampaignId) localStorage.setItem(potionsKey(), JSON.stringify(gmPotions)); }
+function saveGMPotions() { if (currentCampaignId) { localStorage.setItem(potionsKey(), JSON.stringify(gmPotions)); debouncedSync(); } }
 
 function addGMPotion() {
     const name = document.getElementById('apf-name').value.trim();

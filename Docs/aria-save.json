@@ -1,0 +1,424 @@
+{
+  "version": 1,
+  "characters": [
+    {
+      "name": "Test8",
+      "class": "Disciple étranger à l'académie",
+      "stats": {
+        "FOR": 9,
+        "DEX": 10,
+        "END": 15,
+        "INT": 14,
+        "CHA": 11,
+        "PV": 14
+      },
+      "physical": {
+        "age": "28",
+        "taille": "",
+        "poids": "",
+        "yeux": "",
+        "cheveux": "",
+        "signes": ""
+      },
+      "inventory": [
+        {
+          "name": "Test",
+          "qty": 1
+        }
+      ],
+      "weapons": [
+        {
+          "nom": "Dague",
+          "degats": "1D4"
+        },
+        {
+          "nom": "",
+          "degats": ""
+        },
+        {
+          "nom": "",
+          "degats": ""
+        }
+      ],
+      "protection": {
+        "nom": "",
+        "valeur": 0
+      },
+      "blessures": {
+        "current": 0,
+        "max": 5
+      },
+      "skills": [
+        {
+          "name": "Artisanat, construire",
+          "link": "DEX/INT",
+          "pct": 48
+        },
+        {
+          "name": "Combat rapproché",
+          "link": "FOR/DEX",
+          "pct": 38
+        },
+        {
+          "name": "Combat à distance",
+          "link": "FOR/DEX",
+          "pct": 38
+        },
+        {
+          "name": "Connaissance de la nature",
+          "link": "DEX/INT",
+          "pct": 58
+        },
+        {
+          "name": "Connaissance des secrets",
+          "link": "INT/CHA",
+          "pct": 70
+        },
+        {
+          "name": "Courir, sauter",
+          "link": "DEX/END",
+          "pct": 50
+        },
+        {
+          "name": "Discrétion",
+          "link": "DEX/CHA",
+          "pct": 50
+        },
+        {
+          "name": "Droit",
+          "link": "INT/CHA",
+          "pct": 40
+        },
+        {
+          "name": "Esquiver",
+          "link": "DEX/INT",
+          "pct": 48
+        },
+        {
+          "name": "Intimider",
+          "link": "FOR/CHA",
+          "pct": 40
+        },
+        {
+          "name": "Lire, écrire",
+          "link": "INT/CHA",
+          "pct": 70
+        },
+        {
+          "name": "Mentir, convaincre",
+          "link": "INT/CHA",
+          "pct": 50
+        },
+        {
+          "name": "Perception",
+          "link": "INT/CHA",
+          "pct": 70
+        },
+        {
+          "name": "Piloter",
+          "link": "DEX/END",
+          "pct": 50
+        },
+        {
+          "name": "Psychologie",
+          "link": "END/INT",
+          "pct": 58
+        },
+        {
+          "name": "Réflexes",
+          "link": "DEX/INT",
+          "pct": 38
+        },
+        {
+          "name": "Serrures et pièges",
+          "link": "DEX/END",
+          "pct": 50
+        },
+        {
+          "name": "Soigner",
+          "link": "INT/CHA",
+          "pct": 50
+        },
+        {
+          "name": "Survie",
+          "link": "END/INT",
+          "pct": 50
+        },
+        {
+          "name": "Voler",
+          "link": "DEX/INT",
+          "pct": 58
+        }
+      ],
+      "specials": [
+        {
+          "name": "Bonneteau",
+          "desc": "Intervertir 2 petits objets dans le champ de vision",
+          "pct": 50
+        }
+      ],
+      "potions": [],
+      "potionRecipes": [],
+      "vials": 0,
+      "id": "31835c68-50e8-4ccc-ae65-485f13fc319e"
+    },
+    {
+      "name": "Test3",
+      "class": "Mage de combat",
+      "stats": {
+        "FOR": 0,
+        "DEX": 0,
+        "END": 0,
+        "INT": 0,
+        "CHA": 0,
+        "PV": 0
+      },
+      "physical": {
+        "age": "",
+        "taille": "",
+        "poids": "",
+        "yeux": "",
+        "cheveux": "",
+        "signes": ""
+      },
+      "inventory": [],
+      "weapons": [
+        {
+          "nom": "",
+          "degats": ""
+        },
+        {
+          "nom": "",
+          "degats": ""
+        },
+        {
+          "nom": "",
+          "degats": ""
+        }
+      ],
+      "protection": {
+        "nom": "",
+        "valeur": 0
+      },
+      "skills": [
+        {
+          "name": "Artisanat, construire",
+          "link": "DEX/INT",
+          "pct": 0
+        },
+        {
+          "name": "Combat rapproché",
+          "link": "FOR/DEX",
+          "pct": 0
+        },
+        {
+          "name": "Combat à distance",
+          "link": "FOR/DEX",
+          "pct": 0
+        },
+        {
+          "name": "Connaissance de la nature",
+          "link": "DEX/INT",
+          "pct": 0
+        },
+        {
+          "name": "Connaissance des secrets",
+          "link": "INT/CHA",
+          "pct": 0
+        },
+        {
+          "name": "Courir, sauter",
+          "link": "DEX/END",
+          "pct": 0
+        },
+        {
+          "name": "Discrétion",
+          "link": "DEX/CHA",
+          "pct": 0
+        },
+        {
+          "name": "Droit",
+          "link": "INT/CHA",
+          "pct": 0
+        },
+        {
+          "name": "Esquiver",
+          "link": "DEX/INT",
+          "pct": 0
+        },
+        {
+          "name": "Intimider",
+          "link": "FOR/CHA",
+          "pct": 0
+        },
+        {
+          "name": "Lire, écrire",
+          "link": "INT/CHA",
+          "pct": 0
+        },
+        {
+          "name": "Mentir, convaincre",
+          "link": "INT/CHA",
+          "pct": 0
+        },
+        {
+          "name": "Perception",
+          "link": "INT/CHA",
+          "pct": 0
+        },
+        {
+          "name": "Piloter",
+          "link": "DEX/END",
+          "pct": 0
+        },
+        {
+          "name": "Psychologie",
+          "link": "END/INT",
+          "pct": 0
+        },
+        {
+          "name": "Réflexes",
+          "link": "DEX/INT",
+          "pct": 0
+        },
+        {
+          "name": "Serrures et pièges",
+          "link": "DEX/END",
+          "pct": 0
+        },
+        {
+          "name": "Soigner",
+          "link": "INT/CHA",
+          "pct": 0
+        },
+        {
+          "name": "Survie",
+          "link": "END/INT",
+          "pct": 0
+        },
+        {
+          "name": "Voler",
+          "link": "DEX/INT",
+          "pct": 0
+        }
+      ],
+      "specials": [],
+      "potions": [
+        {
+          "recipeId": "c4681636-dc55-4422-b9d6-6ecd40403378",
+          "name": "Deuxieme popo",
+          "qty": 0
+        },
+        {
+          "recipeId": "3854f9cc-fd68-43b8-b623-14f071c9c398",
+          "name": "AAAAAAAA",
+          "qty": 0
+        }
+      ],
+      "potionRecipes": [
+        {
+          "id": "3854f9cc-fd68-43b8-b623-14f071c9c398",
+          "name": "AAAAAAAA",
+          "desc": "BBBBBBBB",
+          "ingredients": "CCCCCCCCCCC",
+          "successChance": 70
+        },
+        {
+          "id": "c4681636-dc55-4422-b9d6-6ecd40403378",
+          "name": "Deuxieme popo",
+          "desc": "Fait des trucs",
+          "ingredients": "Herbe",
+          "successChance": 80
+        }
+      ],
+      "vials": 2,
+      "id": "c9e0a65c-e676-455c-8b24-4e9c567dced0"
+    }
+  ],
+  "perChar": {
+    "31835c68-50e8-4ccc-ae65-485f13fc319e": {
+      "hp": 12,
+      "cards": {
+        "excluded": [],
+        "drawn": [],
+        "deckIds": [
+          "7-diamonds",
+          "4-hearts",
+          "7-spades",
+          "6-hearts",
+          "8-clubs",
+          "6-diamonds",
+          "4-diamonds",
+          "A-clubs",
+          "A-spades",
+          "Q-diamonds",
+          "6-spades",
+          "10-clubs",
+          "2-clubs",
+          "3-diamonds",
+          "8-diamonds",
+          "joker-black",
+          "J-spades",
+          "3-spades",
+          "K-hearts",
+          "Q-clubs",
+          "Q-hearts",
+          "9-diamonds",
+          "J-clubs",
+          "K-diamonds",
+          "2-hearts",
+          "2-diamonds",
+          "A-hearts",
+          "A-diamonds",
+          "J-hearts",
+          "5-clubs",
+          "9-clubs",
+          "joker-red",
+          "5-diamonds",
+          "5-spades",
+          "4-spades",
+          "10-hearts",
+          "J-diamonds",
+          "2-spades",
+          "6-clubs",
+          "7-hearts",
+          "8-spades",
+          "3-clubs",
+          "10-spades",
+          "8-hearts",
+          "9-spades",
+          "3-hearts",
+          "7-clubs",
+          "4-clubs",
+          "K-clubs",
+          "5-hearts",
+          "K-spades",
+          "10-diamonds",
+          "Q-spades",
+          "9-hearts"
+        ],
+        "lastCardId": "4-spades"
+      },
+      "notes": [
+        {
+          "id": "4adff944-d685-445b-9136-6cffb18cc9c6",
+          "name": "Test",
+          "content": "test tes ttes\n"
+        }
+      ],
+      "tabs": {
+        "cards": true,
+        "alchemy": false
+      }
+    },
+    "c9e0a65c-e676-455c-8b24-4e9c567dced0": {
+      "hp": 8,
+      "cards": null,
+      "notes": null,
+      "tabs": {
+        "cards": false,
+        "alchemy": true
+      }
+    }
+  }
+}

@@ -1859,6 +1859,98 @@ body {
     transition: border-color .2s, color .2s;
 }
 .sel-cancel-btn:hover { border-color: var(--parchment-dim); color: var(--parchment); }
+
+.sel-save-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: rgba(201,168,76,.04);
+    width: 100%;
+    max-width: 420px;
+}
+.sel-save-icon { font-size: 14px; flex-shrink: 0; }
+.sel-save-label {
+    flex: 1;
+    font-family: 'EB Garamond', serif;
+    font-size: 14px;
+    color: var(--parchment-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.sel-save-label.connected { color: var(--success); }
+.sel-save-btn {
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    letter-spacing: .1em;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--parchment-dim);
+    padding: 5px 10px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: border-color .15s, color .15s;
+}
+.sel-save-btn:hover { border-color: var(--gold-dim); color: var(--gold); }
+
+.gateway-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    max-width: 420px;
+    width: 100%;
+    padding: 40px 32px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg2);
+}
+.gateway-title {
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--parchment-dim);
+    margin-top: -8px;
+}
+.gateway-desc {
+    font-family: 'EB Garamond', serif;
+    font-size: 15px;
+    color: var(--parchment-dim);
+    text-align: center;
+    line-height: 1.55;
+    margin: 0;
+}
+.gateway-btn {
+    font-family: 'Cinzel', serif;
+    font-size: 12px;
+    letter-spacing: .1em;
+    background: rgba(123,63,160,.15);
+    border: 1px solid rgba(123,63,160,.5);
+    color: #b07fd4;
+    padding: 12px 28px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: background .15s, border-color .15s;
+}
+.gateway-btn:hover {
+    background: rgba(123,63,160,.28);
+    border-color: var(--gm-accent);
+}
+.gateway-hint {
+    font-family: 'EB Garamond', serif;
+    font-size: 12px;
+    font-style: italic;
+    color: var(--parchment-dim);
+    opacity: .5;
+    text-align: center;
+    margin: 0;
+}
+
 #app-wrapper { flex: 1; flex-direction: column; min-height: 0; }
 
 /* Editable campaign name in topbar */
