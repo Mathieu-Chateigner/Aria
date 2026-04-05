@@ -43,40 +43,35 @@ let gmClickHandlerRegistered = false;
 let renderPlayerCardsTimer = null;
 let renderMonstersTimer = null;
 let gmPotions = [];
-let saveFileHandle = null;
-let syncTimer = null;
+let saveKey        = localStorage.getItem('aria-save-key') || null;
+let _pendingNewKey = null;
+let syncTimer      = null;
 
 // ═══════════════════════════════════════════
-//  FILE SAVE SYSTEM
+//  SUPABASE CONFIG
+//  Replace with your values from:
+//  Supabase dashboard → Project Settings → API
 // ═══════════════════════════════════════════
-function _openHandleDB() {
-    return new Promise((resolve, reject) => {
-        const req = indexedDB.open('aria-fs', 1);
-        req.onupgradeneeded = e => e.target.result.createObjectStore('handles');
-        req.onsuccess = e => resolve(e.target.result);
-        req.onerror = () => reject(req.error);
+const SUPABASE_URL = 'https://npybuksklkvdmbhyzdjs.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_hUkdwmlgNNhLXn6t38GHHg_N7XXVOn4';
+
+// ═══════════════════════════════════════════
+//  CLOUD SAVE SYSTEM
+// ═══════════════════════════════════════════
+function _supabaseReady() {
+    return !!SUPABASE_URL && !!SUPABASE_ANON_KEY && !!saveKey;
+}
+
+async function _sbFetch(path, options = {}) {
+    return fetch(SUPABASE_URL + path, {
+        ...options,
+        headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+            'Content-Type': 'application/json',
+            ...options.headers,
+        },
     });
-}
-async function _getStoredHandle() {
-    try {
-        const db = await _openHandleDB();
-        return await new Promise(resolve => {
-            const req = db.transaction('handles', 'readonly').objectStore('handles').get('saveFile');
-            req.onsuccess = () => resolve(req.result || null);
-            req.onerror = () => resolve(null);
-        });
-    } catch(e) { return null; }
-}
-async function _storeHandle(handle) {
-    try {
-        const db = await _openHandleDB();
-        await new Promise((resolve, reject) => {
-            const tx = db.transaction('handles', 'readwrite');
-            tx.objectStore('handles').put(handle, 'saveFile');
-            tx.oncomplete = resolve;
-            tx.onerror = reject;
-        });
-    } catch(e) {}
 }
 
 function collectGMData() {
@@ -109,137 +104,101 @@ function applyGMData(data) {
     });
 }
 
-async function loadFromFile() {
-    if (!saveFileHandle) return;
+async function loadFromSupabase() {
+    if (!_supabaseReady()) return;
     try {
-        const text = await (await saveFileHandle.getFile()).text();
-        if (!text.trim()) return;
-        const data = JSON.parse(text);
+        const res = await _sbFetch(`/rest/v1/saves?save_key=eq.${encodeURIComponent(saveKey)}&select=data`);
+        if (!res.ok) return;
+        const rows = await res.json();
+        if (!rows.length) return;
+        const data = rows[0].data;
         if (data.gm) applyGMData(data.gm);
-    } catch(e) { console.warn('[ARIA] Failed to read save file:', e); }
+    } catch(e) { console.warn('[ARIA] Supabase load failed:', e); }
 }
 
-async function syncToFile() {
-    if (!saveFileHandle) return;
+async function syncToSupabase() {
+    if (!_supabaseReady()) return;
     try {
-        const perm = await saveFileHandle.queryPermission({ mode: 'readwrite' });
-        if (perm !== 'granted') return;
-        let fileData = { version: 2, player: {}, gm: {} };
-        try {
-            const text = await (await saveFileHandle.getFile()).text();
-            if (text.trim()) Object.assign(fileData, JSON.parse(text));
-        } catch(e) {}
-        fileData.version = 2;
-        fileData.gm = collectGMData();
-        const writable = await saveFileHandle.createWritable();
-        await writable.write(JSON.stringify(fileData, null, 2));
-        await writable.close();
-    } catch(e) { console.warn('[ARIA] Failed to sync save file:', e); }
+        await _sbFetch('/rest/v1/saves', {
+            method: 'POST',
+            headers: { 'Prefer': 'resolution=merge-duplicates' },
+            body: JSON.stringify({ save_key: saveKey, data: { version: 2, gm: collectGMData() }, updated_at: new Date().toISOString() }),
+        });
+    } catch(e) { console.warn('[ARIA] Supabase sync failed:', e); }
 }
 
 function debouncedSync() {
     clearTimeout(syncTimer);
-    syncTimer = setTimeout(syncToFile, 800);
+    syncTimer = setTimeout(syncToSupabase, 800);
 }
 
-function showGateway(mode) {
-    const desc = document.getElementById('gateway-desc');
-    const btn  = document.getElementById('gateway-btn');
-    const hint = document.getElementById('gateway-hint');
-    if (mode === 'reconnect') {
-        desc.textContent = saveFileHandle
-            ? `Reconnectez "${saveFileHandle.name}" pour continuer.`
-            : 'Reconnectez votre fichier de sauvegarde pour continuer.';
-        btn.textContent = 'Reconnecter le fichier';
-        btn.onclick = gatewayReconnect;
-        hint.textContent = 'Requis à chaque ouverture — le fichier reste sur votre ordinateur.';
-    } else {
-        desc.textContent = 'Choisissez un fichier pour stocker vos données sur votre ordinateur. Il sera mis à jour automatiquement.';
-        btn.textContent = 'Choisir un fichier de sauvegarde…';
-        btn.onclick = gatewayNew;
-        hint.textContent = '';
-    }
+function showGateway() {
+    _pendingNewKey = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+    document.getElementById('gateway-key-display').textContent = _pendingNewKey;
+    document.getElementById('gateway-new').style.display = '';
+    document.getElementById('gateway-existing').style.display = 'none';
     document.getElementById('file-gateway').style.display = 'flex';
+}
+
+function showGatewayExisting() {
+    document.getElementById('gateway-new').style.display = 'none';
+    document.getElementById('gateway-existing').style.display = '';
+    const input = document.getElementById('gateway-key-input');
+    if (input) { input.value = ''; input.focus(); }
 }
 
 function hideGateway() {
     document.getElementById('file-gateway').style.display = 'none';
 }
 
-async function gatewayNew() {
-    try {
-        const handle = await window.showSaveFilePicker({
-            suggestedName: 'aria-save.json',
-            types: [{ description: 'Sauvegarde ARIA', accept: { 'application/json': ['.json'] } }],
-        });
-        saveFileHandle = handle;
-        await _storeHandle(handle);
-        try {
-            const text = await (await handle.getFile()).text();
-            if (text.trim()) {
-                const data = JSON.parse(text);
-                if (data.gm) applyGMData(data.gm);
-            }
-        } catch(e) {}
-        await syncToFile();
-        hideGateway();
-        showSelectionScreen();
-    } catch(e) { /* user cancelled */ }
+function copyGatewayKey() {
+    const key = document.getElementById('gateway-key-display').textContent;
+    navigator.clipboard.writeText(key).catch(() => {});
+    const btn = document.getElementById('gateway-copy-btn');
+    if (btn) { btn.textContent = 'Copié !'; setTimeout(() => { btn.textContent = 'Copier'; }, 2000); }
 }
 
-async function gatewayReconnect() {
-    if (!saveFileHandle) { showGateway('new'); return; }
-    try {
-        const perm = await saveFileHandle.requestPermission({ mode: 'readwrite' });
-        if (perm === 'granted') {
-            await loadFromFile();
-            hideGateway();
-            showSelectionScreen();
-        }
-    } catch(e) {}
+async function confirmNewKey() {
+    if (!_pendingNewKey) return;
+    saveKey = _pendingNewKey;
+    localStorage.setItem('aria-save-key', saveKey);
+    await syncToSupabase();
+    hideGateway();
+    showSelectionScreen();
 }
 
-function updateSaveFileStatus() {
+async function submitExistingKey() {
+    const input = document.getElementById('gateway-key-input');
+    const key = input ? input.value.trim() : '';
+    if (!key) return;
+    saveKey = key;
+    localStorage.setItem('aria-save-key', key);
+    await loadFromSupabase();
+    hideGateway();
+    showSelectionScreen();
+}
+
+function updateSaveKeyStatus() {
     const label = document.getElementById('sel-save-label');
     if (!label) return;
-    label.textContent = saveFileHandle ? saveFileHandle.name : '—';
-    label.className = 'sel-save-label' + (saveFileHandle ? ' connected' : '');
+    label.textContent = saveKey ? saveKey.slice(0, 8) + '…' : '—';
+    label.className = 'sel-save-label' + (saveKey ? ' connected' : '');
 }
 
-async function changeSaveFile() {
-    try {
-        const handle = await window.showSaveFilePicker({
-            suggestedName: 'aria-save.json',
-            types: [{ description: 'Sauvegarde ARIA', accept: { 'application/json': ['.json'] } }],
-        });
-        saveFileHandle = handle;
-        await _storeHandle(handle);
-        try {
-            const text = await (await handle.getFile()).text();
-            if (text.trim()) {
-                const data = JSON.parse(text);
-                if (data.gm) applyGMData(data.gm);
-            }
-        } catch(e) {}
-        await syncToFile();
-        renderCampaignScreen();
-    } catch(e) { /* user cancelled */ }
+function changeSaveKey() {
+    showGatewayExisting();
+    document.getElementById('file-gateway').style.display = 'flex';
 }
 
-async function tryRestoreFileHandle() {
-    const handle = await _getStoredHandle();
-    if (!handle) { showGateway('new'); return; }
-    saveFileHandle = handle;
-    try {
-        const perm = await handle.queryPermission({ mode: 'readwrite' });
-        if (perm === 'granted') {
-            await loadFromFile();
-            hideGateway();
-            showSelectionScreen();
-        } else {
-            showGateway('reconnect');
-        }
-    } catch(e) { saveFileHandle = null; showGateway('new'); }
+function cancelGateway() {
+    if (saveKey) { hideGateway(); } else { showGateway(); }
+}
+
+async function tryRestoreSupabase() {
+    if (!saveKey) { showGateway(); return; }
+    await loadFromSupabase();
+    hideGateway();
+    showSelectionScreen();
 }
 
 // ═══════════════════════════════════════════
@@ -299,7 +258,7 @@ function showSelectionScreen() {
     document.getElementById('app-wrapper').style.display = 'none';
     document.getElementById('new-campaign-form').style.display = 'none';
     renderCampaignScreen();
-    updateSaveFileStatus();
+    updateSaveKeyStatus();
 }
 
 function showApp() {
@@ -380,7 +339,7 @@ function switchCampaign() {
 window.addEventListener('DOMContentLoaded', async () => {
     migrateGMIfNeeded();
     document.getElementById('version-display').textContent = 'v' + VERSION;
-    await tryRestoreFileHandle();
+    await tryRestoreSupabase();
 });
 
 function initApp() {

@@ -1730,6 +1730,18 @@ body {
     max-width: 780px;
     width: 100%;
 }
+.sel-home-btn {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    font-size: 18px;
+    color: var(--parchment-dim);
+    text-decoration: none;
+    opacity: .45;
+    transition: opacity .15s;
+    line-height: 1;
+}
+.sel-home-btn:hover { opacity: 1; }
 .sel-brand {
     font-family: 'Cinzel Decorative', serif;
     font-size: 32px;
@@ -1949,6 +1961,79 @@ body {
     opacity: .5;
     text-align: center;
     margin: 0;
+}
+.gateway-key-box {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    color: var(--gold-light);
+    background: rgba(201,168,76,.06);
+    border: 1px solid var(--gold-dim);
+    border-radius: var(--radius);
+    padding: 10px 16px;
+    text-align: center;
+    letter-spacing: .04em;
+    word-break: break-all;
+    width: 100%;
+    box-sizing: border-box;
+}
+.gateway-btn-row {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+}
+.gateway-btn-secondary {
+    font-family: 'Cinzel', serif;
+    font-size: 12px;
+    letter-spacing: .1em;
+    background: transparent;
+    border: 1px solid var(--gold-dim);
+    color: var(--parchment-dim);
+    padding: 12px 18px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: background .15s, border-color .15s;
+    white-space: nowrap;
+}
+.gateway-btn-secondary:hover {
+    background: rgba(201,168,76,.08);
+    border-color: var(--gold);
+    color: var(--parchment);
+}
+.gateway-key-input {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--parchment);
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    padding: 10px 14px;
+    outline: none;
+    transition: border-color .15s;
+}
+.gateway-key-input:focus {
+    border-color: var(--gold-dim);
+}
+.gateway-link-btn {
+    background: none;
+    border: none;
+    color: var(--gold-dim);
+    font-family: 'EB Garamond', serif;
+    font-size: 12px;
+    font-style: italic;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+    opacity: .7;
+}
+.gateway-link-btn:hover { opacity: 1; }
+#gateway-new, #gateway-existing {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
 }
 
 #app-wrapper { flex: 1; flex-direction: column; min-height: 0; }

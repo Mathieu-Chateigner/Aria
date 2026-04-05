@@ -1,23 +1,6 @@
 # TTRPG Web Tool — Development Plan
 
-## Completed
-
-### P0 — Alchemy
-- Potion table with creation and addition of new potions
-
-### P0 — Combat
-- Parry mechanic (Parade)
-- Dodge mechanic (Esquive)
-
-### P0 — GM Interface
-- Full player details modal: skill percentages, weapons, inventory, stats
-
----
-
 ## P1 (High Priority)
-
-### Player Notes
-- Text-based note system
 
 ### Stream Integration
 - Display player HP on stream during combat
@@ -59,3 +42,20 @@
 - Hide enemy HP (fog of war)
 - Healing/damage actions inline
 - Inspired by tabletop combat overlays
+
+---
+
+## Completed
+
+### P0 — Alchemy
+- Potion table with creation and addition of new potions
+
+### P0 — Combat
+- Parry mechanic (Parade)
+- Dodge mechanic (Esquive)
+
+### P0 — GM Interface
+- Full player details modal: skill percentages, weapons, inventory, stats
+
+### P1 — Player Notes
+- Text-based note system with per-character note list, name/content editing
