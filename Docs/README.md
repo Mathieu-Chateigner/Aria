@@ -1,123 +1,178 @@
-# ♛ ARIA — Système d'overlay TTRPG
+# ♛ ARIA — Système de jeu de rôle sur table
 
-Système de gestion de partie TTRPG pour OBS, composé de trois fichiers HTML autonomes.
-Aucune installation de serveur requise — tout fonctionne dans le navigateur.
+Outil de gestion de partie TTRPG hébergé sur le web, sans installation.  
+Accessible depuis n'importe quel navigateur, sauvegarde automatique dans le cloud.
 
 ---
 
-## 📁 Fichiers inclus
+## 🌐 Accès
 
-| Fichier | Rôle | Où l'ouvrir |
-|---|---|---|
-| `aria-player.html` | Panneau joueur (fiche, dés, cartes) | Navigateur sur le PC du joueur |
-| `aria-gm.html` | Panneau Maître de Jeu | Navigateur sur le PC du MJ |
-| `aria-overlay.html` | Overlay OBS (résultats de jets, cartes, dégâts) | Source navigateur dans OBS |
+| Panneau | URL |
+|---|---|
+| **Accueil** | `https://your-name.github.io/Aria` |
+| **Joueur** | `https://your-name.github.io/Aria/views/aria-player.html` |
+| **Maître de Jeu** | `https://your-name.github.io/Aria/views/aria-gm.html` |
+| **Overlay OBS** | `https://your-name.github.io/Aria/views/aria-overlay.html?mode=player&ably=CLE` |
+
+---
+
+## 📁 Structure du projet
+
+```
+Aria/
+├── index.html          ← Page d'accueil (sélection Joueur / MJ)
+├── views/
+│   ├── aria-player.html
+│   ├── aria-gm.html
+│   └── aria-overlay.html
+├── css/
+│   ├── aria-player.css
+│   ├── aria-gm.css
+│   └── aria-overlay.css
+└── js/
+    ├── aria-player.js
+    ├── aria-gm.js
+    └── aria-overlay.js
+```
 
 ---
 
 ## 🔧 Prérequis — Comptes à créer (gratuits)
 
 ### 1. Ably — Synchronisation en temps réel
-> Permet aux panneaux joueur/MJ de communiquer entre eux.
+> Permet aux panneaux joueur/MJ de communiquer en temps réel.
 
-1. Aller sur [ably.com](https://ably.com) → **Sign up** (gratuit)
+1. Aller sur [ably.com](https://ably.com) → **Sign up**
 2. Créer une **App** (nom au choix)
-3. Dans l'app → onglet **API Keys**
-4. Copier la clé **Root** (format `xxxxxxxx.yyyyyy:zzzzzzzzzzzz`)
-5. **Tout le monde utilise la même clé Ably** — joueurs ET MJ
+3. Onglet **API Keys** → copier la clé **Root** (`xxxxxxxx:yyyyyyyyyy`)
+4. **Tout le monde utilise la même clé** — joueurs ET MJ
 
-### 2. dddice — Dés 3D dans OBS *(optionnel)*
-> Affiche des dés 3D animés dans la room partagée visible dans OBS.
+### 2. Supabase — Sauvegarde cloud
+> Stocke les données de chaque joueur/MJ dans le cloud.
+
+1. Aller sur [supabase.com](https://supabase.com) → créer un projet (gratuit)
+2. **SQL Editor** → exécuter :
+```sql
+CREATE TABLE saves (
+  save_key   TEXT        PRIMARY KEY,
+  data       JSONB       NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE saves ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "anon access" ON saves FOR ALL TO anon USING (true) WITH CHECK (true);
+```
+3. **Project Settings → API** → copier l'**URL** et la **Publishable key**
+4. Les renseigner dans `js/aria-player.js` et `js/aria-gm.js` :
+```js
+const SUPABASE_URL      = 'https://xxxx.supabase.co';
+const SUPABASE_ANON_KEY = 'votre-publishable-key';
+```
+
+### 3. dddice — Dés 3D *(optionnel)*
+> Affiche des dés 3D animés dans OBS.
 
 1. Aller sur [dddice.com](https://dddice.com) → créer un compte
 2. **Account → Developers** → copier votre **API Key**
-3. Créer ou rejoindre une **Room** → copier le slug (ex: `ma-salle-aria`)
-4. Ajouter des thèmes de dés via **Dice Box** sur le site dddice
+3. Créer une **Room** → copier le slug
+4. À renseigner dans ⚙ Configuration de chaque panneau
 
 ---
 
-## 🚀 Installation & lancement
+## 🚀 Première utilisation
 
-### Étape 1 — Placer les fichiers
-Mettez les trois fichiers HTML dans le **même dossier** sur votre PC.
-> ⚠️ Ils doivent être dans le même répertoire pour que les liens entre eux fonctionnent.
+### Joueur
+1. Aller sur la page d'accueil → cliquer **Joueur**
+2. Une **clé de sauvegarde** est générée automatiquement — la noter précieusement
+3. Cliquer **Continuer**
+4. Sur l'écran de sélection, cliquer **+ Nouveau personnage**
+5. Cliquer ⚙ → renseigner la **clé Ably** → **Sauvegarder & Connecter**
 
-### Étape 2 — Configurer le panneau joueur
-1. Ouvrir `aria-player.html` dans votre navigateur
-2. Cliquer sur **⚙** (engrenage) en haut à droite
-3. Renseigner :
-   - **Clé API dddice** *(optionnel)*
-   - **Room dddice** *(optionnel)*
-   - **Clé Ably** ← obligatoire pour la sync
-4. Cliquer **Sauvegarder & Connecter**
-5. Les pastilles vertes confirment la connexion
+> Pour retrouver sa progression sur un autre appareil : cliquer **Changer…** sur l'écran de sélection → saisir sa clé existante.
 
-### Étape 3 — Configurer le panneau MJ
-1. Ouvrir `aria-gm.html` dans le navigateur du MJ
-2. Cliquer sur **⚙**
-3. Renseigner la **même clé Ably** que les joueurs
-4. Cliquer **Sauvegarder & Connecter**
+### Maître de Jeu
+1. Aller sur la page d'accueil → cliquer **Maître de Jeu**
+2. Même processus de clé de sauvegarde
+3. Créer une **campagne**
+4. Cliquer ⚙ → renseigner la **même clé Ably** que les joueurs
 
-### Étape 4 — Configurer l'overlay OBS
+---
 
-#### Overlay joueur (POV joueur)
-Dans OBS → **Sources → Ajouter → Source navigateur**
-- URL : `file:///CHEMIN/VERS/aria-overlay.html?mode=player&ably=VOTRE_CLE_ABLY`
-- Largeur : `1920` — Hauteur : `1080`
-- ✅ Contrôler l'audio via OBS : non
+## ⚙ Configuration (bouton ⚙ dans le panneau)
 
-#### Overlay MJ
-Dans OBS du MJ → **Sources → Ajouter → Source navigateur**
-- URL : `file:///CHEMIN/VERS/aria-overlay.html?mode=gm&ably=VOTRE_CLE_ABLY`
-- Largeur : `1920` — Hauteur : `1080`
-
-> **Exemple de chemin Windows :**
-> `file:///C:/Users/VotreNom/ARIA/aria-overlay.html?mode=player&ably=abc123:xyz456`
->
-> **Exemple de chemin Mac/Linux :**
-> `file:///home/votrenom/aria/aria-overlay.html?mode=player&ably=abc123:xyz456`
+| Champ | Obligatoire | Description |
+|---|---|---|
+| Clé API dddice | Non | Pour les dés 3D |
+| Room dddice | Non | Slug de la room partagée |
+| Thème dddice | Non | Apparence des dés |
+| Clé Ably | **Oui** | Même clé pour tous |
 
 ---
 
 ## 🎮 Utilisation en partie
 
-### Joueur
-- **Compétences** : cliquer une compétence pour lancer le d100
-- **Caractéristiques** : choisir le multiplicateur (×1 à ×5) puis cliquer la stat
-- **Jet libre** : nom + seuil manuel → Lancer
-- **Cartes** : cliquer le dos du paquet pour piocher
-- **Personnage** : éditer la fiche, sauvegarder avec le bouton en bas
-- **Bonus/Malus** : barre persistante en haut — s'applique à tous les jets
+### Panneau Joueur — Onglets
 
-### MJ
-- **Joueurs** : les cartes apparaissent automatiquement quand un joueur ouvre son panneau
-  - ⚔ = infliger des dégâts (transmis au joueur en temps réel)
-  - ♥ = soigner (transmis au joueur en temps réel)
-- **Monstres** : créer des créatures privées (non visibles par les joueurs)
-  - Cliquer une attaque dans la fiche monstre = jet automatique
-- **Jets** : fil en direct de tous les jets des joueurs
-- **Jet MJ** : jets privés (libres ou pour un monstre spécifique)
-- **Cartes** : paquet indépendant de celui des joueurs
+| Onglet | Description |
+|---|---|
+| **Compétences** | Cliquer une compétence pour lancer le d100 |
+| **Caractéristiques** | Choisir le multiplicateur (×1 à ×5) puis cliquer la stat |
+| **Jet libre** | Nom + seuil manuel → Lancer |
+| **Notes** | Bloc-notes personnel multi-notes par personnage |
+| **Cartes** | Paquet de 54 cartes — cliquer pour piocher *(activé par le MJ)* |
+| **⚗ Alchimie** | Recettes accordées par le MJ, création de potions *(activé par le MJ)* |
+| **Personnage** | Édition de la fiche complète |
+
+**Barre Bonus/Malus** : persistante entre les onglets, s'applique à tous les jets d100.
+
+**Combat** (sidebar) :
+- Cliquer une arme pour lancer les dégâts
+- 🛡 **Parade** : jet de Combat rapproché
+- ⚡ **Esquive** : jet d'Esquiver (−20% si attaque à distance)
+
+### Panneau MJ — Onglets
+
+| Onglet | Description |
+|---|---|
+| **Joueurs** | Présence en temps réel, PV, ⚔ dégâts, ♥ soins, 📋 fiche complète |
+| **Monstres** | Créatures privées — cliquer une attaque pour lancer |
+| **Jets** | Historique en direct de tous les jets des joueurs |
+| **Jet MJ** | Jets privés libres ou par monstre |
+| **Cartes** | Paquet indépendant du joueur |
+| **⚗ Alchimie** | Gestion des recettes par campagne, attribution aux joueurs |
+
+**📋 Modal joueur** (bouton en haut à droite de chaque carte joueur) :
+- Fiche complète : stats, armes, compétences, inventaire, potions
+- Activer/désactiver les onglets Cartes et Alchimie par joueur
 
 ### Overlay OBS
-- S'affiche automatiquement lors de chaque jet, pioche de carte ou événement de dégâts
-- Mode `player` : résultats des jets + cartes + animations de dégâts
-- Mode `gm` : couronne animée en attente + mêmes événements
+
+Dans OBS → **Sources → Source navigateur** :
+
+```
+# Overlay joueur
+https://your-name.github.io/Aria/views/aria-overlay.html?mode=player&ably=CLE_ABLY
+
+# Overlay MJ
+https://your-name.github.io/Aria/views/aria-overlay.html?mode=gm&ably=CLE_ABLY
+```
+
+- Largeur : `1920` — Hauteur : `1080` — Fond transparent
+- S'affiche automatiquement lors des jets, pioches de cartes et événements de dégâts
 
 ---
 
-## 🎲 Système de règles ARIA
+## 🎲 Règles de jet ARIA
 
 | Résultat | Condition |
 |---|---|
-| **SUCCÈS CRITIQUE** | Jet ≤ 10 ET dans le seuil |
+| **SUCCÈS CRITIQUE** | Jet ≤ 10 ET jet ≤ seuil |
 | **SUCCÈS** | Jet ≤ seuil |
 | **ÉCHEC** | Jet > seuil |
-| **ÉCHEC CRITIQUE** | Jet ≥ 91 ET hors seuil |
+| **ÉCHEC CRITIQUE** | Jet ≥ 91 ET jet > seuil |
 
 **Calcul du seuil :**
-- Compétence : valeur % directe (ex: Perception 70%)
-- Caractéristique : `multiplicateur × stat + Bonus/Malus` (ex: 3 × DEX 10 = 30%)
+- Compétence : valeur % directe
+- Caractéristique : `multiplicateur × stat + Bonus/Malus`
 - Jet libre : seuil saisi manuellement
 
 ---
@@ -125,39 +180,39 @@ Dans OBS du MJ → **Sources → Ajouter → Source navigateur**
 ## 🔁 Flux de données (Ably)
 
 ```
-aria-player.html
-    │── canal aria-rolls   ──▶ MJ voit le jet  +  autres joueurs voient un toast
-    │── canal aria-cards   ──▶ overlay reçoit la carte piochée
-    └── canal aria-damage  ──▶ heartbeat de présence vers le MJ
+aria-player
+    ├── aria-rolls   ──▶ MJ (historique) + autres joueurs (toast) + overlay
+    ├── aria-cards   ──▶ overlay (animation carte)
+    └── aria-damage  ──▶ MJ (présence heartbeat toutes les 5s)
 
-aria-gm.html
-    └── canal aria-damage  ──▶ dégâts/soins envoyés au joueur ciblé
+aria-gm
+    └── aria-damage  ──▶ joueur ciblé (dégâts / soins / config tabs / recettes)
 
-aria-overlay.html
-    ├── reçoit aria-rolls  ──▶ affiche le résultat du jet après 3s
-    ├── reçoit aria-cards  ──▶ affiche la carte piochée
-    └── reçoit aria-damage ──▶ animations de dégâts / soins
+aria-overlay
+    ├── aria-rolls   ──▶ affiche le résultat après animation dddice
+    ├── aria-cards   ──▶ affiche la carte piochée
+    └── aria-damage  ──▶ animations dégâts, soins, écran MORT
 ```
+
+---
+
+## 💾 Sauvegarde
+
+- Les données sont sauvegardées dans **Supabase** (cloud) à chaque modification (délai 800ms)
+- Également en cache dans le **localStorage** du navigateur pour fluidité
+- La **clé de sauvegarde** (UUID) est l'identifiant unique de chaque joueur/MJ
+- En cas de perte de clé : les données restent dans Supabase mais sont inaccessibles sans la clé
 
 ---
 
 ## ❓ Dépannage
 
-**Pastille Ably rouge** → Vérifier la clé Ably (copier-coller sans espaces)
+**Pastille Ably rouge** → Vérifier la clé Ably (sans espaces, format `xxx:yyy`)
 
-**Les joueurs n'apparaissent pas dans le panneau MJ** → Vérifier que la même clé Ably est utilisée partout. Les joueurs envoient un heartbeat toutes les 15 secondes — attendre 15s après ouverture du panneau joueur.
+**Les joueurs n'apparaissent pas chez le MJ** → Vérifier que la même clé Ably est utilisée. Les joueurs envoient un heartbeat toutes les 5s — attendre quelques secondes après ouverture.
 
-**Les dés 3D ne s'affichent pas** → dddice est optionnel. Sans clé dddice, les jets fonctionnent normalement (résultat aléatoire local, sans animation 3D).
+**Les données ne se sauvegardent pas** → Vérifier que `SUPABASE_URL` et `SUPABASE_ANON_KEY` sont bien renseignés dans les fichiers JS et que la table `saves` a été créée.
 
-**L'overlay OBS est blanc/vide** → Vérifier le chemin du fichier et que le paramètre `?ably=` est bien renseigné dans l'URL OBS.
+**Les dés 3D ne s'affichent pas** → dddice est optionnel. Sans configuration, les jets fonctionnent normalement sans animation 3D.
 
-**Les dégâts ne s'affichent pas sur l'overlay joueur** → L'overlay reçoit les événements du canal `aria-damage`. Vérifier que la clé Ably dans l'URL de l'overlay est identique à celle du panneau MJ.
-
----
-
-## 📝 Notes
-
-- Toutes les données (personnage, config, cartes) sont sauvegardées en **localStorage** dans le navigateur — elles persistent entre les sessions.
-- Les monstres du MJ sont sauvegardés localement et **ne sont jamais transmis** aux joueurs.
-- Le panneau joueur et le panneau MJ ont chacun leur **paquet de cartes indépendant**.
-- Testé sur Chrome et Firefox. Recommandé : **Chrome** pour les sources navigateur OBS.
+**L'overlay OBS est blanc/vide** → Vérifier que le paramètre `?ably=` est renseigné dans l'URL et que la clé est correcte.
