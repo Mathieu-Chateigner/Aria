@@ -2502,14 +2502,21 @@ body.light-mode .roll-entry.crit-fail { border-left-color: var(--fail); border-c
 .sel-config-save-btn:hover { background: #9a52c0; }
 
 /* Join code on campaign cards */
+.sel-card-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+.sel-card-row .sel-card-name { flex: 1; min-width: 0; }
 .sel-card-joincode {
     font-family: 'Cinzel', serif;
     font-size: 9px;
     letter-spacing: .15em;
     color: var(--gm-accent);
-    margin-top: 6px;
     opacity: .85;
     cursor: pointer;
+    flex-shrink: 0;
     transition: opacity .15s;
 }
 .sel-card-joincode:hover { opacity: 1; }

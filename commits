@@ -1,0 +1,17 @@
+Pending commit
+
+Changes:
+
+- index.html : Ably key input is now type="password" (hidden like dddice key)
+
+- views/aria-player.html : Config modal stripped of key inputs (dddice key, dddice room, Ably key). Now shows only dddice theme selector, connection status dots, light mode toggle, Reconnecter button, Copy Overlay URL button.
+
+- views/aria-gm.html : Same treatment for GM config modal. Removed margin-bottom:0 override on "Joueurs connectés" title to restore spacing above the player cards grid.
+
+- js/aria-player.js : saveConfig() now preserves existing keys with ...config spread instead of reading removed inputs. loadConfigInputs() no longer references removed inputs. switchCharacter() publishes a "leave" message on aria-damage before closing Ably so the GM removes the player immediately.
+
+- js/aria-gm.js : saveConfig() and loadConfigInputs() updated to match removed inputs. initAbly() now subscribes to "leave" messages: deletes the player from the map and re-renders immediately. Campaign card HTML restructured with .sel-card-row flex wrapper so the join code badge sits on the right of the campaign name instead of below it.
+
+- css/aria-gm.css : Added .sel-card-row (flex row, name fills remaining space, join code shrinks to the right).
+
+- CLAUDE.md : Added Workflow section documenting the commits file convention and the no-commit rule.

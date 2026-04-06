@@ -13,6 +13,25 @@ Live at: `https://mathieu-chateigner.github.io/Aria/`
 
 ---
 
+## Workflow
+
+### Commits
+**Never commit or push.** The user commits and pushes manually.
+
+After every set of changes, update the `commits` file at the repo root with a plain-text summary of what was changed and why. Overwrite the previous content — it only needs to describe the most recent batch of changes, not a full history. No markdown — plain text only. Format:
+
+```
+Pending commit
+
+Changes:
+
+- file : what changed and why
+```
+
+Always update `commits` as the last step of any task.
+
+---
+
 ## Development
 
 **No build step, no package manager, no test suite.**

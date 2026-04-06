@@ -377,6 +377,7 @@ function cancelCreateCharacter() {
 function switchCharacter() {
     if (currentCharId) saveCurrentCharacter();
     if (presenceIntervalId) { clearInterval(presenceIntervalId); presenceIntervalId = null; }
+    if (ablyDamage) { try { ablyDamage.publish('leave', { playerId }); } catch(_){} }
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch(_){} dddiceSDK = null; }
     clearTimeout(dddiceRollSafetyTimer);
     pendingDddiceRoll = null; pendingSecondaryRoll = null; dddiceAPI = null;
@@ -1427,18 +1428,13 @@ function applyTheme(light) {
 function loadConfigInputs() {
     const idEl = document.getElementById('cfg-identity-display');
     if (idEl) idEl.textContent = character.name || '—';
-    document.getElementById('cfg-dddice-key').value = config.dddiceKey || '';
-    document.getElementById('cfg-dddice-room').value = config.dddiceRoom || '';
     document.getElementById('cfg-dddice-theme').value = config.dddiceTheme || '';
-    document.getElementById('cfg-ably-key').value = config.ablyKey || '';
     document.getElementById('cfg-light-mode').checked = !!config.lightMode;
 }
 function saveConfig() {
     config = {
-        dddiceKey: document.getElementById('cfg-dddice-key').value.trim(),
-        dddiceRoom: document.getElementById('cfg-dddice-room').value.trim(),
+        ...config,
         dddiceTheme: document.getElementById('cfg-dddice-theme').value || '',
-        ablyKey: document.getElementById('cfg-ably-key').value.trim(),
         lightMode: document.getElementById('cfg-light-mode').checked,
     };
     localStorage.setItem('aria-config', JSON.stringify(config));

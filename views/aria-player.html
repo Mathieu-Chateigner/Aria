@@ -394,15 +394,9 @@
     <div class="modal-scrim" id="config-scrim" onclick="toggleConfig()"></div>
     <div class="config-modal" id="config-modal">
         <h2>⚙ Configuration</h2>
-        <div style="font-family:'EB Garamond',serif;font-size:13px;font-style:italic;color:var(--parchment-dim);margin-bottom:4px;">Identité : <strong id="cfg-identity-display" style="color:var(--parchment);font-style:normal;"></strong> <span style="opacity:.5;">(nom du personnage)</span></div>
-        <label class="config-label">Clé API dddice</label>
-        <input class="config-input" id="cfg-dddice-key" type="password" placeholder="Votre clé API…" />
-        <label class="config-label">Room dddice</label>
-        <input class="config-input" id="cfg-dddice-room" placeholder="slug ou URL complète" />
+        <div style="font-family:'EB Garamond',serif;font-size:13px;font-style:italic;color:var(--parchment-dim);margin-bottom:8px;">Identité : <strong id="cfg-identity-display" style="color:var(--parchment);font-style:normal;"></strong> <span style="opacity:.5;">(nom du personnage)</span></div>
         <label class="config-label">Thème dddice</label>
         <select class="config-input" id="cfg-dddice-theme" disabled><option>— connectez-vous d'abord —</option></select>
-        <label class="config-label">Clé Ably</label>
-        <input class="config-input" id="cfg-ably-key" placeholder="xxxxxxxx:xxxxxxxx" />
         <div style="margin-top:12px;" class="status-row"><div class="status-dot" id="cfg-dddice-dot"></div><span id="cfg-dddice-status">dddice non connecté</span></div>
         <div style="margin-top:6px;" class="status-row"><div class="status-dot" id="cfg-ably-dot2"></div><span id="cfg-ably-status2">Ably non connecté</span></div>
         <div class="config-theme-row">
@@ -412,7 +406,7 @@
                 <span class="theme-toggle-slider"></span>
             </label>
         </div>
-        <button class="config-save-btn" onclick="saveConfig()">Sauvegarder &amp; Connecter</button>
+        <button class="config-save-btn" onclick="saveConfig()">Reconnecter</button>
         <button class="config-save-btn" style="margin-top:8px;background:rgba(201,168,76,.08);" onclick="copyOverlayUrl()">📋 Copier URL Overlay (OBS)</button>
     </div>
 

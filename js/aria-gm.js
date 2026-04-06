@@ -258,7 +258,7 @@ function renderCampaignScreen() {
     campaigns.forEach(c => {
         const card = document.createElement('div');
         card.className = 'sel-card';
-        card.innerHTML = `<button class="sel-card-delete" onclick="event.stopPropagation();deleteCampaign('${c.id}')" title="Supprimer">✕</button><div class="sel-card-name">${c.name}</div><div class="sel-card-joincode" onclick="event.stopPropagation();copyJoinCodeFromCard(this,'${c.joinCode||''}')">🔑 ${c.joinCode || '—'}</div>`;
+        card.innerHTML = `<button class="sel-card-delete" onclick="event.stopPropagation();deleteCampaign('${c.id}')" title="Supprimer">✕</button><div class="sel-card-row"><div class="sel-card-name">${c.name}</div><div class="sel-card-joincode" onclick="event.stopPropagation();copyJoinCodeFromCard(this,'${c.joinCode||''}')">🔑 ${c.joinCode || '—'}</div></div>`;
         card.addEventListener('click', () => selectCampaign(c.id));
         grid.appendChild(card);
     });
@@ -508,6 +508,10 @@ function initAbly() {
         ablyCards.subscribe('reshuffle', () => handlePlayerReshuffle());
         // Listen for player presence heartbeats (published every 5s)
         ablyDamage.subscribe('presence', msg => { handlePresence(msg.data); });
+        ablyDamage.subscribe('leave', msg => {
+            const id = msg.data?.playerId;
+            if (id && players.has(id)) { players.delete(id); renderPlayerCards(); }
+        });
     } catch (e) { console.error('Ably:', e); setAblyStatus(false); }
 }
 function setAblyStatus(ok) {
@@ -1087,17 +1091,12 @@ function applyTheme(light) {
     document.body.classList.toggle('light-mode', !!light);
 }
 function loadConfigInputs() {
-    document.getElementById('cfg-dddice-key').value = config.dddiceKey || '';
-    document.getElementById('cfg-dddice-room').value = config.dddiceRoom || '';
-    document.getElementById('cfg-ably-key').value = config.ablyKey || '';
     document.getElementById('cfg-light-mode').checked = !!config.lightMode;
 }
 function saveConfig() {
     config = {
-        dddiceKey: document.getElementById('cfg-dddice-key').value.trim(),
-        dddiceRoom: document.getElementById('cfg-dddice-room').value.trim(),
+        ...config,
         dddiceTheme: document.getElementById('cfg-dddice-theme').value || '',
-        ablyKey: document.getElementById('cfg-ably-key').value.trim(),
         lightMode: document.getElementById('cfg-light-mode').checked,
     };
     localStorage.setItem('aria-config', JSON.stringify(config));
