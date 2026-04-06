@@ -9,6 +9,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 TTRPG overlay system for OBS streaming built with vanilla HTML/CSS/JS (no framework, no build step).
 Three apps that communicate in real time over Ably, each split into separate HTML/CSS/JS files.
 
+Live at: `https://mathieu-chateigner.github.io/Aria/`
+
 ---
 
 ## Development
@@ -23,13 +25,21 @@ Three apps that communicate in real time over Ably, each split into separate HTM
 
 ## Files
 
-Each app is three files in the same directory:
-
-| App | HTML | CSS | JS |
-|---|---|---|---|
-| Player panel | `Player/aria-player.html` | `Player/aria-player.css` | `Player/aria-player.js` |
-| GM panel | `GM/aria-gm.html` | `GM/aria-gm.css` | `GM/aria-gm.js` |
-| OBS overlay | `Overlay/aria-overlay.html` | `Overlay/aria-overlay.css` | `Overlay/aria-overlay.js` |
+```
+index.html              ← Home/selection screen + shared config panel
+views/
+  aria-player.html
+  aria-gm.html
+  aria-overlay.html
+css/
+  aria-player.css
+  aria-gm.css
+  aria-overlay.css
+js/
+  aria-player.js
+  aria-gm.js
+  aria-overlay.js
+```
 
 `aria-control-panel.html` and `aria-dice-roller.html` are **deprecated**.
 
@@ -39,7 +49,7 @@ Each app is three files in the same directory:
 
 ### Communication — Ably (free tier)
 
-All three apps share **one Ably key** and use three channels:
+All three apps share **one Ably key** (entered on `index.html`) and use three channels:
 
 | Channel | Published by | Consumed by |
 |---|---|---|
@@ -52,13 +62,26 @@ All three apps share **one Ably key** and use three channels:
 - State persisted in `localStorage` (character, config, cards, HP, monsters, potions)
 - `sessionStorage` holds the per-tab `playerId` (UUID, regenerates per tab)
 
+### Config — shared between player and GM
+
+Both apps read from the **same** key:
+
+```js
+// localStorage: aria-config
+{ ablyKey, dddiceKey, dddiceRoom, dddiceTheme, lightMode: bool }
+```
+
+Keys are entered once on `index.html`. The in-app ⚙ modal in each panel can also update this key (for theme and reconnecting), but uses the same `aria-config` storage. **Never use `aria-gm-config`** — it is obsolete.
+
 ### Campaign system (GM)
 
-The GM panel supports multiple campaigns. All campaign-scoped data uses keys suffixed with `currentCampaignId`:
+The GM panel supports multiple campaigns. Each campaign has a **join code** (5-char, e.g. `X7K2M`) that players enter to link their character. Only players whose `campaignKey` matches the active campaign's `joinCode` appear in the Joueurs tab.
+
+All campaign-scoped data uses keys suffixed with `currentCampaignId`:
 
 | localStorage key | Content |
 |---|---|
-| `aria-gm-campaigns` | `[{ id, name }]` campaign list |
+| `aria-gm-campaigns` | `[{ id, name, joinCode }]` campaign list |
 | `aria-gm-monsters-{id}` | monsters for campaign |
 | `aria-gm-rolls-{id}` | roll history |
 | `aria-gm-card-history-{id}` | card draw log |
@@ -66,9 +89,11 @@ The GM panel supports multiple campaigns. All campaign-scoped data uses keys suf
 
 Helper functions `monstersKey()`, `rollsKey()`, `cardHistKey()`, `potionsKey()` return the scoped key for the active campaign. Always use these — never hardcode the bare key.
 
+`generateJoinCode()` produces the join code. If a campaign loaded from storage lacks one, it is generated and saved on `loadCampaignState()`.
+
 ### Player identity
 
-Player is identified by `character.name` from their character sheet — no manual ID input. This is used as `playerId` in roll and damage payloads.
+Player is identified by `character.name` from their character sheet. This is used as `playerId` in roll and damage payloads.
 
 ### dddice 3D dice (browser SDK)
 
@@ -110,8 +135,6 @@ When a skill named exactly `Soigner` is rolled, `applySoigner(success)` fires af
 
 ### Multi-character system (Player)
 
-The player panel supports multiple characters. On launch, a selection screen is shown (similar to the GM's campaign screen). Characters are stored as an array:
-
 `localStorage: aria-characters` → `[{ id, name, class, stats, ... }]`
 
 Each character carries its own `id` (UUID). HP and card state are keyed by that ID:
@@ -123,17 +146,16 @@ Each character carries its own `id` (UUID). HP and card state are keyed by that 
 | `aria-cards-{id}` | card deck state for that character |
 | `aria-player-tabs-{id}` | `{ cards: bool, alchemy: bool }` tab visibility |
 
-Tab visibility is managed separately from the character object (not inside it) and is persisted per character ID. Both `cards` and `alchemy` tabs can be toggled by the GM via `tab-config` messages.
-
-Helper functions `hpKey()` and `cardKey()` return the scoped key for the active character. Always use these — never hardcode the bare key.
+Tab visibility is managed separately from the character object and persisted per character ID. Helper functions `hpKey()` and `cardKey()` return the scoped key for the active character. Always use these — never hardcode the bare key.
 
 ### Character fields (`aria-characters[n]`)
 
 ```js
 {
-  id: string,                                // UUID, added by the multi-char system
+  id: string,                                // UUID
   name: string,
   class: string,
+  campaignKey: string,                       // join code of the linked campaign (e.g. 'X7K2M')
   stats: { FOR, DEX, END, INT, CHA, PV },   // all integers
   physical: { age, taille, poids, yeux, cheveux, signes },
   inventory: [{ name, qty }],
@@ -141,26 +163,15 @@ Helper functions `hpKey()` and `cardKey()` return the scoped key for the active 
   protection: { nom, valeur },
   skills: [{ name, link, pct }],             // link = "FOR/DEX" etc
   specials: [{ name, desc, pct }],           // fully editable
-  potions: [{ name, desc, ingredients, qty }],   // crafted stock
-  potionRecipes: [{ id, name, desc, ingredients, chance }], // GM-granted recipes
-  vials: number,                             // empty vial count for alchemy crafting
+  potions: [{ name, desc, ingredients, qty }],
+  potionRecipes: [{ id, name, desc, ingredients, chance }],
+  vials: number,
 }
 ```
 
-> `blessures` was removed — it is no longer part of the character schema.
-> `tabs` was removed from the character object — it is now stored separately as `aria-player-tabs-{id}`.
+> `blessures` was removed. `tabs` was removed from the character object — stored separately as `aria-player-tabs-{id}`.
 
-### Config (`localStorage: aria-config`)
-```js
-{ dddiceKey, dddiceRoom, dddiceTheme, ablyKey, lightMode: bool }
-```
-
-### GM config (`localStorage: aria-gm-config`)
-```js
-{ dddiceKey, dddiceRoom, dddiceTheme, ablyKey, lightMode: bool }
-```
-
-### Monsters (`localStorage: aria-gm-monsters`)
+### Monsters (`localStorage: aria-gm-monsters-{id}`)
 ```js
 [{ id, name, pv, maxPV, armor, stats: { FOR, DEX, END, INT, CHA }, attacks: [{ name, pct, dmg }] }]
 ```
@@ -177,38 +188,31 @@ Helper functions `hpKey()` and `cardKey()` return the scoped key for the active 
 
 ### `aria-damage` / `damage` | `heal`
 ```js
-// damage
 { targetId, damage, hpBefore, hpAfter, maxHP, source: 'gm' }
-// heal
 { targetId, amount, hpBefore, hpAfter, maxHP, source: 'gm' }
 ```
 
 ### `aria-damage` / `presence` (heartbeat every 5s)
 ```js
-{ playerId, name, charClass, hp, maxHP, stats, protection, skills, specials, weapons, inventory, potions, vials, potionRecipeIds, ts }
+{ playerId, name, charClass, hp, maxHP, stats, protection, skills, specials,
+  weapons, inventory, potions, vials, potionRecipeIds, tabs, campaignKey, ts }
 ```
+The GM filters incoming presence by `campaignKey === currentJoinCode` — messages with a non-matching key are ignored entirely.
 
 ### `aria-damage` / `tab-config`
 ```js
 { playerId, tabs: { cards: bool, alchemy: bool } }
 ```
-GM sends this to enable/disable tabs on a specific player panel.
 
-### `aria-damage` / `potion-grant`
+### `aria-damage` / `potion-grant` | `vial-grant`
 ```js
 { playerId, potion: { id, name, desc, ingredients, chance } }
-```
-
-### `aria-damage` / `vial-grant`
-```js
 { playerId, qty: number }
 ```
 
 ### `aria-cards` / `draw` | `reshuffle`
 ```js
-// draw
 { cardId, excluded: [...], drawn: [...], deckIds: [...], lastCardId }
-// reshuffle
 { excluded: [...], drawn: [], deckIds: [...], lastCardId: null }
 ```
 
@@ -216,13 +220,19 @@ GM sends this to enable/disable tabs on a specific player panel.
 
 ## Key UI components
 
+### Home screen (`index.html`)
+Displays Joueur / Maître de Jeu cards and a **⚙ Configuration** panel at the bottom. Reads and writes `aria-config` via inline `<script>`. This is the canonical entry point for key configuration.
+
 ### Player character selection screen
-On launch, a selection screen lists all saved characters (stored in `aria-characters`). Players can create, select, or delete characters. Selecting one calls `selectCharacter(id)` → `loadCharacterState(id)` → `initApp()`. `switchCharacter()` returns to this screen, tearing down Ably and dddice connections cleanly before re-init.
+Lists all saved characters. Creating a character prompts for name, class, and an optional campaign join code. The join code is shown as a badge on each character card. `selectCharacter(id)` → `loadCharacterState(id)` → `initApp()`. `switchCharacter()` tears down Ably and dddice before returning.
+
+### GM campaign selection screen
+Lists all campaigns, each showing its join code (click to copy). `selectCampaign(id)` → `loadCampaignState(id)` → `initApp()`. After entering a campaign, the join code is shown in the topbar (click to copy) so the GM can share it with players.
 
 ### Player panel tabs
-`Compétences` | `Caractéristiques` | `Jet libre` | `Cartes` | `⚗ Alchimie` | `Personnage`
+`Compétences` | `Caractéristiques` | `Jet libre` | `Inventaire` | `Notes` | `Cartes` | `⚗ Alchimie` | `Personnage`
 
-`Cartes` and `⚗ Alchimie` tabs are hidden by default — only shown when GM enables them via `tab-config`.
+`Cartes` and `⚗ Alchimie` are hidden by default — shown only when GM enables them via `tab-config`.
 
 ### GM panel tabs
 `Joueurs` | `Monstres` | `Jets` | `Jet MJ` | `Cartes` | `⚗ Alchimie`
@@ -230,48 +240,23 @@ On launch, a selection screen lists all saved characters (stored in `aria-charac
 ### Bonus/Malus bar
 Persistent bar between topbar and content. Buttons: +10/+20/+30/−10/−20/−30 + custom ± + reset. Applied to all rolls.
 
-### HP panel (player sidebar)
-- Read-only on player side — HP is controlled by GM only
-- Animated HP bar with ghost drain on damage
-- GM sends damage/heal via Ably → VFX on player (screen shake, blood particles, vignette, damage number)
-- MORT screen at 0 HP
-
-### Combat sidebar (player)
-- Weapons (clickable if damage formula present — rolls and broadcasts to GM)
-- Protection
-- Reaction buttons: 🛡 Parade (Combat rapproché) and ⚡ Esquive — appear automatically when those skills exist
-
 ### Player presence (GM — Joueurs tab)
 - Players send heartbeat every 5s on `aria-damage` channel
+- GM's `handlePresence()` rejects any message where `campaignKey !== currentJoinCode`
 - GM sweeps offline players every 10s (threshold: 30s = offline)
-- Each player card has: HP bar, stats, ⚔ damage input, ♥ heal input, 📋 details button (top-right of card header)
-- 📋 opens a full modal with all character data: stats, weapons, skills, specials, inventory, potions (with ingredients)
-- GM can toggle per-player tabs (`Cartes`, `⚗ Alchimie`) from the modal — sends `tab-config` message on `aria-damage`
+- 📋 modal shows full character data and tab toggles
 
-### GM Alchemy tab
-- GM manages a list of potion recipes scoped to the current campaign (`gmPotions`, key: `aria-gm-potions-{campaignId}`)
-- Each recipe: name, desc, ingredients, success %
-- GM grants a recipe to a player via `potion-grant` message on `aria-damage` — only shown in the modal if the player has `tabs.alchemy` enabled and there are recipes
+### Post-roll effect pattern
+Skills with side-effects after a roll use a flag set before `doRoll()` and checked at the top of `handleResult()`:
+```js
+pendingCraft = recipeIdx;   // or pendingSoigner = true
+doRoll(skillName, pct, /*skipBM=*/true);
 
-### Alchemy tab (player)
-- **Recipes** (`character.potionRecipes`): GM-granted recipes with name, desc, ingredients, success %. Player cannot add these directly.
-- **Crafting**: `Créer` button triggers a d100 roll via `doRoll()` with `skipBM=true`. Uses `pendingCraft` flag (same pattern as `applySoigner`) — set before the roll, read in `handleResult()`, cleared immediately. A vial is always consumed regardless of outcome. Crafting disabled if 0 vials.
-- **Potions in stock** (`character.potions`): successfully crafted potions. `Utiliser` decrements qty and shows toast.
-- **Vials** (`character.vials`): integer. Shown with +/− in both the Alchemy tab and the Inventory tab (`#inv-vials-section`). Players can manually adjust their own count.
-
-### Card system
-- 54-card French deck: ♠ ♣ ♥ ♦ + 2 Jokers
-- Player and GM have **independent decks** (separate localStorage keys: `aria-cards` / `aria-gm-cards`)
-- Re-including an excluded card adds it back into the available deck count
-
-### Roll result float card
-- Variants: success / fail / crit-success / crit-fail
-- Crits: glow + particle burst, auto-dismiss after 8s (normal: 5s)
-- Overlay waits for dddice `RollFinished` before showing result (or 3s fixed delay if SDK not configured)
-
-### GM roll result
-- Monster attack: result strip appears above monsters grid (not in the Jet MJ tab)
-- On success: rolls damage formula and shows breakdown inline
+// In handleResult():
+if (pendingCraft !== null) { applyCraft(success, pendingCraft); pendingCraft = null; }
+if (pendingSoigner)        { applySoigner(success); pendingSoigner = false; }
+```
+`applyCraft` / `applySoigner` use a 1500ms `setTimeout` so the float card shows before the effect fires.
 
 ---
 
@@ -295,9 +280,7 @@ Persistent bar between topbar and content. Buttons: +10/+20/+30/−10/−20/−3
 
 **Fonts:** Cinzel (headings/numbers), EB Garamond (body/italic), Cinzel Decorative (title), Playfair Display (roll card skill name)
 
-**Color identity:**
-- Player panel: warm gold topbar + gold badge "Joueur"
-- GM panel: deep crimson/purple topbar + purple badge "Maître de Jeu"
+**Light mode:** Toggled via `config.lightMode`. Applied at module level (before `initApp`) to prevent flash. All overrides live in a `body.light-mode` block at the bottom of each CSS file. Always use CSS variables — never hardcode dark colors.
 
 ---
 
@@ -306,11 +289,9 @@ Persistent bar between topbar and content. Buttons: +10/+20/+30/−10/−20/−3
 - **No frameworks** — pure vanilla JS, no npm, no bundler
 - **No `type="number"` spinners** — use `type="text" inputmode="numeric"` with `oninput` regex filter
   - Numeric only: `oninput="this.value=this.value.replace(/[^0-9]/g,'')"`
-  - Allows minus (BM input): `oninput="this.value=this.value.replace(/[^0-9-]/g,'').replace(/(?!^)-/g,'')"`
+  - Allows minus: `oninput="this.value=this.value.replace(/[^0-9-]/g,'').replace(/(?!^)-/g,'')"`
 - **No `display:none` for layout-shifting elements** — use `visibility:hidden/visible`
-- **No external state server** — Ably free tier only
 - **Each app = 3 files** — logic in `.js`, styles in `.css`, structure in `.html`
-- When providing updates, **provide only changed files**
 
 ---
 
@@ -319,45 +300,25 @@ Persistent bar between topbar and content. Buttons: +10/+20/+30/−10/−20/−3
 ### `element.className = ''` strips base CSS classes
 Always reset to the base class string, not `''`:
 ```js
-// Wrong — breaks all CSS targeting .float-roll-card
-card.className = '';
-// Correct
-card.className = 'float-roll-card';
+card.className = 'float-roll-card'; // not ''
 ```
 
 ### dddice resize listener accumulation
-Store the handler reference and call `removeEventListener` before re-registering (done in `saveConfig()`). Same pattern in all three apps.
+Store the handler reference and call `removeEventListener` before re-registering (done in `saveConfig()`).
 
 ### dddice init order
-Must call `.start()` before `.connect()`. The safety timer must be cleared inside `RollFinished`, not after `await sdk.roll()` (which resolves ~200ms after the API call, long before the animation ends).
+Must call `.start()` before `.connect()`. The safety timer must be cleared inside `RollFinished`, not after `await sdk.roll()`.
 
-### Post-roll effect pattern
-Skills with side-effects after a roll (e.g. `Soigner`, crafting) use a flag set before `doRoll()` and checked at the top of `handleResult()`:
-```js
-// Before roll:
-pendingCraft = recipeIdx;   // or pendingSoigner = true
-doRoll(skillName, pct, /*skipBM=*/true);
-
-// In handleResult(success, roll, threshold, skillName):
-if (pendingCraft !== null) { applyCraft(success, pendingCraft); pendingCraft = null; }
-if (pendingSoigner)        { applySoigner(success); pendingSoigner = false; }
-```
-`applyCraft` / `applySoigner` use a 1500ms `setTimeout` so the float card shows before the effect fires.
-
-### Light mode
-Toggled via `config.lightMode` (both player and GM). Applied by adding `body.light-mode` class. **Applied at module level** (not inside `initApp`) to prevent a flash on load:
-```js
-if (config.lightMode) document.body.classList.add('light-mode');
-```
-All light-mode overrides live in a `body.light-mode` block at the bottom of each CSS file. **Never hardcode dark colors** in new CSS rules — always use CSS variables so light mode overrides work automatically.
+### Campaign join code filtering
+`handlePresence()` in `aria-gm.js` early-returns if `data.campaignKey !== currentJoinCode`. When `currentJoinCode` is `null` (e.g. during init), no filtering is applied — all presence messages are accepted.
 
 ---
 
 ## OBS setup
 
 ```
-file:///PATH/Overlay/aria-overlay.html?mode=player&ably=KEY&dddice_key=KEY&dddice_room=SLUG
-file:///PATH/Overlay/aria-overlay.html?mode=gm&ably=KEY&dddice_key=KEY&dddice_room=SLUG
+https://mathieu-chateigner.github.io/Aria/views/aria-overlay.html?mode=player&ably=KEY&dddice_key=KEY&dddice_room=SLUG
+https://mathieu-chateigner.github.io/Aria/views/aria-overlay.html?mode=gm&ably=KEY&dddice_key=KEY&dddice_room=SLUG
 ```
 
 Browser source size: 1920×1080, transparent background.
