@@ -34,6 +34,7 @@ const PRESENCE_TIMEOUT = 30000; // 30s offline threshold
 
 // Campaign state — loaded after selection
 let currentCampaignId = null;
+let currentJoinCode = null;
 let monsters = [];
 let newMonsterAttacks = [];
 let rollFeed = [];
@@ -204,6 +205,13 @@ async function tryRestoreSupabase() {
 // ═══════════════════════════════════════════
 //  CAMPAIGN MANAGEMENT
 // ═══════════════════════════════════════════
+function generateJoinCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 5; i++) code += chars[Math.floor(Math.random() * chars.length)];
+    return code;
+}
+
 function monstersKey()  { return 'aria-gm-monsters-'    + currentCampaignId; }
 function rollsKey()     { return 'aria-gm-rolls-'        + currentCampaignId; }
 function cardHistKey()  { return 'aria-gm-card-history-' + currentCampaignId; }
@@ -219,7 +227,7 @@ function migrateGMIfNeeded() {
     const oldCards    = localStorage.getItem('aria-gm-card-history');
     if (!oldMonsters && !oldRolls && !oldCards) return;
     const id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
-    saveCampaigns([{ id, name: 'Campagne 1' }]);
+    saveCampaigns([{ id, name: 'Campagne 1', joinCode: generateJoinCode() }]);
     if (oldMonsters) localStorage.setItem('aria-gm-monsters-' + id, oldMonsters);
     if (oldRolls)    localStorage.setItem('aria-gm-rolls-' + id, oldRolls);
     if (oldCards)    localStorage.setItem('aria-gm-card-history-' + id, oldCards);
@@ -227,8 +235,11 @@ function migrateGMIfNeeded() {
 
 function loadCampaignState(id) {
     const campaigns = getCampaigns();
-    if (!campaigns.find(c => c.id === id)) return false;
+    const camp = campaigns.find(c => c.id === id);
+    if (!camp) return false;
+    if (!camp.joinCode) { camp.joinCode = generateJoinCode(); saveCampaigns(campaigns); }
     currentCampaignId = id;
+    currentJoinCode = camp.joinCode;
     monsters    = JSON.parse(localStorage.getItem(monstersKey())  || '[]');
     rollFeed    = JSON.parse(localStorage.getItem(rollsKey())     || '[]');
     cardHistory = JSON.parse(localStorage.getItem(cardHistKey()) || '[]');
@@ -247,7 +258,7 @@ function renderCampaignScreen() {
     campaigns.forEach(c => {
         const card = document.createElement('div');
         card.className = 'sel-card';
-        card.innerHTML = `<button class="sel-card-delete" onclick="event.stopPropagation();deleteCampaign('${c.id}')" title="Supprimer">✕</button><div class="sel-card-name">${c.name}</div>`;
+        card.innerHTML = `<button class="sel-card-delete" onclick="event.stopPropagation();deleteCampaign('${c.id}')" title="Supprimer">✕</button><div class="sel-card-name">${c.name}</div><div class="sel-card-joincode" onclick="event.stopPropagation();copyJoinCodeFromCard(this,'${c.joinCode||''}')">🔑 ${c.joinCode || '—'}</div>`;
         card.addEventListener('click', () => selectCampaign(c.id));
         grid.appendChild(card);
     });
@@ -259,6 +270,33 @@ function showSelectionScreen() {
     document.getElementById('new-campaign-form').style.display = 'none';
     renderCampaignScreen();
     updateSaveKeyStatus();
+    loadSelectionConfigInputs();
+}
+
+function loadSelectionConfigInputs() {
+    const a = document.getElementById('sel-ably-key');
+    const dk = document.getElementById('sel-dddice-key');
+    const dr = document.getElementById('sel-dddice-room');
+    if (a) a.value = config.ablyKey || '';
+    if (dk) dk.value = config.dddiceKey || '';
+    if (dr) dr.value = config.dddiceRoom || '';
+}
+
+function saveSelectionConfig() {
+    config.ablyKey     = (document.getElementById('sel-ably-key')?.value || '').trim();
+    config.dddiceKey   = (document.getElementById('sel-dddice-key')?.value || '').trim();
+    config.dddiceRoom  = (document.getElementById('sel-dddice-room')?.value || '').trim();
+    localStorage.setItem('aria-gm-config', JSON.stringify(config));
+    const btn = document.querySelector('.sel-config-save-btn');
+    if (btn) { btn.textContent = 'Sauvegardé ✓'; setTimeout(() => { btn.textContent = 'Sauvegarder'; }, 1500); }
+}
+
+function copyJoinCodeFromCard(el, code) {
+    if (!code) return;
+    navigator.clipboard.writeText(code).catch(() => {});
+    const orig = el.textContent;
+    el.textContent = '✓ Copié !';
+    setTimeout(() => { el.textContent = orig; }, 1500);
 }
 
 function showApp() {
@@ -293,7 +331,7 @@ function confirmCreateCampaign() {
     const name = document.getElementById('new-campaign-name').value.trim() || 'Nouvelle campagne';
     const id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
     const campaigns = getCampaigns();
-    campaigns.push({ id, name });
+    campaigns.push({ id, name, joinCode: generateJoinCode() });
     saveCampaigns(campaigns);
     document.getElementById('new-campaign-form').style.display = 'none';
     selectCampaign(id);
@@ -360,6 +398,15 @@ function initApp() {
     const camp = campaigns.find(c => c.id === currentCampaignId);
     const el = document.getElementById('campaign-display');
     if (el && camp) el.value = camp.name;
+    const jel = document.getElementById('joincode-display');
+    if (jel) jel.textContent = currentJoinCode || '';
+}
+
+function copyJoinCode() {
+    if (!currentJoinCode) return;
+    navigator.clipboard.writeText(currentJoinCode).catch(() => {});
+    const el = document.getElementById('joincode-display');
+    if (el) { const t = el.textContent; el.textContent = '✓ Copié !'; setTimeout(() => { el.textContent = t; }, 1500); }
 }
 
 // ═══════════════════════════════════════════
@@ -500,6 +547,7 @@ function publishHeal(targetId, amount, hpBefore, hpAfter, maxHP) {
 // ═══════════════════════════════════════════
 function handlePresence(data) {
     if (!data?.playerId) return;
+    if (currentJoinCode && (data.campaignKey || '') !== currentJoinCode) return;
     players.set(data.playerId, { ...data, ts: Date.now() });
     clearTimeout(renderPlayerCardsTimer);
     renderPlayerCardsTimer = setTimeout(renderPlayerCards, 150);

@@ -2899,3 +2899,78 @@ body.light-mode .hp-number.low { color: #8c4a08; }
 }
 
 #app-wrapper { flex: 1; flex-direction: column; min-height: 0; }
+
+/* ═══════════════════════════════════════════
+   SELECTION SCREEN — CONFIG SECTION
+═══════════════════════════════════════════ */
+.sel-config-section {
+    width: 100%;
+    max-width: 420px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: rgba(201,168,76,.03);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 4px;
+}
+.sel-config-title {
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--parchment-dim);
+    margin-bottom: 4px;
+}
+.sel-config-label {
+    font-family: 'EB Garamond', serif;
+    font-size: 13px;
+    color: var(--parchment-dim);
+    margin-top: 4px;
+}
+.sel-config-input {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--parchment);
+    font-family: 'EB Garamond', serif;
+    font-size: 14px;
+    padding: 7px 10px;
+    width: 100%;
+    transition: border-color .2s;
+}
+.sel-config-input:focus { outline: none; border-color: var(--gold-dim); }
+.sel-config-save-btn {
+    margin-top: 6px;
+    background: var(--gold-dim);
+    border: none;
+    border-radius: var(--radius);
+    color: var(--bg);
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    letter-spacing: .1em;
+    padding: 9px 20px;
+    cursor: pointer;
+    align-self: flex-end;
+    transition: background .2s;
+}
+.sel-config-save-btn:hover { background: var(--gold); }
+
+/* Campaign key badge on character card */
+.sel-card-campaign {
+    font-family: 'Cinzel', serif;
+    font-size: 9px;
+    letter-spacing: .12em;
+    color: var(--gold);
+    margin-top: 6px;
+    opacity: .85;
+}
+.sel-card-campaign.no-campaign {
+    color: var(--parchment-dim);
+    opacity: .4;
+    font-style: italic;
+    font-family: 'EB Garamond', serif;
+    font-size: 11px;
+    letter-spacing: 0;
+}

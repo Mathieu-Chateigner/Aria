@@ -58,6 +58,16 @@
                 <span class="sel-save-label" id="sel-save-label">—</span>
                 <button class="sel-save-btn" onclick="changeSaveKey()">Changer…</button>
             </div>
+            <div class="sel-config-section">
+                <div class="sel-config-title">Configuration</div>
+                <label class="sel-config-label">Clé Ably</label>
+                <input class="sel-config-input" id="sel-ably-key" placeholder="xxxxxxxx:xxxxxxxx" />
+                <label class="sel-config-label">Clé API dddice</label>
+                <input class="sel-config-input" id="sel-dddice-key" type="password" placeholder="Votre clé API…" />
+                <label class="sel-config-label">Room dddice</label>
+                <input class="sel-config-input" id="sel-dddice-room" placeholder="slug ou URL complète" />
+                <button class="sel-config-save-btn" onclick="saveSelectionConfig()">Sauvegarder</button>
+            </div>
         </div>
     </div>
 
@@ -70,6 +80,7 @@
         <span style="font-family:'Cinzel',serif;font-size:9px;color:var(--gold-dim);letter-spacing:.1em;" id="version-display"></span>
         <span class="topbar-badge">Maître de Jeu</span>
         <input class="campaign-name-input" id="campaign-display" value="" placeholder="Campagne" onblur="saveCampaignName(this)" onkeydown="if(event.key==='Enter')this.blur()" />
+        <span class="topbar-joincode" id="joincode-display" onclick="copyJoinCode()" title="Code d'accès — cliquer pour copier"></span>
         <span class="topbar-spacer"></span>
         <span class="player-count" id="player-count">0 joueur(s) en ligne</span>
         <div class="status-row"><div class="status-dot" id="dddice-dot"></div><span id="dddice-status">dddice</span></div>

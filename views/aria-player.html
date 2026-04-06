@@ -48,6 +48,7 @@
             <div class="sel-new-form" id="new-char-form" style="display:none;">
                 <input class="sel-new-input" id="new-char-name" placeholder="Nom du personnage" onkeydown="if(event.key==='Enter')confirmCreateCharacter()" />
                 <input class="sel-new-input" id="new-char-class" placeholder="Classe / Description" onkeydown="if(event.key==='Enter')confirmCreateCharacter()" />
+                <input class="sel-new-input" id="new-char-campaign" placeholder="Code campagne (optionnel)" oninput="this.value=this.value.toUpperCase()" onkeydown="if(event.key==='Enter')confirmCreateCharacter()" />
                 <div class="sel-new-btns">
                     <button class="sel-confirm-btn" onclick="confirmCreateCharacter()">Créer</button>
                     <button class="sel-cancel-btn" onclick="cancelCreateCharacter()">Annuler</button>
@@ -58,6 +59,16 @@
                 <span class="sel-save-icon">💾</span>
                 <span class="sel-save-label" id="sel-save-label">—</span>
                 <button class="sel-save-btn" onclick="changeSaveKey()">Changer…</button>
+            </div>
+            <div class="sel-config-section">
+                <div class="sel-config-title">Configuration</div>
+                <label class="sel-config-label">Clé Ably</label>
+                <input class="sel-config-input" id="sel-ably-key" placeholder="xxxxxxxx:xxxxxxxx" />
+                <label class="sel-config-label">Clé API dddice</label>
+                <input class="sel-config-input" id="sel-dddice-key" type="password" placeholder="Votre clé API…" />
+                <label class="sel-config-label">Room dddice</label>
+                <input class="sel-config-input" id="sel-dddice-room" placeholder="slug ou URL complète" />
+                <button class="sel-config-save-btn" onclick="saveSelectionConfig()">Sauvegarder</button>
             </div>
         </div>
     </div>
@@ -264,6 +275,7 @@
                             <div class="editor-form">
                                 <div class="editor-field"><label class="editor-label">Nom du personnage</label><input class="editor-input" id="ed-name" /></div>
                                 <div class="editor-field"><label class="editor-label">Classe / Description</label><input class="editor-input" id="ed-class" /></div>
+                                <div class="editor-field"><label class="editor-label">Code campagne</label><input class="editor-input" id="ed-campaign-key" placeholder="ex: X7K2M" oninput="this.value=this.value.toUpperCase()" /></div>
                             </div>
                         </div>
                     </div>

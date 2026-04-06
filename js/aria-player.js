@@ -50,7 +50,8 @@ const DEFAULT_CHAR = {
         { name: "Survie", link: "END/INT", pct: 0 },
         { name: "Voler", link: "DEX/INT", pct: 0 },
     ],
-    specials: []
+    specials: [],
+    campaignKey: '',
 };
 
 // Character will be loaded after selection
@@ -314,7 +315,8 @@ function renderSelectionScreen() {
     chars.forEach(c => {
         const card = document.createElement('div');
         card.className = 'sel-card';
-        card.innerHTML = `<button class="sel-card-delete" onclick="event.stopPropagation();deleteCharacter('${c.id}')" title="Supprimer">✕</button><div class="sel-card-name">${c.name || '—'}</div><div class="sel-card-class">${c.class || ''}</div>`;
+        const campBadge = c.campaignKey ? `<div class="sel-card-campaign">🔑 ${c.campaignKey}</div>` : `<div class="sel-card-campaign no-campaign">Sans campagne</div>`;
+        card.innerHTML = `<button class="sel-card-delete" onclick="event.stopPropagation();deleteCharacter('${c.id}')" title="Supprimer">✕</button><div class="sel-card-name">${c.name || '—'}</div><div class="sel-card-class">${c.class || ''}</div>${campBadge}`;
         card.addEventListener('click', () => selectCharacter(c.id));
         grid.appendChild(card);
     });
@@ -326,6 +328,25 @@ function showSelectionScreen() {
     document.getElementById('new-char-form').style.display = 'none';
     renderSelectionScreen();
     updateSaveKeyStatus();
+    loadSelectionConfigInputs();
+}
+
+function loadSelectionConfigInputs() {
+    const a = document.getElementById('sel-ably-key');
+    const dk = document.getElementById('sel-dddice-key');
+    const dr = document.getElementById('sel-dddice-room');
+    if (a) a.value = config.ablyKey || '';
+    if (dk) dk.value = config.dddiceKey || '';
+    if (dr) dr.value = config.dddiceRoom || '';
+}
+
+function saveSelectionConfig() {
+    config.ablyKey    = (document.getElementById('sel-ably-key')?.value || '').trim();
+    config.dddiceKey  = (document.getElementById('sel-dddice-key')?.value || '').trim();
+    config.dddiceRoom = (document.getElementById('sel-dddice-room')?.value || '').trim();
+    localStorage.setItem('aria-config', JSON.stringify(config));
+    const btn = document.querySelector('.sel-config-save-btn');
+    if (btn) { btn.textContent = 'Sauvegardé ✓'; setTimeout(() => { btn.textContent = 'Sauvegarder'; }, 1500); }
 }
 
 function showApp() {
@@ -359,9 +380,10 @@ function createCharacter() {
 function confirmCreateCharacter() {
     const name = document.getElementById('new-char-name').value.trim() || 'Nouveau personnage';
     const cls  = document.getElementById('new-char-class').value.trim();
+    const campaignKey = (document.getElementById('new-char-campaign')?.value || '').trim().toUpperCase();
     const id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
     const chars = getCharacters();
-    chars.push({ ...JSON.parse(JSON.stringify(DEFAULT_CHAR)), name, class: cls, id });
+    chars.push({ ...JSON.parse(JSON.stringify(DEFAULT_CHAR)), name, class: cls, campaignKey, id });
     saveCharacters(chars);
     document.getElementById('new-char-form').style.display = 'none';
     selectCharacter(id);
@@ -1407,6 +1429,7 @@ function sendPresence() {
         vials: character.vials ?? 0,
         potionRecipeIds: (character.potionRecipes || []).map(r => r.id),
         tabs: playerTabs,
+        campaignKey: character.campaignKey || '',
     }, err => { if (err) console.error('[ARIA] publish error:', err); });
 }
 function setAblyStatus(ok) {
@@ -1456,6 +1479,7 @@ function toggleConfig() {
 function renderEditorForm() {
     document.getElementById('ed-name').value = character.name;
     document.getElementById('ed-class').value = character.class || '';
+    document.getElementById('ed-campaign-key').value = character.campaignKey || '';
     document.getElementById('ed-for').value = character.stats.FOR;
     document.getElementById('ed-dex').value = character.stats.DEX;
     document.getElementById('ed-end').value = character.stats.END;
@@ -1660,6 +1684,7 @@ function removeSpecial(i) { character.specials.splice(i, 1); renderSpecialsEdito
 function readEditorInputs() {
     character.name = document.getElementById('ed-name').value.trim();
     character.class = document.getElementById('ed-class').value.trim();
+    character.campaignKey = document.getElementById('ed-campaign-key').value.trim().toUpperCase();
     character.stats.FOR = +document.getElementById('ed-for').value;
     character.stats.DEX = +document.getElementById('ed-dex').value;
     character.stats.END = +document.getElementById('ed-end').value;

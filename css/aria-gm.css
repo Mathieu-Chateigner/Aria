@@ -2443,3 +2443,89 @@ body.light-mode .re-verdict.cs { color: var(--success); }
 body.light-mode .re-verdict.cf { color: var(--fail); }
 body.light-mode .roll-entry.crit-success { border-left-color: var(--success); border-color: rgba(42,110,68,.2); background: rgba(42,110,68,.04); }
 body.light-mode .roll-entry.crit-fail { border-left-color: var(--fail); border-color: rgba(148,36,24,.2); background: rgba(148,36,24,.04); }
+
+/* ═══════════════════════════════════════════
+   SELECTION SCREEN — CONFIG SECTION
+═══════════════════════════════════════════ */
+.sel-config-section {
+    width: 100%;
+    max-width: 420px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: rgba(201,168,76,.03);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 4px;
+}
+.sel-config-title {
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--parchment-dim);
+    margin-bottom: 4px;
+}
+.sel-config-label {
+    font-family: 'EB Garamond', serif;
+    font-size: 13px;
+    color: var(--parchment-dim);
+    margin-top: 4px;
+}
+.sel-config-input {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--parchment);
+    font-family: 'EB Garamond', serif;
+    font-size: 14px;
+    padding: 7px 10px;
+    width: 100%;
+    transition: border-color .2s;
+}
+.sel-config-input:focus { outline: none; border-color: var(--gold-dim); }
+.sel-config-save-btn {
+    margin-top: 6px;
+    background: var(--gm-accent);
+    border: none;
+    border-radius: var(--radius);
+    color: #fff;
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    letter-spacing: .1em;
+    padding: 9px 20px;
+    cursor: pointer;
+    align-self: flex-end;
+    transition: background .2s;
+}
+.sel-config-save-btn:hover { background: #9a52c0; }
+
+/* Join code on campaign cards */
+.sel-card-joincode {
+    font-family: 'Cinzel', serif;
+    font-size: 9px;
+    letter-spacing: .15em;
+    color: var(--gm-accent);
+    margin-top: 6px;
+    opacity: .85;
+    cursor: pointer;
+    transition: opacity .15s;
+}
+.sel-card-joincode:hover { opacity: 1; }
+
+/* Join code badge in topbar */
+.topbar-joincode {
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    letter-spacing: .18em;
+    color: var(--gm-accent);
+    background: rgba(123,63,160,.12);
+    border: 1px solid rgba(123,63,160,.3);
+    border-radius: var(--radius);
+    padding: 3px 10px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background .15s;
+}
+.topbar-joincode:hover { background: rgba(123,63,160,.22); }
