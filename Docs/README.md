@@ -9,10 +9,10 @@ Accessible depuis n'importe quel navigateur, sauvegarde automatique dans le clou
 
 | Panneau | URL |
 |---|---|
-| **Accueil** | `https://your-name.github.io/Aria` |
-| **Joueur** | `https://your-name.github.io/Aria/views/aria-player.html` |
-| **Maître de Jeu** | `https://your-name.github.io/Aria/views/aria-gm.html` |
-| **Overlay OBS** | `https://your-name.github.io/Aria/views/aria-overlay.html?mode=player&ably=CLE` |
+| **Accueil** | `https://mathieu-chateigner.github.io/Aria/` |
+| **Joueur** | `https://mathieu-chateigner.github.io/Aria/views/aria-player.html` |
+| **Maître de Jeu** | `https://mathieu-chateigner.github.io/Aria/views/aria-gm.html` |
+| **Overlay OBS** | `https://mathieu-chateigner.github.io/Aria/views/aria-overlay.html?mode=player&ably=CLE` |
 
 ---
 
@@ -20,7 +20,7 @@ Accessible depuis n'importe quel navigateur, sauvegarde automatique dans le clou
 
 ```
 Aria/
-├── index.html          ← Page d'accueil (sélection Joueur / MJ)
+├── index.html          ← Page d'accueil (sélection Joueur / MJ + configuration)
 ├── views/
 │   ├── aria-player.html
 │   ├── aria-gm.html
@@ -74,37 +74,47 @@ const SUPABASE_ANON_KEY = 'votre-publishable-key';
 1. Aller sur [dddice.com](https://dddice.com) → créer un compte
 2. **Account → Developers** → copier votre **API Key**
 3. Créer une **Room** → copier le slug
-4. À renseigner dans ⚙ Configuration de chaque panneau
+4. À renseigner sur la **page d'accueil** dans le panneau ⚙ Configuration
 
 ---
 
 ## 🚀 Première utilisation
 
+### Configuration initiale (une seule fois)
+1. Aller sur [la page d'accueil](https://mathieu-chateigner.github.io/Aria/)
+2. Dans le panneau **⚙ Configuration** en bas de page :
+   - Renseigner la **clé Ably** (obligatoire)
+   - Renseigner la **clé API dddice** et le **slug de room** (optionnel)
+3. Cliquer **Sauvegarder** — ces clés sont partagées par le panneau Joueur et le panneau MJ
+
 ### Joueur
-1. Aller sur la page d'accueil → cliquer **Joueur**
+1. Page d'accueil → cliquer **Joueur**
 2. Une **clé de sauvegarde** est générée automatiquement — la noter précieusement
 3. Cliquer **Continuer**
 4. Sur l'écran de sélection, cliquer **+ Nouveau personnage**
-5. Cliquer ⚙ → renseigner la **clé Ably** → **Sauvegarder & Connecter**
+5. Saisir le **code campagne** fourni par le MJ pour lier le personnage à la campagne
 
 > Pour retrouver sa progression sur un autre appareil : cliquer **Changer…** sur l'écran de sélection → saisir sa clé existante.
 
 ### Maître de Jeu
-1. Aller sur la page d'accueil → cliquer **Maître de Jeu**
+1. Page d'accueil → cliquer **Maître de Jeu**
 2. Même processus de clé de sauvegarde
-3. Créer une **campagne**
-4. Cliquer ⚙ → renseigner la **même clé Ably** que les joueurs
+3. Créer une **campagne** — un **code d'accès** (ex : `X7K2M`) est généré automatiquement
+4. Partager ce code aux joueurs pour qu'ils le renseignent dans leur personnage
+5. Seuls les joueurs avec le bon code apparaissent dans l'onglet **Joueurs**
 
 ---
 
-## ⚙ Configuration (bouton ⚙ dans le panneau)
+## ⚙ Configuration (page d'accueil)
 
 | Champ | Obligatoire | Description |
 |---|---|---|
+| Clé Ably | **Oui** | Même clé pour tous — joueurs ET MJ |
 | Clé API dddice | Non | Pour les dés 3D |
 | Room dddice | Non | Slug de la room partagée |
-| Thème dddice | Non | Apparence des dés |
-| Clé Ably | **Oui** | Même clé pour tous |
+
+La configuration est **partagée** entre le panneau Joueur et le panneau MJ — une seule saisie suffit.  
+Le thème dddice et le mode clair restent configurables via le bouton ⚙ dans chaque panneau.
 
 ---
 
@@ -120,7 +130,7 @@ const SUPABASE_ANON_KEY = 'votre-publishable-key';
 | **Notes** | Bloc-notes personnel multi-notes par personnage |
 | **Cartes** | Paquet de 54 cartes — cliquer pour piocher *(activé par le MJ)* |
 | **⚗ Alchimie** | Recettes accordées par le MJ, création de potions *(activé par le MJ)* |
-| **Personnage** | Édition de la fiche complète |
+| **Personnage** | Édition de la fiche complète (dont le code campagne) |
 
 **Barre Bonus/Malus** : persistante entre les onglets, s'applique à tous les jets d100.
 
@@ -150,10 +160,10 @@ Dans OBS → **Sources → Source navigateur** :
 
 ```
 # Overlay joueur
-https://your-name.github.io/Aria/views/aria-overlay.html?mode=player&ably=CLE_ABLY
+https://mathieu-chateigner.github.io/Aria/views/aria-overlay.html?mode=player&ably=CLE_ABLY
 
 # Overlay MJ
-https://your-name.github.io/Aria/views/aria-overlay.html?mode=gm&ably=CLE_ABLY
+https://mathieu-chateigner.github.io/Aria/views/aria-overlay.html?mode=gm&ably=CLE_ABLY
 ```
 
 - Largeur : `1920` — Hauteur : `1080` — Fond transparent
@@ -207,9 +217,9 @@ aria-overlay
 
 ## ❓ Dépannage
 
-**Pastille Ably rouge** → Vérifier la clé Ably (sans espaces, format `xxx:yyy`)
+**Pastille Ably rouge** → Vérifier la clé Ably sur la page d'accueil (sans espaces, format `xxx:yyy`)
 
-**Les joueurs n'apparaissent pas chez le MJ** → Vérifier que la même clé Ably est utilisée. Les joueurs envoient un heartbeat toutes les 5s — attendre quelques secondes après ouverture.
+**Les joueurs n'apparaissent pas chez le MJ** → Vérifier que la même clé Ably est utilisée et que le joueur a renseigné le bon **code campagne** dans son personnage. Les joueurs envoient un heartbeat toutes les 5s — attendre quelques secondes après ouverture.
 
 **Les données ne se sauvegardent pas** → Vérifier que `SUPABASE_URL` et `SUPABASE_ANON_KEY` sont bien renseignés dans les fichiers JS et que la table `saves` a été créée.
 
