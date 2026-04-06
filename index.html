@@ -191,6 +191,60 @@
             opacity: .35;
             text-align: center;
         }
+
+        /* ── Config panel ── */
+        .config-panel {
+            width: 100%;
+            max-width: 420px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--bg2);
+            padding: 24px 28px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .config-panel-title {
+            font-family: 'Cinzel', serif;
+            font-size: 10px;
+            letter-spacing: .2em;
+            text-transform: uppercase;
+            color: var(--parchment-dim);
+            margin-bottom: 4px;
+        }
+        .config-label {
+            font-family: 'EB Garamond', serif;
+            font-size: 13px;
+            color: var(--parchment-dim);
+            margin-top: 6px;
+        }
+        .config-input {
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--parchment);
+            font-family: 'EB Garamond', serif;
+            font-size: 14px;
+            padding: 8px 12px;
+            width: 100%;
+            transition: border-color .2s;
+        }
+        .config-input:focus { outline: none; border-color: var(--gold-dim); }
+        .config-save-btn {
+            margin-top: 8px;
+            background: var(--gold-dim);
+            border: none;
+            border-radius: 4px;
+            color: var(--bg);
+            font-family: 'Cinzel', serif;
+            font-size: 11px;
+            letter-spacing: .12em;
+            padding: 10px 24px;
+            cursor: pointer;
+            align-self: flex-end;
+            transition: background .2s;
+        }
+        .config-save-btn:hover { background: var(--gold); }
     </style>
 </head>
 <body>
@@ -217,7 +271,37 @@
         </a>
     </div>
 
+    <div class="config-panel">
+        <div class="config-panel-title">⚙ Configuration</div>
+        <label class="config-label">Clé Ably</label>
+        <input class="config-input" id="cfg-ably" placeholder="xxxxxxxx:xxxxxxxx" />
+        <label class="config-label">Clé API dddice</label>
+        <input class="config-input" id="cfg-dddice-key" type="password" placeholder="Votre clé API…" />
+        <label class="config-label">Room dddice</label>
+        <input class="config-input" id="cfg-dddice-room" placeholder="slug ou URL complète" />
+        <button class="config-save-btn" id="cfg-save-btn" onclick="saveConfig()">Sauvegarder</button>
+    </div>
+
     <div class="footer">ARIA &mdash; Outil de jeu de rôle</div>
 
+    <script>
+        (function () {
+            const cfg = JSON.parse(localStorage.getItem('aria-config') || '{}');
+            document.getElementById('cfg-ably').value        = cfg.ablyKey    || '';
+            document.getElementById('cfg-dddice-key').value  = cfg.dddiceKey  || '';
+            document.getElementById('cfg-dddice-room').value = cfg.dddiceRoom || '';
+        })();
+
+        function saveConfig() {
+            const cfg = JSON.parse(localStorage.getItem('aria-config') || '{}');
+            cfg.ablyKey    = document.getElementById('cfg-ably').value.trim();
+            cfg.dddiceKey  = document.getElementById('cfg-dddice-key').value.trim();
+            cfg.dddiceRoom = document.getElementById('cfg-dddice-room').value.trim();
+            localStorage.setItem('aria-config', JSON.stringify(cfg));
+            const btn = document.getElementById('cfg-save-btn');
+            btn.textContent = 'Sauvegardé ✓';
+            setTimeout(() => { btn.textContent = 'Sauvegarder'; }, 1500);
+        }
+    </script>
 </body>
 </html>

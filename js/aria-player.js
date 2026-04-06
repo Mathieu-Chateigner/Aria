@@ -328,25 +328,6 @@ function showSelectionScreen() {
     document.getElementById('new-char-form').style.display = 'none';
     renderSelectionScreen();
     updateSaveKeyStatus();
-    loadSelectionConfigInputs();
-}
-
-function loadSelectionConfigInputs() {
-    const a = document.getElementById('sel-ably-key');
-    const dk = document.getElementById('sel-dddice-key');
-    const dr = document.getElementById('sel-dddice-room');
-    if (a) a.value = config.ablyKey || '';
-    if (dk) dk.value = config.dddiceKey || '';
-    if (dr) dr.value = config.dddiceRoom || '';
-}
-
-function saveSelectionConfig() {
-    config.ablyKey    = (document.getElementById('sel-ably-key')?.value || '').trim();
-    config.dddiceKey  = (document.getElementById('sel-dddice-key')?.value || '').trim();
-    config.dddiceRoom = (document.getElementById('sel-dddice-room')?.value || '').trim();
-    localStorage.setItem('aria-config', JSON.stringify(config));
-    const btn = document.querySelector('.sel-config-save-btn');
-    if (btn) { btn.textContent = 'Sauvegardé ✓'; setTimeout(() => { btn.textContent = 'Sauvegarder'; }, 1500); }
 }
 
 function showApp() {

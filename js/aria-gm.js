@@ -20,7 +20,7 @@ function buildDeck() { return shuffle([...ALL_CARDS]); }
 // ═══════════════════════════════════════════
 //  STATE
 // ═══════════════════════════════════════════
-let config = JSON.parse(localStorage.getItem('aria-gm-config') || '{}');
+let config = JSON.parse(localStorage.getItem('aria-config') || '{}');
 if (config.lightMode) document.body.classList.add('light-mode');
 let ablyInstance = null, ablyRolls = null, ablyCards = null, ablyDamage = null;
 let dddiceSDK = null;            // ThreeDDice SDK instance
@@ -270,25 +270,6 @@ function showSelectionScreen() {
     document.getElementById('new-campaign-form').style.display = 'none';
     renderCampaignScreen();
     updateSaveKeyStatus();
-    loadSelectionConfigInputs();
-}
-
-function loadSelectionConfigInputs() {
-    const a = document.getElementById('sel-ably-key');
-    const dk = document.getElementById('sel-dddice-key');
-    const dr = document.getElementById('sel-dddice-room');
-    if (a) a.value = config.ablyKey || '';
-    if (dk) dk.value = config.dddiceKey || '';
-    if (dr) dr.value = config.dddiceRoom || '';
-}
-
-function saveSelectionConfig() {
-    config.ablyKey     = (document.getElementById('sel-ably-key')?.value || '').trim();
-    config.dddiceKey   = (document.getElementById('sel-dddice-key')?.value || '').trim();
-    config.dddiceRoom  = (document.getElementById('sel-dddice-room')?.value || '').trim();
-    localStorage.setItem('aria-gm-config', JSON.stringify(config));
-    const btn = document.querySelector('.sel-config-save-btn');
-    if (btn) { btn.textContent = 'Sauvegardé ✓'; setTimeout(() => { btn.textContent = 'Sauvegarder'; }, 1500); }
 }
 
 function copyJoinCodeFromCard(el, code) {
@@ -501,7 +482,7 @@ async function initDddice() {
 
         dddiceAPI = { theme: sel.value };
         setDddiceStatus(true, themes.find(t => t.id === sel.value)?.name || sel.value);
-        sel.onchange = () => { if (dddiceAPI) dddiceAPI.theme = sel.value; config.dddiceTheme = sel.value; localStorage.setItem('aria-gm-config', JSON.stringify(config)); };
+        sel.onchange = () => { if (dddiceAPI) dddiceAPI.theme = sel.value; config.dddiceTheme = sel.value; localStorage.setItem('aria-config', JSON.stringify(config)); };
     } catch (e) { console.error('dddice:', e); setDddiceStatus(false, e.message); dddiceSDK = null; dddiceAPI = null; }
 }
 function setDddiceStatus(ok, detail) {
@@ -1119,7 +1100,7 @@ function saveConfig() {
         ablyKey: document.getElementById('cfg-ably-key').value.trim(),
         lightMode: document.getElementById('cfg-light-mode').checked,
     };
-    localStorage.setItem('aria-gm-config', JSON.stringify(config));
+    localStorage.setItem('aria-config', JSON.stringify(config));
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch (_) {} dddiceSDK = null; }
     if (dddiceResizeHandler) { window.removeEventListener('resize', dddiceResizeHandler); dddiceResizeHandler = null; }
     pendingGMRoll = null; dddiceAPI = null;
