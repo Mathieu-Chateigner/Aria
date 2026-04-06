@@ -2,8 +2,6 @@ Pending commit
 
 Changes:
 
-- index.html : Added "Code campagne (joueur)" input field to the config panel. Reads and saves cfg.campaignKey in aria-config.
+- views/aria-player.html : Removed campaign key from character creation form and character editor (Personnage tab). Added campaign key input to the in-app config modal (⚙) so it is accessible without going into the character sheet.
 
-- views/aria-player.html : Removed campaign key input from character creation form. Removed campaign key field from character editor (Personnage tab). Added campaign key input to the in-app config modal.
-
-- js/aria-player.js : Removed campaignKey from DEFAULT_CHAR. Removed campaign key reading in confirmCreateCharacter(). Removed campaign badge from character selection screen cards. Removed campaign key from renderEditorForm() and readEditorInputs(). broadcastPresence() now reads campaignKey from config instead of character. loadConfigInputs() and saveConfig() now handle cfg-campaign-key. Fixed switchCharacter() race condition: Ably close is now deferred to the publish('leave') callback so the leave message is guaranteed to be delivered before the connection drops, removing the player from GM view immediately instead of after the 30s sweep timeout.
+- js/aria-player.js : campaignKey remains per-character (on the character object, not aria-config). loadConfigInputs() reads character.campaignKey into the config modal input. saveConfig() writes it back to character.campaignKey and calls saveCurrentCharacter(). Campaign badge restored on character selection cards. broadcastPresence() still uses character.campaignKey. Fixed switchCharacter() race condition: Ably close is deferred to the publish('leave') callback so the leave message is guaranteed delivered before the connection drops, removing the player from GM view immediately.

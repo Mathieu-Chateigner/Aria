@@ -51,6 +51,7 @@ const DEFAULT_CHAR = {
         { name: "Voler", link: "DEX/INT", pct: 0 },
     ],
     specials: [],
+    campaignKey: '',
 };
 
 // Character will be loaded after selection
@@ -314,7 +315,8 @@ function renderSelectionScreen() {
     chars.forEach(c => {
         const card = document.createElement('div');
         card.className = 'sel-card';
-        card.innerHTML = `<button class="sel-card-delete" onclick="event.stopPropagation();deleteCharacter('${c.id}')" title="Supprimer">✕</button><div class="sel-card-name">${c.name || '—'}</div><div class="sel-card-class">${c.class || ''}</div>`;
+        const campBadge = c.campaignKey ? `<div class="sel-card-campaign">🔑 ${c.campaignKey}</div>` : `<div class="sel-card-campaign no-campaign">Sans campagne</div>`;
+        card.innerHTML = `<button class="sel-card-delete" onclick="event.stopPropagation();deleteCharacter('${c.id}')" title="Supprimer">✕</button><div class="sel-card-name">${c.name || '—'}</div><div class="sel-card-class">${c.class || ''}</div>${campBadge}`;
         card.addEventListener('click', () => selectCharacter(c.id));
         grid.appendChild(card);
     });
@@ -1414,7 +1416,7 @@ function sendPresence() {
         vials: character.vials ?? 0,
         potionRecipeIds: (character.potionRecipes || []).map(r => r.id),
         tabs: playerTabs,
-        campaignKey: config.campaignKey || '',
+        campaignKey: character.campaignKey || '',
     }, err => { if (err) console.error('[ARIA] publish error:', err); });
 }
 function setAblyStatus(ok) {
@@ -1431,14 +1433,15 @@ function applyTheme(light) {
 function loadConfigInputs() {
     const idEl = document.getElementById('cfg-identity-display');
     if (idEl) idEl.textContent = character.name || '—';
-    document.getElementById('cfg-campaign-key').value = config.campaignKey || '';
+    document.getElementById('cfg-campaign-key').value = character.campaignKey || '';
     document.getElementById('cfg-dddice-theme').value = config.dddiceTheme || '';
     document.getElementById('cfg-light-mode').checked = !!config.lightMode;
 }
 function saveConfig() {
+    character.campaignKey = document.getElementById('cfg-campaign-key').value.trim().toUpperCase();
+    saveCurrentCharacter();
     config = {
         ...config,
-        campaignKey: document.getElementById('cfg-campaign-key').value.trim().toUpperCase(),
         dddiceTheme: document.getElementById('cfg-dddice-theme').value || '',
         lightMode: document.getElementById('cfg-light-mode').checked,
     };

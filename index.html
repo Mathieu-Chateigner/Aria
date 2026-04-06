@@ -279,8 +279,6 @@
         <input class="config-input" id="cfg-dddice-key" type="password" placeholder="Votre clé API…" />
         <label class="config-label">Room dddice</label>
         <input class="config-input" id="cfg-dddice-room" placeholder="slug ou URL complète" />
-        <label class="config-label">Code campagne (joueur)</label>
-        <input class="config-input" id="cfg-campaign-key" placeholder="ex: X7K2M" oninput="this.value=this.value.toUpperCase()" />
         <button class="config-save-btn" id="cfg-save-btn" onclick="saveConfig()">Sauvegarder</button>
     </div>
 
@@ -289,18 +287,16 @@
     <script>
         (function () {
             const cfg = JSON.parse(localStorage.getItem('aria-config') || '{}');
-            document.getElementById('cfg-ably').value          = cfg.ablyKey      || '';
-            document.getElementById('cfg-dddice-key').value    = cfg.dddiceKey    || '';
-            document.getElementById('cfg-dddice-room').value   = cfg.dddiceRoom   || '';
-            document.getElementById('cfg-campaign-key').value  = cfg.campaignKey  || '';
+            document.getElementById('cfg-ably').value        = cfg.ablyKey    || '';
+            document.getElementById('cfg-dddice-key').value  = cfg.dddiceKey  || '';
+            document.getElementById('cfg-dddice-room').value = cfg.dddiceRoom || '';
         })();
 
         function saveConfig() {
             const cfg = JSON.parse(localStorage.getItem('aria-config') || '{}');
-            cfg.ablyKey      = document.getElementById('cfg-ably').value.trim();
-            cfg.dddiceKey    = document.getElementById('cfg-dddice-key').value.trim();
-            cfg.dddiceRoom   = document.getElementById('cfg-dddice-room').value.trim();
-            cfg.campaignKey  = document.getElementById('cfg-campaign-key').value.trim().toUpperCase();
+            cfg.ablyKey    = document.getElementById('cfg-ably').value.trim();
+            cfg.dddiceKey  = document.getElementById('cfg-dddice-key').value.trim();
+            cfg.dddiceRoom = document.getElementById('cfg-dddice-room').value.trim();
             localStorage.setItem('aria-config', JSON.stringify(cfg));
             const btn = document.getElementById('cfg-save-btn');
             btn.textContent = 'Sauvegardé ✓';
