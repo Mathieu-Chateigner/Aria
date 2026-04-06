@@ -51,7 +51,6 @@ const DEFAULT_CHAR = {
         { name: "Voler", link: "DEX/INT", pct: 0 },
     ],
     specials: [],
-    campaignKey: '',
 };
 
 // Character will be loaded after selection
@@ -315,8 +314,7 @@ function renderSelectionScreen() {
     chars.forEach(c => {
         const card = document.createElement('div');
         card.className = 'sel-card';
-        const campBadge = c.campaignKey ? `<div class="sel-card-campaign">🔑 ${c.campaignKey}</div>` : `<div class="sel-card-campaign no-campaign">Sans campagne</div>`;
-        card.innerHTML = `<button class="sel-card-delete" onclick="event.stopPropagation();deleteCharacter('${c.id}')" title="Supprimer">✕</button><div class="sel-card-name">${c.name || '—'}</div><div class="sel-card-class">${c.class || ''}</div>${campBadge}`;
+        card.innerHTML = `<button class="sel-card-delete" onclick="event.stopPropagation();deleteCharacter('${c.id}')" title="Supprimer">✕</button><div class="sel-card-name">${c.name || '—'}</div><div class="sel-card-class">${c.class || ''}</div>`;
         card.addEventListener('click', () => selectCharacter(c.id));
         grid.appendChild(card);
     });
@@ -361,10 +359,9 @@ function createCharacter() {
 function confirmCreateCharacter() {
     const name = document.getElementById('new-char-name').value.trim() || 'Nouveau personnage';
     const cls  = document.getElementById('new-char-class').value.trim();
-    const campaignKey = (document.getElementById('new-char-campaign')?.value || '').trim().toUpperCase();
     const id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
     const chars = getCharacters();
-    chars.push({ ...JSON.parse(JSON.stringify(DEFAULT_CHAR)), name, class: cls, campaignKey, id });
+    chars.push({ ...JSON.parse(JSON.stringify(DEFAULT_CHAR)), name, class: cls, id });
     saveCharacters(chars);
     document.getElementById('new-char-form').style.display = 'none';
     selectCharacter(id);
@@ -377,13 +374,19 @@ function cancelCreateCharacter() {
 function switchCharacter() {
     if (currentCharId) saveCurrentCharacter();
     if (presenceIntervalId) { clearInterval(presenceIntervalId); presenceIntervalId = null; }
-    if (ablyDamage) { try { ablyDamage.publish('leave', { playerId }); } catch(_){} }
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch(_){} dddiceSDK = null; }
     clearTimeout(dddiceRollSafetyTimer);
     pendingDddiceRoll = null; pendingSecondaryRoll = null; dddiceAPI = null;
-    if (ablyInstance) { try { ablyInstance.close(); } catch(_){} ablyInstance = null; }
-    ablyRolls = null; ablyCards = null; ablyDamage = null;
     currentHP = null; bonusMalus = 0;
+    const doCloseAbly = () => {
+        if (ablyInstance) { try { ablyInstance.close(); } catch(_){} ablyInstance = null; }
+        ablyRolls = null; ablyCards = null; ablyDamage = null;
+    };
+    if (ablyDamage) {
+        try { ablyDamage.publish('leave', { playerId }, () => doCloseAbly()); } catch(_){ doCloseAbly(); }
+    } else {
+        doCloseAbly();
+    }
     showSelectionScreen();
 }
 
@@ -1411,7 +1414,7 @@ function sendPresence() {
         vials: character.vials ?? 0,
         potionRecipeIds: (character.potionRecipes || []).map(r => r.id),
         tabs: playerTabs,
-        campaignKey: character.campaignKey || '',
+        campaignKey: config.campaignKey || '',
     }, err => { if (err) console.error('[ARIA] publish error:', err); });
 }
 function setAblyStatus(ok) {
@@ -1428,12 +1431,14 @@ function applyTheme(light) {
 function loadConfigInputs() {
     const idEl = document.getElementById('cfg-identity-display');
     if (idEl) idEl.textContent = character.name || '—';
+    document.getElementById('cfg-campaign-key').value = config.campaignKey || '';
     document.getElementById('cfg-dddice-theme').value = config.dddiceTheme || '';
     document.getElementById('cfg-light-mode').checked = !!config.lightMode;
 }
 function saveConfig() {
     config = {
         ...config,
+        campaignKey: document.getElementById('cfg-campaign-key').value.trim().toUpperCase(),
         dddiceTheme: document.getElementById('cfg-dddice-theme').value || '',
         lightMode: document.getElementById('cfg-light-mode').checked,
     };
@@ -1456,7 +1461,6 @@ function toggleConfig() {
 function renderEditorForm() {
     document.getElementById('ed-name').value = character.name;
     document.getElementById('ed-class').value = character.class || '';
-    document.getElementById('ed-campaign-key').value = character.campaignKey || '';
     document.getElementById('ed-for').value = character.stats.FOR;
     document.getElementById('ed-dex').value = character.stats.DEX;
     document.getElementById('ed-end').value = character.stats.END;
@@ -1661,7 +1665,6 @@ function removeSpecial(i) { character.specials.splice(i, 1); renderSpecialsEdito
 function readEditorInputs() {
     character.name = document.getElementById('ed-name').value.trim();
     character.class = document.getElementById('ed-class').value.trim();
-    character.campaignKey = document.getElementById('ed-campaign-key').value.trim().toUpperCase();
     character.stats.FOR = +document.getElementById('ed-for').value;
     character.stats.DEX = +document.getElementById('ed-dex').value;
     character.stats.END = +document.getElementById('ed-end').value;

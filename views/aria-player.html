@@ -48,7 +48,6 @@
             <div class="sel-new-form" id="new-char-form" style="display:none;">
                 <input class="sel-new-input" id="new-char-name" placeholder="Nom du personnage" onkeydown="if(event.key==='Enter')confirmCreateCharacter()" />
                 <input class="sel-new-input" id="new-char-class" placeholder="Classe / Description" onkeydown="if(event.key==='Enter')confirmCreateCharacter()" />
-                <input class="sel-new-input" id="new-char-campaign" placeholder="Code campagne (optionnel)" oninput="this.value=this.value.toUpperCase()" onkeydown="if(event.key==='Enter')confirmCreateCharacter()" />
                 <div class="sel-new-btns">
                     <button class="sel-confirm-btn" onclick="confirmCreateCharacter()">Créer</button>
                     <button class="sel-cancel-btn" onclick="cancelCreateCharacter()">Annuler</button>
@@ -265,7 +264,6 @@
                             <div class="editor-form">
                                 <div class="editor-field"><label class="editor-label">Nom du personnage</label><input class="editor-input" id="ed-name" /></div>
                                 <div class="editor-field"><label class="editor-label">Classe / Description</label><input class="editor-input" id="ed-class" /></div>
-                                <div class="editor-field"><label class="editor-label">Code campagne</label><input class="editor-input" id="ed-campaign-key" placeholder="ex: X7K2M" oninput="this.value=this.value.toUpperCase()" /></div>
                             </div>
                         </div>
                     </div>
@@ -395,6 +393,8 @@
     <div class="config-modal" id="config-modal">
         <h2>⚙ Configuration</h2>
         <div style="font-family:'EB Garamond',serif;font-size:13px;font-style:italic;color:var(--parchment-dim);margin-bottom:8px;">Identité : <strong id="cfg-identity-display" style="color:var(--parchment);font-style:normal;"></strong> <span style="opacity:.5;">(nom du personnage)</span></div>
+        <label class="config-label">Code campagne</label>
+        <input class="config-input" id="cfg-campaign-key" placeholder="ex: X7K2M" oninput="this.value=this.value.toUpperCase()" />
         <label class="config-label">Thème dddice</label>
         <select class="config-input" id="cfg-dddice-theme" disabled><option>— connectez-vous d'abord —</option></select>
         <div style="margin-top:12px;" class="status-row"><div class="status-dot" id="cfg-dddice-dot"></div><span id="cfg-dddice-status">dddice non connecté</span></div>
