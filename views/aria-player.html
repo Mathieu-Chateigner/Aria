@@ -48,6 +48,7 @@
             <div class="sel-new-form" id="new-char-form" style="display:none;">
                 <input class="sel-new-input" id="new-char-name" placeholder="Nom du personnage" onkeydown="if(event.key==='Enter')confirmCreateCharacter()" />
                 <input class="sel-new-input" id="new-char-class" placeholder="Classe / Description" onkeydown="if(event.key==='Enter')confirmCreateCharacter()" />
+                <input class="sel-new-input" id="new-char-campaign" placeholder="Code de campagne (optionnel)" oninput="this.value=this.value.toUpperCase()" onkeydown="if(event.key==='Enter')confirmCreateCharacter()" />
                 <div class="sel-new-btns">
                     <button class="sel-confirm-btn" onclick="confirmCreateCharacter()">Créer</button>
                     <button class="sel-cancel-btn" onclick="cancelCreateCharacter()">Annuler</button>
@@ -57,6 +58,7 @@
             <div class="sel-save-row">
                 <span class="sel-save-icon">💾</span>
                 <span class="sel-save-label" id="sel-save-label">—</span>
+                <button class="sel-save-btn" onclick="copySaveKey()">Copier</button>
                 <button class="sel-save-btn" onclick="changeSaveKey()">Changer…</button>
             </div>
         </div>

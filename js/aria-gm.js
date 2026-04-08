@@ -191,6 +191,14 @@ function changeSaveKey() {
     document.getElementById('file-gateway').style.display = 'flex';
 }
 
+function copySaveKey() {
+    if (!saveKey) return;
+    navigator.clipboard.writeText(saveKey).catch(() => {});
+    const btns = document.querySelectorAll('.sel-save-btn');
+    const copyBtn = [...btns].find(b => b.textContent === 'Copier');
+    if (copyBtn) { copyBtn.textContent = 'Copié !'; setTimeout(() => { copyBtn.textContent = 'Copier'; }, 2000); }
+}
+
 function cancelGateway() {
     if (saveKey) { hideGateway(); } else { showGateway(); }
 }
@@ -212,10 +220,17 @@ function generateJoinCode() {
     return code;
 }
 
-function monstersKey()  { return 'aria-gm-monsters-'    + currentCampaignId; }
-function rollsKey()     { return 'aria-gm-rolls-'        + currentCampaignId; }
-function cardHistKey()  { return 'aria-gm-card-history-' + currentCampaignId; }
-function potionsKey()   { return 'aria-gm-potions-'      + currentCampaignId; }
+function monstersKey()      { return 'aria-gm-monsters-'      + currentCampaignId; }
+function rollsKey()         { return 'aria-gm-rolls-'          + currentCampaignId; }
+function cardHistKey()      { return 'aria-gm-card-history-'   + currentCampaignId; }
+function potionsKey()       { return 'aria-gm-potions-'        + currentCampaignId; }
+function knownPlayersKey()  { return 'aria-gm-known-players-'  + currentCampaignId; }
+
+function saveKnownPlayers() {
+    const obj = {};
+    players.forEach((p, id) => { obj[id] = p; });
+    localStorage.setItem(knownPlayersKey(), JSON.stringify(obj));
+}
 
 function getCampaigns() { return JSON.parse(localStorage.getItem('aria-gm-campaigns') || '[]'); }
 function saveCampaigns(campaigns) { localStorage.setItem('aria-gm-campaigns', JSON.stringify(campaigns)); debouncedSync(); }
@@ -244,6 +259,9 @@ function loadCampaignState(id) {
     rollFeed    = JSON.parse(localStorage.getItem(rollsKey())     || '[]');
     cardHistory = JSON.parse(localStorage.getItem(cardHistKey()) || '[]');
     gmPotions   = JSON.parse(localStorage.getItem(potionsKey())  || '[]');
+    players.clear();
+    const knownRaw = JSON.parse(localStorage.getItem(knownPlayersKey()) || '{}');
+    Object.entries(knownRaw).forEach(([pid, p]) => { players.set(pid, { ...p, online: false }); });
     return true;
 }
 
@@ -299,6 +317,7 @@ function deleteCampaign(id) {
     localStorage.removeItem('aria-gm-rolls-' + id);
     localStorage.removeItem('aria-gm-card-history-' + id);
     localStorage.removeItem('aria-gm-potions-' + id);
+    localStorage.removeItem('aria-gm-known-players-' + id);
     renderCampaignScreen();
 }
 
@@ -533,7 +552,8 @@ function publishHeal(targetId, amount, hpBefore, hpAfter, maxHP) {
 function handlePresence(data) {
     if (!data?.playerId) return;
     if (currentJoinCode && (data.campaignKey || '') !== currentJoinCode) return;
-    players.set(data.playerId, { ...data, ts: Date.now() });
+    players.set(data.playerId, { ...data, ts: Date.now(), online: true });
+    saveKnownPlayers();
     clearTimeout(renderPlayerCardsTimer);
     renderPlayerCardsTimer = setTimeout(renderPlayerCards, 150);
 }
@@ -546,7 +566,7 @@ function sweepOfflinePlayers() {
         if (wasOnline !== isOnline) { p.online = isOnline; changed = true; }
         else if (p.online === undefined) { p.online = isOnline; changed = true; }
     });
-    if (changed) renderPlayerCards();
+    if (changed) { saveKnownPlayers(); renderPlayerCards(); }
 }
 function renderPlayerCards() {
     const grid = document.getElementById('players-grid');

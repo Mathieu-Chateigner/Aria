@@ -56,6 +56,7 @@
             <div class="sel-save-row">
                 <span class="sel-save-icon">💾</span>
                 <span class="sel-save-label" id="sel-save-label">—</span>
+                <button class="sel-save-btn" onclick="copySaveKey()">Copier</button>
                 <button class="sel-save-btn" onclick="changeSaveKey()">Changer…</button>
             </div>
         </div>
@@ -69,8 +70,8 @@
         <div class="topbar-title" onclick="switchCampaign()" title="Changer de campagne" style="cursor:pointer;">♛ ARIA</div>
         <span style="font-family:'Cinzel',serif;font-size:9px;color:var(--gold-dim);letter-spacing:.1em;" id="version-display"></span>
         <span class="topbar-badge">Maître de Jeu</span>
-        <input class="campaign-name-input" id="campaign-display" value="" placeholder="Campagne" onblur="saveCampaignName(this)" onkeydown="if(event.key==='Enter')this.blur()" />
         <span class="topbar-joincode" id="joincode-display" onclick="copyJoinCode()" title="Code d'accès — cliquer pour copier"></span>
+        <input class="campaign-name-input" id="campaign-display" value="" placeholder="Campagne" onblur="saveCampaignName(this)" onkeydown="if(event.key==='Enter')this.blur()" />
         <span class="topbar-spacer"></span>
         <span class="player-count" id="player-count">0 joueur(s) en ligne</span>
         <div class="status-row"><div class="status-dot" id="dddice-dot"></div><span id="dddice-status">dddice</span></div>
