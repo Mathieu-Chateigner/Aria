@@ -239,6 +239,14 @@ function changeSaveKey() {
     document.getElementById('file-gateway').style.display = 'flex';
 }
 
+function copySaveKey() {
+    if (!saveKey) return;
+    navigator.clipboard.writeText(saveKey).catch(() => {});
+    const btns = document.querySelectorAll('.sel-save-btn');
+    const copyBtn = [...btns].find(b => b.textContent === 'Copier');
+    if (copyBtn) { copyBtn.textContent = 'Copié !'; setTimeout(() => { copyBtn.textContent = 'Copier'; }, 2000); }
+}
+
 function cancelGateway() {
     if (saveKey) { hideGateway(); } else { showGateway(); }
 }
@@ -355,15 +363,17 @@ function createCharacter() {
     document.getElementById('new-char-form').style.display = 'flex';
     document.getElementById('new-char-name').value = '';
     document.getElementById('new-char-class').value = '';
+    document.getElementById('new-char-campaign').value = '';
     document.getElementById('new-char-name').focus();
 }
 
 function confirmCreateCharacter() {
     const name = document.getElementById('new-char-name').value.trim() || 'Nouveau personnage';
     const cls  = document.getElementById('new-char-class').value.trim();
+    const campaignKey = document.getElementById('new-char-campaign').value.trim();
     const id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
     const chars = getCharacters();
-    chars.push({ ...JSON.parse(JSON.stringify(DEFAULT_CHAR)), name, class: cls, id });
+    chars.push({ ...JSON.parse(JSON.stringify(DEFAULT_CHAR)), name, class: cls, campaignKey, id });
     saveCharacters(chars);
     document.getElementById('new-char-form').style.display = 'none';
     selectCharacter(id);
@@ -806,8 +816,11 @@ function setMult(m) {
 function renderInventorySidebar() {
     const body = document.getElementById('inv-sidebar-body');
     const items = character.inventory || [];
-    if (!items.length) { body.innerHTML = `<div style="font-family:'EB Garamond',serif;font-size:13px;color:var(--parchment-dim);font-style:italic;opacity:.5;">Vide</div>`; return; }
-    body.innerHTML = items.map(it => `<div class="inv-item"><span style="font-style:italic">${it.name || '—'}</span><span style="color:var(--gold-dim);font-family:'Cinzel',serif;font-size:12px;">×${it.qty || 1}</span></div>`).join('');
+    const vials = character.vials ?? 0;
+    if (!items.length && vials <= 0) { body.innerHTML = `<div style="font-family:'EB Garamond',serif;font-size:13px;color:var(--parchment-dim);font-style:italic;opacity:.5;">Vide</div>`; return; }
+    let html = items.map(it => `<div class="inv-item"><span style="font-style:italic">${it.name || '—'}</span><span style="color:var(--gold-dim);font-family:'Cinzel',serif;font-size:12px;">×${it.qty || 1}</span></div>`).join('');
+    if (vials > 0) html += `<div class="inv-item"><span style="font-style:italic">Fioles vides</span><span style="color:var(--gold-dim);font-family:'Cinzel',serif;font-size:12px;">×${vials}</span></div>`;
+    body.innerHTML = html;
 }
 
 function renderCombatSidebar() {
