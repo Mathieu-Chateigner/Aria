@@ -1,5 +1,14 @@
-fix: remove triplicated joincode-display spans from GM topbar after merge
+fix: charName missing from overlay damage display + known players in Supabase + minor bugs
 
 Changes:
 
-- views/aria-gm.html : merge conflict left three copies of id="joincode-display" and a leftover topbar-spacer in the topbar; removed the two spurious copies (lines 73 and 75) and the spacer, keeping only the correct one at the right side before the config button
+- js/aria-gm.js : publishDamage() and publishHeal() now include charName in the Ably
+  payload — aria-overlay.js was reading data.charName but it was always undefined,
+  causing blank character name on the damage/heal overlay. All three call sites
+  (applyPlayerDamage, applyPlayerHeal, applyDamageToPlayer) now pass p.name.
+  collectGMData() and applyGMData() now include aria-gm-known-players-{id} in the
+  Supabase sync so the GM player roster persists across devices.
+
+- js/aria-player.js : craftPotion() had `character.vials ?? 1` — inconsistent with
+  the guard above it which uses ?? 0; fixed to ?? 0. removePotion() now guards
+  against character.potions being undefined before calling splice().

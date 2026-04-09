@@ -79,15 +79,17 @@ function collectGMData() {
     const campaigns = JSON.parse(localStorage.getItem('aria-gm-campaigns') || '[]');
     const perCampaign = {};
     campaigns.forEach(c => {
-        const monsters    = localStorage.getItem('aria-gm-monsters-'     + c.id);
-        const rolls       = localStorage.getItem('aria-gm-rolls-'        + c.id);
-        const cardHistory = localStorage.getItem('aria-gm-card-history-' + c.id);
-        const potions     = localStorage.getItem('aria-gm-potions-'      + c.id);
+        const monsters      = localStorage.getItem('aria-gm-monsters-'      + c.id);
+        const rolls         = localStorage.getItem('aria-gm-rolls-'         + c.id);
+        const cardHistory   = localStorage.getItem('aria-gm-card-history-'  + c.id);
+        const potions       = localStorage.getItem('aria-gm-potions-'       + c.id);
+        const knownPlayers  = localStorage.getItem('aria-gm-known-players-' + c.id);
         perCampaign[c.id] = {
-            monsters:    monsters    ? JSON.parse(monsters)    : null,
-            rolls:       rolls       ? JSON.parse(rolls)       : null,
-            cardHistory: cardHistory ? JSON.parse(cardHistory) : null,
-            potions:     potions     ? JSON.parse(potions)     : null,
+            monsters:     monsters     ? JSON.parse(monsters)     : null,
+            rolls:        rolls        ? JSON.parse(rolls)        : null,
+            cardHistory:  cardHistory  ? JSON.parse(cardHistory)  : null,
+            potions:      potions      ? JSON.parse(potions)      : null,
+            knownPlayers: knownPlayers ? JSON.parse(knownPlayers) : null,
         };
     });
     return { campaigns, perCampaign };
@@ -98,10 +100,11 @@ function applyGMData(data) {
     localStorage.setItem('aria-gm-campaigns', JSON.stringify(data.campaigns));
     if (!data.perCampaign) return;
     Object.entries(data.perCampaign).forEach(([id, s]) => {
-        if (s.monsters    !== null && s.monsters    !== undefined) localStorage.setItem('aria-gm-monsters-'     + id, JSON.stringify(s.monsters));
-        if (s.rolls       !== null && s.rolls       !== undefined) localStorage.setItem('aria-gm-rolls-'        + id, JSON.stringify(s.rolls));
-        if (s.cardHistory !== null && s.cardHistory !== undefined) localStorage.setItem('aria-gm-card-history-' + id, JSON.stringify(s.cardHistory));
-        if (s.potions     !== null && s.potions     !== undefined) localStorage.setItem('aria-gm-potions-'      + id, JSON.stringify(s.potions));
+        if (s.monsters     !== null && s.monsters     !== undefined) localStorage.setItem('aria-gm-monsters-'      + id, JSON.stringify(s.monsters));
+        if (s.rolls        !== null && s.rolls        !== undefined) localStorage.setItem('aria-gm-rolls-'         + id, JSON.stringify(s.rolls));
+        if (s.cardHistory  !== null && s.cardHistory  !== undefined) localStorage.setItem('aria-gm-card-history-'  + id, JSON.stringify(s.cardHistory));
+        if (s.potions      !== null && s.potions      !== undefined) localStorage.setItem('aria-gm-potions-'       + id, JSON.stringify(s.potions));
+        if (s.knownPlayers !== null && s.knownPlayers !== undefined) localStorage.setItem('aria-gm-known-players-' + id, JSON.stringify(s.knownPlayers));
     });
 }
 
@@ -528,8 +531,11 @@ function initAbly() {
         // Listen for player presence heartbeats (published every 5s)
         ablyDamage.subscribe('presence', msg => { handlePresence(msg.data); });
         ablyDamage.subscribe('leave', msg => {
-            const id = msg.data?.playerId;
-            if (id && players.has(id)) { players.delete(id); renderPlayerCards(); }
+            const sessionId = msg.data?.playerId;
+            if (!sessionId) return;
+            for (const [key, p] of players) {
+                if (p.playerId === sessionId) { players.delete(key); renderPlayerCards(); break; }
+            }
         });
     } catch (e) { console.error('Ably:', e); setAblyStatus(false); }
 }
@@ -537,22 +543,22 @@ function setAblyStatus(ok) {
     ['ably-dot', 'cfg-ably-dot'].forEach(id => { const el = document.getElementById(id); if (el) el.className = 'status-dot ' + (ok ? 'connected' : 'error'); });
     ['ably-status', 'cfg-ably-status'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = ok ? 'Ably connecté' : 'Ably erreur'; });
 }
-function publishDamage(targetId, damage, hpBefore, hpAfter, maxHP) {
+function publishDamage(targetId, damage, hpBefore, hpAfter, maxHP, charName) {
     if (!ablyDamage) return;
-    ablyDamage.publish('damage', { targetId, damage, hpBefore, hpAfter, maxHP, source: 'gm' });
+    ablyDamage.publish('damage', { targetId, damage, hpBefore, hpAfter, maxHP, charName, source: 'gm' });
 }
-function publishHeal(targetId, amount, hpBefore, hpAfter, maxHP) {
+function publishHeal(targetId, amount, hpBefore, hpAfter, maxHP, charName) {
     if (!ablyDamage) return;
-    ablyDamage.publish('heal', { targetId, amount, hpBefore, hpAfter, maxHP, source: 'gm' });
+    ablyDamage.publish('heal', { targetId, amount, hpBefore, hpAfter, maxHP, charName, source: 'gm' });
 }
 
 // ═══════════════════════════════════════════
 //  PLAYER PRESENCE
 // ═══════════════════════════════════════════
 function handlePresence(data) {
-    if (!data?.playerId) return;
+    if (!data?.playerId || !data?.charId) return;
     if (currentJoinCode && (data.campaignKey || '') !== currentJoinCode) return;
-    players.set(data.playerId, { ...data, ts: Date.now(), online: true });
+    players.set(data.charId, { ...data, ts: Date.now(), online: true });
     saveKnownPlayers();
     clearTimeout(renderPlayerCardsTimer);
     renderPlayerCardsTimer = setTimeout(renderPlayerCards, 150);
@@ -602,7 +608,7 @@ function renderPlayerCards() {
           <div class="pc-header">
             <div class="pc-online-dot ${isOnline ? 'online' : ''}"></div>
             <div style="flex:1;min-width:0;">
-              <div class="pc-name">${p.name || playerId} <span style="font-family:monospace;font-size:9px;opacity:.35;">#${playerId.slice(-6)}</span></div>
+              <div class="pc-name">${p.name || playerId}</div>
               <div class="pc-class">${p.charClass || ''}</div>
             </div>
             <button class="pc-btn details" onclick="openPlayerDetails('${playerId}')" title="Voir la fiche">📋</button>
@@ -753,7 +759,7 @@ function sendTabConfig(playerId, tab, enabled) {
     if (!p) return;
     if (!p.tabs) p.tabs = { cards: false, alchemy: false };
     p.tabs[tab] = enabled;
-    ablyDamage.publish('tab-config', { playerId, tabs: p.tabs });
+    ablyDamage.publish('tab-config', { playerId: p.playerId, tabs: p.tabs });
     openPlayerDetails(playerId); // refresh modal to reflect new state
 }
 
@@ -767,7 +773,7 @@ function applyPlayerDamage(playerId) {
     const hpAfter = Math.max(0, hpBefore - dmg);
     p.hp = hpAfter;
     inp.value = '';
-    publishDamage(playerId, dmg, hpBefore, hpAfter, p.maxHP || hpBefore);
+    publishDamage(p.playerId, dmg, hpBefore, hpAfter, p.maxHP || hpBefore, p.name);
     renderPlayerCards();
 }
 function applyPlayerHeal(playerId) {
@@ -780,7 +786,7 @@ function applyPlayerHeal(playerId) {
     const hpAfter = Math.min(p.maxHP || hpBefore, hpBefore + amt);
     p.hp = hpAfter;
     inp.value = '';
-    publishHeal(playerId, amt, hpBefore, hpAfter, p.maxHP || hpBefore);
+    publishHeal(p.playerId, amt, hpBefore, hpAfter, p.maxHP || hpBefore, p.name);
     renderPlayerCards();
 }
 
@@ -1098,7 +1104,7 @@ function applyDamageToPlayer(playerId, amount) {
     const hpBefore = p.hp ?? p.maxHP ?? 0;
     const hpAfter = Math.max(0, hpBefore - amount);
     p.hp = hpAfter;
-    publishDamage(playerId, amount, hpBefore, hpAfter, p.maxHP || hpBefore);
+    publishDamage(p.playerId, amount, hpBefore, hpAfter, p.maxHP || hpBefore, p.name);
     renderPlayerCards();
     const btn = document.querySelector(`.gm-target-btn[data-pid="${playerId}"]`);
     if (btn) { btn.disabled = true; btn.classList.add('applied'); btn.textContent = `✓ ${p.name || playerId}`; }
@@ -1307,18 +1313,20 @@ function sendPotionGrant(playerId, potionId) {
     const alreadyGranted = player.potionRecipeIds.includes(potionId);
     if (alreadyGranted) {
         // Revoke
-        ablyDamage.publish('potion-revoke', { playerId, potionId });
+        ablyDamage.publish('potion-revoke', { playerId: player.playerId, potionId });
         player.potionRecipeIds = player.potionRecipeIds.filter(id => id !== potionId);
     } else {
         // Grant
         const pot = gmPotions.find(p => p.id === potionId);
         if (!pot) return;
-        ablyDamage.publish('potion-grant', { playerId, potion: { ...pot } });
+        ablyDamage.publish('potion-grant', { playerId: player.playerId, potion: { ...pot } });
         player.potionRecipeIds.push(potionId);
     }
     openPlayerDetails(playerId);
 }
 function sendVialGrant(playerId, qty) {
     if (!ablyDamage) return;
-    ablyDamage.publish('vial-grant', { playerId, qty });
+    const p = players.get(playerId);
+    if (!p) return;
+    ablyDamage.publish('vial-grant', { playerId: p.playerId, qty });
 }

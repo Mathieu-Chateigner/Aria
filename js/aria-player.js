@@ -1419,7 +1419,7 @@ function publishCard(type, extra = {}) {
 function sendPresence() {
     if (!ablyDamage) { console.warn('[ARIA] sendPresence: ablyDamage not ready'); return; }
     ablyDamage.publish('presence', {
-        playerId, name: character.name, charClass: character.class,
+        playerId, charId: currentCharId, name: character.name, charClass: character.class,
         hp: currentHP, maxHP: getMaxHP(), stats: character.stats,
         protection: character.protection,
         skills: character.skills,
@@ -1618,7 +1618,7 @@ function craftPotion(recipeIdx) {
     if ((character.vials ?? 0) <= 0 || isRolling) return;
     const recipe = (character.potionRecipes || [])[recipeIdx];
     if (!recipe) return;
-    character.vials = (character.vials ?? 1) - 1;
+    character.vials = (character.vials ?? 0) - 1;
     saveCurrentCharacter();
     pendingCraft = recipeIdx;
     doRoll(recipe.name, recipe.successChance || 0, true);
@@ -1645,6 +1645,7 @@ function applyCraft(success, recipeIdx) {
     }, 1500);
 }
 function removePotion(i) {
+    if (!character.potions) return;
     character.potions.splice(i, 1);
     saveCurrentCharacter();
     renderPotions();

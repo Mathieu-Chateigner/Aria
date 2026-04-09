@@ -228,9 +228,12 @@ The **empty vials counter** in the Inventaire tab (`#inv-vials-section`) is only
 
 ### `aria-damage` / `presence` (heartbeat every 5s)
 ```js
-{ playerId, name, charClass, hp, maxHP, stats, protection, skills, specials,
+{ playerId, charId, name, charClass, hp, maxHP, stats, protection, skills, specials,
   weapons, inventory, potions, vials, potionRecipeIds, tabs, campaignKey, ts }
 ```
+- `playerId` — session UUID (sessionStorage, changes per tab/refresh); used only for Ably targeting
+- `charId` — character UUID (stable; never changes even if name changes); used as the key in the GM `players` Map
+
 The GM filters incoming presence by `campaignKey === currentJoinCode` — messages with a non-matching key are ignored entirely.
 
 ### `aria-damage` / `tab-config`
