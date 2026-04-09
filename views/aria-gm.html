@@ -13,7 +13,7 @@
 <body>
 
     <!-- SAVE KEY GATEWAY -->
-    <div id="file-gateway" style="position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:10000;">
+    <div id="file-gateway" style="position:fixed;inset:0;background:var(--bg);display:none;align-items:center;justify-content:center;z-index:10000;">
         <div class="gateway-panel">
             <div class="sel-brand" style="color:var(--gm-accent);">♛ ARIA</div>
             <!-- New key panel -->
@@ -70,11 +70,10 @@
         <span style="font-family:'Cinzel',serif;font-size:9px;color:var(--gold-dim);letter-spacing:.1em;" id="version-display"></span>
         <span class="topbar-badge">Maître de Jeu</span>
         <input class="campaign-name-input" id="campaign-display" value="" placeholder="Campagne" onblur="saveCampaignName(this)" onkeydown="if(event.key==='Enter')this.blur()" />
-        <span class="topbar-joincode" id="joincode-display" onclick="copyJoinCode()" title="Code d'accès — cliquer pour copier"></span>
-        <span class="topbar-spacer"></span>
         <span class="player-count" id="player-count">0 joueur(s) en ligne</span>
         <div class="status-row"><div class="status-dot" id="dddice-dot"></div><span id="dddice-status">dddice</span></div>
         <div class="status-row"><div class="status-dot" id="ably-dot"></div><span id="ably-status">Ably</span></div>
+        <span class="topbar-joincode" id="joincode-display" onclick="copyJoinCode()" title="Code d'accès — cliquer pour copier"></span>
         <button class="icon-btn" onclick="toggleConfig()" title="Configuration">⚙</button>
     </div>
 

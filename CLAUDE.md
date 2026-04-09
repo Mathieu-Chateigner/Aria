@@ -21,12 +21,14 @@ Live at: `https://mathieu-chateigner.github.io/Aria/`
 After every set of changes, update the `commits` file at the repo root with a plain-text summary of what was changed and why. Overwrite the previous content — it only needs to describe the most recent batch of changes, not a full history. No markdown — plain text only. Format:
 
 ```
-Pending commit
+type: short summary line (this becomes the GitHub commit title)
 
 Changes:
 
 - file : what changed and why
 ```
+
+Common types: `feat`, `fix`, `docs`, `refactor`, `style`. The first line is what appears on GitHub — keep it concise and meaningful.
 
 Always update `commits` as the last step of any task.
 
@@ -75,6 +77,17 @@ All three apps share **one Ably key** (entered on `index.html`) and use three ch
 | `aria-rolls` | `aria-player` (per roll) | `aria-gm` (roll feed) + other `aria-player` instances (toast) + `aria-overlay` |
 | `aria-cards` | `aria-player` or `aria-gm` | `aria-overlay` |
 | `aria-damage` | `aria-gm` (damage/heal events) + `aria-player` (presence heartbeat every 5s) | `aria-player` (receives GM damage) + `aria-gm` (receives presence) |
+
+### Save key / Supabase sync
+
+Both player and GM use a **save key** (UUID) to sync localStorage to Supabase, enabling multi-device access.
+
+- On page load, `#file-gateway` starts `display:none`. `tryRestoreSupabase()` checks `localStorage('aria-save-key')`:
+  - Key found → calls `loadFromSupabase()` then `hideGateway()` + `showSelectionScreen()` (no flash)
+  - No key → calls `showGateway()` which sets `display:flex`, prompting the user to create or enter a key
+- `saveKey` is stored in `localStorage('aria-save-key')` and also held in the module-level `saveKey` variable
+- Sync is debounced (`debouncedSync()` → 800ms → `syncToSupabase()`) to avoid hammering the API
+- **Never set `#file-gateway` to `display:flex` in HTML** — it must start hidden to avoid the flash on load
 
 ### No server, no build
 
@@ -166,6 +179,8 @@ Each character carries its own `id` (UUID). HP and card state are keyed by that 
 | `aria-player-tabs-{id}` | `{ cards: bool, alchemy: bool }` tab visibility |
 
 Tab visibility is managed separately from the character object and persisted per character ID. Helper functions `hpKey()` and `cardKey()` return the scoped key for the active character. Always use these — never hardcode the bare key.
+
+The **empty vials counter** in the Inventaire tab (`#inv-vials-section`) is only rendered when `playerTabs.alchemy === true`. `renderVialsInInventory()` checks this and empties the section if alchemy is not granted. `applyTabVisibility()` calls `renderVialsInInventory()` so the inventory updates immediately when the GM toggles the alchemy tab.
 
 ### Character fields (`aria-characters[n]`)
 

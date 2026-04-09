@@ -563,6 +563,7 @@ function applyTabVisibility() {
     if (!playerTabs.alchemy && document.getElementById('tab-alchemy').classList.contains('active')) {
         switchTab('tab-skills', document.querySelector('.tab-btn'));
     }
+    renderVialsInInventory();
 }
 
 // ═══════════════════════════════════════════
@@ -1579,9 +1580,11 @@ function renderPotions() {
     const hasContent = recipes.length > 0 || stock.length > 0;
     if (empty) empty.style.display = hasContent ? 'none' : '';
 }
+
 function renderVialsInInventory() {
     const el = document.getElementById('inv-vials-section');
     if (!el) return;
+    if (!playerTabs.alchemy) { el.innerHTML = ''; return; }
     const v = character.vials ?? 0;
     el.innerHTML = `<div class="inv-vials-row">
         <span class="inv-vials-label">Fioles vides</span>

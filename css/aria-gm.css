@@ -2045,10 +2045,11 @@ body {
     border-bottom: 1px solid transparent;
     color: var(--parchment-dim);
     font-family: 'Cinzel', serif;
-    font-size: 13px;
-    letter-spacing: .08em;
-    padding: 0 2px;
-    width: 140px;
+    font-size: 17px;
+    letter-spacing: .06em;
+    padding: 0 4px;
+    flex: 1;
+    min-width: 80px;
     outline: none;
     cursor: pointer;
     transition: border-color .2s, color .2s;
@@ -2526,7 +2527,7 @@ body.light-mode .roll-entry.crit-fail { border-left-color: var(--fail); border-c
     font-family: 'Cinzel', serif;
     font-size: 10px;
     letter-spacing: .18em;
-    color: var(--gm-accent);
+    color: #d4aaff;
     background: rgba(123,63,160,.12);
     border: 1px solid rgba(123,63,160,.3);
     border-radius: var(--radius);

@@ -1,29 +1,9 @@
-docs: clarify and rewrite bugs_and_issues.md with technical detail
+feat: campaign name flex layout, joincode repositioned, vials alchemy-gated
 
-Rewrote Docs/bugs_and_issues.md to turn vague descriptions into
-actionable bug reports. Each entry now includes the exact file and
-line number(s) involved, a clear description of current vs. expected
-behavior, and a concrete fix strategy.
+Changes:
 
-Changes per bug:
-
-- Bug 1 & 5 (copy save key): clarified that copyGatewayKey() cannot
-  be reused as-is since it reads from a DOM element only present in
-  the gateway screen; the fix must copy from the saveKey variable.
-
-- Bug 2 (campaign key in creation form): pinpointed both the HTML
-  form (aria-player.html) and the JS handler (confirmCreateCharacter)
-  that need updating; noted the field is optional.
-
-- Bug 3 & 4 (vials): separated into two distinct problems — vials
-  appearing in the Inventory tab when alchemy is disabled (Bug 3),
-  and vials missing from the left inventory sidebar regardless of
-  state (Bug 4). Documented different visibility rules for each.
-
-- Bug 6 (join code position): identified it as a two-element swap
-  in the GM topbar HTML.
-
-- Bug 7 (player count): explained why the count always shows X/X
-  (in-memory Map resets on page refresh), and proposed persisting
-  known players to localStorage per campaign so the GM can see
-  0/6 even after a reload.
+- views/aria-gm.html : moved topbar-joincode to just before the config button (right side); removed topbar-spacer; removed oninput from campaign-name-input (now uses flex layout instead)
+- views/aria-player.html : restored inv-vials-section div in inventory tab
+- css/aria-gm.css : campaign-name-input now flex:1 (fills all available space), font-size raised to 17px; topbar-joincode color changed to #d4aaff
+- js/aria-gm.js : removed autoSizeCampaignInput (no longer needed with flex layout)
+- js/aria-player.js : restored renderVialsInInventory() with playerTabs.alchemy guard — vials show in inventory only when GM has granted alchemy access; added call in applyTabVisibility() so it updates immediately when GM toggles the tab
