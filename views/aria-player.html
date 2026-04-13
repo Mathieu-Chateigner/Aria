@@ -173,7 +173,7 @@
                     </div>
                     <div>
                         <div class="field-label">Seuil (%)</div>
-                        <input class="free-input" id="free-threshold" type="number" min="1" max="100" placeholder="ex: 60" />
+                        <input class="free-input" id="free-threshold" type="text" inputmode="numeric" placeholder="ex: 60" oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
                     </div>
                     <button class="roll-btn" onclick="doFreeRoll()">⚄ Lancer</button>
                     <div class="dice-section">
@@ -274,12 +274,12 @@
                     <div class="cs-block">
                         <div class="cs-block-title">Attributs</div>
                         <div class="cs-attrs-row">
-                            <div class="cs-attr"><label class="cs-attr-label">FOR</label><input class="editor-input cs-attr-input" id="ed-for" type="number" min="1" /></div>
-                            <div class="cs-attr"><label class="cs-attr-label">DEX</label><input class="editor-input cs-attr-input" id="ed-dex" type="number" min="1" /></div>
-                            <div class="cs-attr"><label class="cs-attr-label">END</label><input class="editor-input cs-attr-input" id="ed-end" type="number" min="1" /></div>
-                            <div class="cs-attr"><label class="cs-attr-label">INT</label><input class="editor-input cs-attr-input" id="ed-int" type="number" min="1" /></div>
-                            <div class="cs-attr"><label class="cs-attr-label">CHA</label><input class="editor-input cs-attr-input" id="ed-cha" type="number" min="1" /></div>
-                            <div class="cs-attr cs-attr-pv"><label class="cs-attr-label">PV max</label><input class="editor-input cs-attr-input" id="ed-pv" type="number" min="0" /></div>
+                            <div class="cs-attr"><label class="cs-attr-label">FOR</label><input class="editor-input cs-attr-input" id="ed-for" type="text" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'')" /></div>
+                            <div class="cs-attr"><label class="cs-attr-label">DEX</label><input class="editor-input cs-attr-input" id="ed-dex" type="text" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'')" /></div>
+                            <div class="cs-attr"><label class="cs-attr-label">END</label><input class="editor-input cs-attr-input" id="ed-end" type="text" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'')" /></div>
+                            <div class="cs-attr"><label class="cs-attr-label">INT</label><input class="editor-input cs-attr-input" id="ed-int" type="text" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'')" /></div>
+                            <div class="cs-attr"><label class="cs-attr-label">CHA</label><input class="editor-input cs-attr-input" id="ed-cha" type="text" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'')" /></div>
+                            <div class="cs-attr cs-attr-pv"><label class="cs-attr-label">PV max</label><input class="editor-input cs-attr-input" id="ed-pv" type="text" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'')" /></div>
                         </div>
                     </div>
 
@@ -304,7 +304,7 @@
                         <div class="cs-block-body">
                             <div class="editor-form">
                                 <div class="editor-field full"><label class="editor-label">Armure</label><input class="editor-input" id="ed-prot-nom" /></div>
-                                <div class="editor-field full"><label class="editor-label">Valeur armure</label><input class="editor-input" id="ed-prot-val" type="number" min="0" /></div>
+                                <div class="editor-field full"><label class="editor-label">Valeur armure</label><input class="editor-input" id="ed-prot-val" type="text" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'')" /></div>
                             </div>
                         </div>
                     </div>

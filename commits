@@ -1,14 +1,25 @@
-fix: charName missing from overlay damage display + known players in Supabase + minor bugs
+fix: codebase audit — input conventions, broken overlay URL, stale docs
 
 Changes:
 
-- js/aria-gm.js : publishDamage() and publishHeal() now include charName in the Ably
-  payload — aria-overlay.js was reading data.charName but it was always undefined,
-  causing blank character name on the damage/heal overlay. All three call sites
-  (applyPlayerDamage, applyPlayerHeal, applyDamageToPlayer) now pass p.name.
-  collectGMData() and applyGMData() now include aria-gm-known-players-{id} in the
-  Supabase sync so the GM player roster persists across devices.
+- js/aria-player.js : copyOverlayUrl() had a regex that never matched the actual
+  URL structure (views/aria-player.html). The replace silently no-oped, so the
+  copied URL still pointed to aria-player.html instead of aria-overlay.html.
+  Fixed to replace(/aria-player\.html.*$/, 'aria-overlay.html').
+  renderSkillsEditor(), renderSpecialsEditor(), and renderInventoryEditor() used
+  type="number" inputs — replaced with type="text" inputmode="numeric" per
+  project convention.
 
-- js/aria-player.js : craftPotion() had `character.vials ?? 1` — inconsistent with
-  the guard above it which uses ?? 0; fixed to ?? 0. removePotion() now guards
-  against character.potions being undefined before calling splice().
+- js/aria-gm.js : Updated stale comment on the players Map (was "playerId ->"
+  since the charId migration). Replaced type="number" in addAmfAttack(),
+  removeAmfAttack() re-render loop, and renderMonsters() monster attack inputs.
+
+- views/aria-player.html : Replaced all type="number" inputs (free-roll
+  threshold, stat fields FOR/DEX/END/INT/CHA/PV, armure value) with
+  type="text" inputmode="numeric" + oninput filter.
+
+- views/aria-gm.html : Same for monster creation form (PV, armure, stat fields)
+  and GM roll threshold inputs (free roll + monster roll).
+
+- CLAUDE.md : Corrected potionRecipes field name from `chance` to
+  `successChance` (2 occurrences — character structure and potion-grant payload).

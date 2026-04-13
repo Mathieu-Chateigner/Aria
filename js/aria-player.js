@@ -1401,7 +1401,7 @@ function initAbly() {
 }
 function publishRoll(data) { if (ablyRolls) ablyRolls.publish('roll', data); }
 function copyOverlayUrl() {
-    const base = window.location.href.replace(/\/Player\/[^/]+$/, '/Overlay/aria-overlay.html');
+    const base = window.location.href.replace(/aria-player\.html.*$/, 'aria-overlay.html');
     const params = new URLSearchParams({ mode: 'player', ably: config.ablyKey || '' });
     if (config.dddiceKey) params.set('dddice_key', config.dddiceKey);
     if (config.dddiceRoom) params.set('dddice_room', extractRoomSlug(config.dddiceRoom));
@@ -1517,7 +1517,7 @@ function renderInventoryEditor() {
     (character.inventory || []).forEach((it, i) => {
         const row = document.createElement('div');
         row.className = 'inv-row';
-        row.innerHTML = `<input class="editor-input" value="${it.name || ''}" placeholder="Nom de l'objet" oninput="character.inventory[${i}].name=this.value;renderInventorySidebar()" /><input class="editor-input inv-qty" type="number" min="1" value="${it.qty || 1}" oninput="character.inventory[${i}].qty=+this.value;renderInventorySidebar()" /><button class="del-btn" onclick="removeInventoryRow(${i})">✕</button>`;
+        row.innerHTML = `<input class="editor-input" value="${it.name || ''}" placeholder="Nom de l'objet" oninput="character.inventory[${i}].name=this.value;renderInventorySidebar()" /><input class="editor-input inv-qty" type="text" inputmode="numeric" value="${it.qty || 1}" oninput="this.value=this.value.replace(/[^0-9]/g,'');character.inventory[${i}].qty=+this.value||1;renderInventorySidebar()" /><button class="del-btn" onclick="removeInventoryRow(${i})">✕</button>`;
         list.appendChild(row);
     });
 }
@@ -1665,7 +1665,7 @@ function renderSkillsEditor() {
     (character.skills || []).forEach((sk, i) => {
         const row = document.createElement('div');
         row.className = 'skill-editor-row';
-        row.innerHTML = `<span class="sname">${sk.name}</span><input class="spct" type="number" min="1" max="100" value="${sk.pct}" oninput="character.skills[${i}].pct=+this.value" />`;
+        row.innerHTML = `<span class="sname">${sk.name}</span><input class="spct" type="text" inputmode="numeric" value="${sk.pct}" oninput="this.value=this.value.replace(/[^0-9]/g,'');character.skills[${i}].pct=+this.value||0" />`;
         list.appendChild(row);
     });
 }
@@ -1676,7 +1676,7 @@ function renderSpecialsEditor() {
     (character.specials || []).forEach((sp, i) => {
         const row = document.createElement('div');
         row.className = 'specials-row';
-        row.innerHTML = `<input value="${sp.name || ''}" placeholder="Nom" oninput="character.specials[${i}].name=this.value" /><input type="number" min="0" max="100" value="${sp.pct || 0}" oninput="character.specials[${i}].pct=+this.value" /><input value="${sp.desc || ''}" placeholder="Description" oninput="character.specials[${i}].desc=this.value" /><button class="del-btn" onclick="removeSpecial(${i})">✕</button>`;
+        row.innerHTML = `<input value="${sp.name || ''}" placeholder="Nom" oninput="character.specials[${i}].name=this.value" /><input type="text" inputmode="numeric" value="${sp.pct || 0}" oninput="this.value=this.value.replace(/[^0-9]/g,'');character.specials[${i}].pct=+this.value||0" /><input value="${sp.desc || ''}" placeholder="Description" oninput="character.specials[${i}].desc=this.value" /><button class="del-btn" onclick="removeSpecial(${i})">✕</button>`;
         list.appendChild(row);
     });
 }

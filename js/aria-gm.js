@@ -28,7 +28,7 @@ let dddiceAPI = null;            // { theme } once connected
 let pendingGMRoll = null;        // { name, threshold, atk } for GM rolls in progress
 let dddiceResizeHandler = null;  // stored so we can remove it before re-registering
 
-// Players presence map: playerId -> {name,charClass,hp,maxHP,stats,ts}
+// Players presence map: charId (stable UUID) -> {playerId,name,charClass,hp,maxHP,stats,ts,...}
 const players = new Map();
 const PRESENCE_TIMEOUT = 30000; // 30s offline threshold
 
@@ -264,7 +264,10 @@ function loadCampaignState(id) {
     gmPotions   = JSON.parse(localStorage.getItem(potionsKey())  || '[]');
     players.clear();
     const knownRaw = JSON.parse(localStorage.getItem(knownPlayersKey()) || '{}');
-    Object.entries(knownRaw).forEach(([pid, p]) => { players.set(pid, { ...p, online: false }); });
+    Object.entries(knownRaw).forEach(([, p]) => {
+        if (!p.charId) return; // skip legacy entries keyed by session UUID (pre-fix)
+        players.set(p.charId, { ...p, online: false });
+    });
     return true;
 }
 
@@ -827,7 +830,7 @@ function addAmfAttack() {
     newMonsterAttacks.push({ name: '', pct: 50, dmg: '' });
     const list = document.getElementById('amf-attacks-list');
     const row = document.createElement('div'); row.className = 'atk-row'; row.id = `amf-atk-${idx}`;
-    row.innerHTML = `<input placeholder="Nom" oninput="newMonsterAttacks[${idx}].name=this.value" /><input type="number" min="1" max="100" placeholder="%" oninput="newMonsterAttacks[${idx}].pct=+this.value" /><input placeholder="1d6" oninput="newMonsterAttacks[${idx}].dmg=this.value" /><button class="del-btn" onclick="removeAmfAttack(${idx})">✕</button>`;
+    row.innerHTML = `<input placeholder="Nom" oninput="newMonsterAttacks[${idx}].name=this.value" /><input type="text" inputmode="numeric" placeholder="%" oninput="this.value=this.value.replace(/[^0-9]/g,'');newMonsterAttacks[${idx}].pct=+this.value||0" /><input placeholder="1d6" oninput="newMonsterAttacks[${idx}].dmg=this.value" /><button class="del-btn" onclick="removeAmfAttack(${idx})">✕</button>`;
     list.appendChild(row);
 }
 function removeAmfAttack(idx) {
@@ -837,7 +840,7 @@ function removeAmfAttack(idx) {
     list.innerHTML = '';
     newMonsterAttacks.forEach((a, i) => {
         const row = document.createElement('div'); row.className = 'atk-row';
-        row.innerHTML = `<input value="${a.name}" placeholder="Nom" oninput="newMonsterAttacks[${i}].name=this.value" /><input type="number" value="${a.pct}" min="1" max="100" placeholder="%" oninput="newMonsterAttacks[${i}].pct=+this.value" /><input value="${a.dmg}" placeholder="1d6" oninput="newMonsterAttacks[${i}].dmg=this.value" /><button class="del-btn" onclick="removeAmfAttack(${i})">✕</button>`;
+        row.innerHTML = `<input value="${a.name}" placeholder="Nom" oninput="newMonsterAttacks[${i}].name=this.value" /><input type="text" inputmode="numeric" value="${a.pct}" placeholder="%" oninput="this.value=this.value.replace(/[^0-9]/g,'');newMonsterAttacks[${i}].pct=+this.value||0" /><input value="${a.dmg}" placeholder="1d6" oninput="newMonsterAttacks[${i}].dmg=this.value" /><button class="del-btn" onclick="removeAmfAttack(${i})">✕</button>`;
         list.appendChild(row);
     });
 }
@@ -944,7 +947,7 @@ function renderMonsters() {
               ${m.attacks.map((a, i) => `
               <div class="mc-atk-edit-row">
                 <input class="mc-atk-input" value="${a.name}" placeholder="Nom" oninput="updateMonsterAttack(${m.id},${i},'name',this.value)" />
-                <input class="mc-atk-input center" type="number" min="1" max="100" value="${a.pct}" placeholder="%" oninput="updateMonsterAttack(${m.id},${i},'pct',+this.value)" />
+                <input class="mc-atk-input center" type="text" inputmode="numeric" value="${a.pct}" placeholder="%" oninput="this.value=this.value.replace(/[^0-9]/g,'');updateMonsterAttack(${m.id},${i},'pct',+this.value||0)" />
                 <input class="mc-atk-input center" value="${a.dmg || ''}" placeholder="1d6" oninput="updateMonsterAttack(${m.id},${i},'dmg',this.value)" />
                 <button class="del-btn" onclick="removeMonsterAttack(${m.id},${i})">✕</button>
               </div>`).join('')}

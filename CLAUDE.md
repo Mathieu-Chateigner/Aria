@@ -198,7 +198,7 @@ The **empty vials counter** in the Inventaire tab (`#inv-vials-section`) is only
   skills: [{ name, link, pct }],             // link = "FOR/DEX" etc
   specials: [{ name, desc, pct }],           // fully editable
   potions: [{ name, desc, ingredients, qty }],
-  potionRecipes: [{ id, name, desc, ingredients, chance }],
+  potionRecipes: [{ id, name, desc, ingredients, successChance }],
   vials: number,
 }
 ```
@@ -243,7 +243,7 @@ The GM filters incoming presence by `campaignKey === currentJoinCode` — messag
 
 ### `aria-damage` / `potion-grant` | `vial-grant`
 ```js
-{ playerId, potion: { id, name, desc, ingredients, chance } }
+{ playerId, potion: { id, name, desc, ingredients, successChance } }
 { playerId, qty: number }
 ```
 

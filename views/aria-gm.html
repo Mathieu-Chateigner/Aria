@@ -110,19 +110,19 @@
                         </div>
                         <div>
                             <label class="amf-label">PV max</label>
-                            <input class="amf-input" id="amf-pv" type="number" min="1" placeholder="20" />
+                            <input class="amf-input" id="amf-pv" type="text" inputmode="numeric" placeholder="20" oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
                         </div>
                         <div>
                             <label class="amf-label">Armure</label>
-                            <input class="amf-input" id="amf-armor" type="number" min="0" placeholder="0" />
+                            <input class="amf-input" id="amf-armor" type="text" inputmode="numeric" placeholder="0" oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
                         </div>
                     </div>
                     <div class="amf-grid2">
-                        <div><label class="amf-label">FOR</label><input class="amf-input" id="amf-for" type="number" min="1" placeholder="10" /></div>
-                        <div><label class="amf-label">DEX</label><input class="amf-input" id="amf-dex" type="number" min="1" placeholder="10" /></div>
-                        <div><label class="amf-label">END</label><input class="amf-input" id="amf-end" type="number" min="1" placeholder="10" /></div>
-                        <div><label class="amf-label">INT</label><input class="amf-input" id="amf-int" type="number" min="1" placeholder="10" /></div>
-                        <div><label class="amf-label">CHA</label><input class="amf-input" id="amf-cha" type="number" min="1" placeholder="10" /></div>
+                        <div><label class="amf-label">FOR</label><input class="amf-input" id="amf-for" type="text" inputmode="numeric" placeholder="10" oninput="this.value=this.value.replace(/[^0-9]/g,'')" /></div>
+                        <div><label class="amf-label">DEX</label><input class="amf-input" id="amf-dex" type="text" inputmode="numeric" placeholder="10" oninput="this.value=this.value.replace(/[^0-9]/g,'')" /></div>
+                        <div><label class="amf-label">END</label><input class="amf-input" id="amf-end" type="text" inputmode="numeric" placeholder="10" oninput="this.value=this.value.replace(/[^0-9]/g,'')" /></div>
+                        <div><label class="amf-label">INT</label><input class="amf-input" id="amf-int" type="text" inputmode="numeric" placeholder="10" oninput="this.value=this.value.replace(/[^0-9]/g,'')" /></div>
+                        <div><label class="amf-label">CHA</label><input class="amf-input" id="amf-cha" type="text" inputmode="numeric" placeholder="10" oninput="this.value=this.value.replace(/[^0-9]/g,'')" /></div>
                     </div>
                     <div class="attack-editor">
                         <label class="amf-label" style="margin-bottom:6px;">Attaques / Compétences</label>
@@ -161,7 +161,7 @@
                             <label class="field-label">Nom du jet</label>
                             <input class="gm-input" id="gm-free-name" placeholder="ex: Perception" />
                             <label class="field-label">Seuil (%)</label>
-                            <input class="gm-input" id="gm-free-threshold" type="number" min="1" max="100" placeholder="50" />
+                            <input class="gm-input" id="gm-free-threshold" type="text" inputmode="numeric" placeholder="50" oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
                             <button class="gm-roll-btn" onclick="doGMFreeRoll()">⚄ Lancer</button>
                         </div>
                         <div class="gm-roll-form" style="margin-top:12px;">
@@ -183,7 +183,7 @@
                                 <div class="gm-select-panel"></div>
                             </div>
                             <label class="field-label">Seuil (%)</label>
-                            <input class="gm-input" id="gm-monster-threshold" type="number" min="1" max="100" placeholder="50" />
+                            <input class="gm-input" id="gm-monster-threshold" type="text" inputmode="numeric" placeholder="50" oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
                             <button class="gm-roll-btn" onclick="doGMMonsterRoll()">⚄ Lancer l'attaque</button>
                             <div class="gm-combat-sep"></div>
                             <div class="gm-combat-row">
