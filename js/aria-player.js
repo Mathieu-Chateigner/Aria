@@ -818,8 +818,8 @@ function renderInventorySidebar() {
     const vials = character.vials ?? 0;
     const showVials = playerTabs.alchemy && vials > 0;
     if (!items.length && !showVials) { body.innerHTML = `<div style="font-family:'EB Garamond',serif;font-size:13px;color:var(--parchment-dim);font-style:italic;opacity:.5;">Vide</div>`; return; }
-    let html = items.map(it => `<div class="inv-item"><span style="font-style:italic">${it.name || '—'}</span><span style="color:var(--gold-dim);font-family:'Cinzel',serif;font-size:12px;">×${it.qty || 1}</span></div>`).join('');
-    if (showVials) html += `<div class="inv-item"><span style="font-style:italic">Fioles vides</span><span style="color:var(--gold-dim);font-family:'Cinzel',serif;font-size:12px;">×${vials}</span></div>`;
+    let html = showVials ? `<div class="inv-item"><span style="font-style:italic">Fioles vides</span><span style="color:var(--gold-dim);font-family:'Cinzel',serif;font-size:12px;">×${vials}</span></div>` : '';
+    html += items.map(it => `<div class="inv-item"><span style="font-style:italic">${it.name || '—'}</span><span style="color:var(--gold-dim);font-family:'Cinzel',serif;font-size:12px;">×${it.qty || 1}</span></div>`).join('');
     body.innerHTML = html;
 }
 
@@ -1524,7 +1524,7 @@ function renderInventoryEditor() {
         const v = character.vials ?? 0;
         const vRow = document.createElement('div');
         vRow.className = 'inv-row';
-        vRow.innerHTML = `<span style="font-family:'EB Garamond',serif;font-size:14px;font-style:italic;padding:6px 8px;color:var(--parchment-dim);">Fioles vides</span><span class="inv-qty">${v}</span><div style="display:flex;gap:4px;"><button class="vial-btn" onclick="changeVials(-1)" ${v <= 0 ? 'disabled' : ''}>−</button><button class="vial-btn" onclick="changeVials(1)">+</button></div>`;
+        vRow.innerHTML = `<span style="font-family:'EB Garamond',serif;font-size:14px;font-style:italic;padding:6px 8px;color:var(--parchment-dim);">Fioles vides</span><input class="editor-input inv-qty" type="text" inputmode="numeric" value="${v}" oninput="this.value=this.value.replace(/[^0-9]/g,'');character.vials=Math.max(0,+this.value||0);saveCurrentCharacter();renderInventorySidebar();renderPotions()" /><span></span>`;
         list.insertBefore(vRow, list.firstChild);
     }
 }
