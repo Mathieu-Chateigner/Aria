@@ -573,7 +573,7 @@ function applyTabVisibility() {
     if (!playerTabs.alchemy && document.getElementById('tab-alchemy').classList.contains('active')) {
         switchTab('tab-skills', document.querySelector('.tab-btn'));
     }
-    renderVialsInInventory();
+    renderInventoryEditor();
 }
 
 // ═══════════════════════════════════════════
@@ -754,7 +754,6 @@ function renderAll() {
     renderInventorySidebar();
     renderCombatSidebar();
     renderPotions();
-    renderVialsInInventory();
     renderEditorForm();
 }
 
@@ -817,9 +816,10 @@ function renderInventorySidebar() {
     const body = document.getElementById('inv-sidebar-body');
     const items = character.inventory || [];
     const vials = character.vials ?? 0;
-    if (!items.length && vials <= 0) { body.innerHTML = `<div style="font-family:'EB Garamond',serif;font-size:13px;color:var(--parchment-dim);font-style:italic;opacity:.5;">Vide</div>`; return; }
+    const showVials = playerTabs.alchemy && vials > 0;
+    if (!items.length && !showVials) { body.innerHTML = `<div style="font-family:'EB Garamond',serif;font-size:13px;color:var(--parchment-dim);font-style:italic;opacity:.5;">Vide</div>`; return; }
     let html = items.map(it => `<div class="inv-item"><span style="font-style:italic">${it.name || '—'}</span><span style="color:var(--gold-dim);font-family:'Cinzel',serif;font-size:12px;">×${it.qty || 1}</span></div>`).join('');
-    if (vials > 0) html += `<div class="inv-item"><span style="font-style:italic">Fioles vides</span><span style="color:var(--gold-dim);font-family:'Cinzel',serif;font-size:12px;">×${vials}</span></div>`;
+    if (showVials) html += `<div class="inv-item"><span style="font-style:italic">Fioles vides</span><span style="color:var(--gold-dim);font-family:'Cinzel',serif;font-size:12px;">×${vials}</span></div>`;
     body.innerHTML = html;
 }
 
@@ -1520,6 +1520,13 @@ function renderInventoryEditor() {
         row.innerHTML = `<input class="editor-input" value="${it.name || ''}" placeholder="Nom de l'objet" oninput="character.inventory[${i}].name=this.value;renderInventorySidebar()" /><input class="editor-input inv-qty" type="text" inputmode="numeric" value="${it.qty || 1}" oninput="this.value=this.value.replace(/[^0-9]/g,'');character.inventory[${i}].qty=+this.value||1;renderInventorySidebar()" /><button class="del-btn" onclick="removeInventoryRow(${i})">✕</button>`;
         list.appendChild(row);
     });
+    if (playerTabs.alchemy) {
+        const v = character.vials ?? 0;
+        const vRow = document.createElement('div');
+        vRow.className = 'inv-row';
+        vRow.innerHTML = `<span style="font-family:'EB Garamond',serif;font-size:14px;font-style:italic;padding:6px 8px;color:var(--parchment-dim);">Fioles vides</span><span class="inv-qty">${v}</span><div style="display:flex;gap:4px;"><button class="vial-btn" onclick="changeVials(-1)" ${v <= 0 ? 'disabled' : ''}>−</button><button class="vial-btn" onclick="changeVials(1)">+</button></div>`;
+        list.appendChild(vRow);
+    }
 }
 function addInventoryRow() { character.inventory.push({ name: '', qty: 1 }); renderInventoryEditor(); renderInventorySidebar(); }
 function removeInventoryRow(i) { character.inventory.splice(i, 1); renderInventoryEditor(); renderInventorySidebar(); }
@@ -1594,24 +1601,12 @@ function renderPotions() {
     if (empty) empty.style.display = hasContent ? 'none' : '';
 }
 
-function renderVialsInInventory() {
-    const el = document.getElementById('inv-vials-section');
-    if (!el) return;
-    if (!playerTabs.alchemy) { el.innerHTML = ''; return; }
-    const v = character.vials ?? 0;
-    el.innerHTML = `<div class="inv-vials-row">
-        <span class="inv-vials-label">Fioles vides</span>
-        <div class="alchemy-vials-ctrl">
-            <button class="vial-btn" onclick="changeVials(-1)" ${v <= 0 ? 'disabled' : ''}>−</button>
-            <span class="vial-count">${v}</span>
-            <button class="vial-btn" onclick="changeVials(1)">+</button>
-        </div>
-    </div>`;
-}
+
 function changeVials(delta) {
     character.vials = Math.max(0, (character.vials ?? 0) + delta);
     saveCurrentCharacter();
-    renderVialsInInventory();
+    renderInventoryEditor();
+    renderInventorySidebar();
     renderPotions();
 }
 function craftPotion(recipeIdx) {
@@ -1719,7 +1714,6 @@ function autoSaveChar() {
     renderInventorySidebar();
     renderCombatSidebar();
     renderPotions();
-    renderVialsInInventory();
     sendPresence();
     flashSaveStatus();
 }

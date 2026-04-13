@@ -1,25 +1,22 @@
-fix: codebase audit — input conventions, broken overlay URL, stale docs
+feat: remove player count label, integrate vials into inventory list
 
 Changes:
 
-- js/aria-player.js : copyOverlayUrl() had a regex that never matched the actual
-  URL structure (views/aria-player.html). The replace silently no-oped, so the
-  copied URL still pointed to aria-player.html instead of aria-overlay.html.
-  Fixed to replace(/aria-player\.html.*$/, 'aria-overlay.html').
-  renderSkillsEditor(), renderSpecialsEditor(), and renderInventoryEditor() used
-  type="number" inputs — replaced with type="text" inputmode="numeric" per
-  project convention.
+- views/aria-gm.html : Removed the "X/X joueur(s) en ligne" span from the
+  topbar — the player cards themselves already show who is connected.
 
-- js/aria-gm.js : Updated stale comment on the players Map (was "playerId ->"
-  since the charId migration). Replaced type="number" in addAmfAttack(),
-  removeAmfAttack() re-render loop, and renderMonsters() monster attack inputs.
+- js/aria-gm.js : Removed the two lines that updated #player-count text in
+  renderPlayerCards().
 
-- views/aria-player.html : Replaced all type="number" inputs (free-roll
-  threshold, stat fields FOR/DEX/END/INT/CHA/PV, armure value) with
-  type="text" inputmode="numeric" + oninput filter.
+- views/aria-player.html : Removed the separate #inv-vials-section div that
+  sat above the inventory list.
 
-- views/aria-gm.html : Same for monster creation form (PV, armure, stat fields)
-  and GM roll threshold inputs (free roll + monster roll).
-
-- CLAUDE.md : Corrected potionRecipes field name from `chance` to
-  `successChance` (2 occurrences — character structure and potion-grant payload).
+- js/aria-player.js : Deleted renderVialsInInventory(). Integrated vials
+  directly into renderInventoryEditor() — when playerTabs.alchemy is true, a
+  "Fioles vides" row is appended to the inv-editor-list using the same inv-row
+  grid as regular items, with inline −/count/+ buttons. renderInventorySidebar()
+  now gates the fioles vides entry behind playerTabs.alchemy so the sidebar
+  also updates correctly when the GM revokes the alchemy tab. changeVials() now
+  calls renderInventoryEditor() + renderInventorySidebar() instead of the
+  removed function. applyTabVisibility() calls renderInventoryEditor() so the
+  vials row appears/disappears instantly when the GM toggles the alchemy tab.

@@ -583,12 +583,9 @@ function renderPlayerCards() {
     if (players.size === 0) {
         noP.style.display = '';
         grid.innerHTML = '';
-        document.getElementById('player-count').textContent = '0 joueur(s) en ligne';
         return;
     }
     noP.style.display = 'none';
-    const online = [...players.values()].filter(p => p.online !== false).length;
-    document.getElementById('player-count').textContent = `${online}/${players.size} joueur(s) en ligne`;
     const savedDmg = {}, savedHeal = {};
     const focusedId = document.activeElement?.id;
     players.forEach((_, playerId) => {
