@@ -570,8 +570,14 @@ function sweepOfflinePlayers() {
     const now = Date.now();
     let changed = false;
     players.forEach((p, id) => {
+        const age = now - (p.ts || 0);
+        if (age > PRESENCE_TIMEOUT * 4) { // gone for 120s+ → remove entirely
+            players.delete(id);
+            changed = true;
+            return;
+        }
         const wasOnline = p.online !== false;
-        const isOnline = now - p.ts < PRESENCE_TIMEOUT;
+        const isOnline = age < PRESENCE_TIMEOUT;
         if (wasOnline !== isOnline) { p.online = isOnline; changed = true; }
         else if (p.online === undefined) { p.online = isOnline; changed = true; }
     });
