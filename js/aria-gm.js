@@ -732,9 +732,12 @@ function openPlayerDetails(playerId) {
     }
 
     // Inventory
+    const vials = p.vials ?? 0;
+    const showVials = tabs.alchemy && vials > 0;
     const realInv = inventory.filter(i => i.name);
-    if (realInv.length) {
+    if (showVials || realInv.length) {
         html += `<div class="pdm-section"><div class="pdm-section-title">Inventaire</div><div class="pdm-list">`;
+        if (showVials) html += `<div class="pdm-list-row"><span class="pdm-list-name" style="font-style:italic;">Fioles vides</span><span class="pdm-list-val">×${vials}</span></div>`;
         for (const i of realInv) {
             html += `<div class="pdm-list-row"><span class="pdm-list-name">${i.name}</span><span class="pdm-list-val">×${i.qty ?? 1}</span></div>`;
         }

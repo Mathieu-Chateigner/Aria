@@ -1525,7 +1525,7 @@ function renderInventoryEditor() {
         const vRow = document.createElement('div');
         vRow.className = 'inv-row';
         vRow.innerHTML = `<span style="font-family:'EB Garamond',serif;font-size:14px;font-style:italic;padding:6px 8px;color:var(--parchment-dim);">Fioles vides</span><span class="inv-qty">${v}</span><div style="display:flex;gap:4px;"><button class="vial-btn" onclick="changeVials(-1)" ${v <= 0 ? 'disabled' : ''}>−</button><button class="vial-btn" onclick="changeVials(1)">+</button></div>`;
-        list.appendChild(vRow);
+        list.insertBefore(vRow, list.firstChild);
     }
 }
 function addInventoryRow() { character.inventory.push({ name: '', qty: 1 }); renderInventoryEditor(); renderInventorySidebar(); }
