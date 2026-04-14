@@ -146,6 +146,7 @@
                 <button class="tab-btn" onclick="switchTab('tab-notes',this)">Notes</button>
                 <button class="tab-btn" id="tab-btn-cards" onclick="switchTab('tab-cards',this)">Cartes</button>
                 <button class="tab-btn" id="tab-btn-alchemy" onclick="switchTab('tab-alchemy',this)">Alchimie</button>
+                <button class="tab-btn" id="tab-btn-files" style="display:none;" onclick="switchTab('tab-files',this)">📄 Documents</button>
                 <button class="tab-btn" onclick="switchTab('tab-char',this)">Personnage</button>
             </div>
 
@@ -254,6 +255,12 @@
                 <div class="alchemy-empty" id="alchemy-empty">Aucune potion. Le MJ vous accordera accès aux potions découvertes.</div>
             </div>
 
+            <!-- DOCUMENTS -->
+            <div class="tab-content" id="tab-files">
+                <div class="player-files-list" id="player-files-list"></div>
+                <div class="alchemy-empty" id="player-files-empty">Aucun document disponible.</div>
+            </div>
+
             <!-- PERSONNAGE -->
             <div class="tab-content" id="tab-char">
                 <div class="char-sheet-wrap">
@@ -342,6 +349,16 @@
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- FILE VIEWER MODAL -->
+    <div class="modal-scrim" id="file-viewer-scrim" onclick="closeFileViewer()"></div>
+    <div class="file-viewer-modal" id="file-viewer-modal">
+        <div class="fv-header">
+            <div class="fv-title" id="fv-title"></div>
+            <button class="fv-close-btn" onclick="closeFileViewer()">✕</button>
+        </div>
+        <div class="fv-body" id="fv-body"></div>
     </div>
 
     <!-- SOIGNER TARGET PICKER -->

@@ -44,6 +44,8 @@ let gmClickHandlerRegistered = false;
 let renderPlayerCardsTimer = null;
 let renderMonstersTimer = null;
 let gmPotions = [];
+let gmFiles = [];
+const filesGrantedSessions = new Set();
 let saveKey        = localStorage.getItem('aria-save-key') || null;
 let _pendingNewKey = null;
 let syncTimer      = null;
@@ -84,12 +86,14 @@ function collectGMData() {
         const cardHistory   = localStorage.getItem('aria-gm-card-history-'  + c.id);
         const potions       = localStorage.getItem('aria-gm-potions-'       + c.id);
         const knownPlayers  = localStorage.getItem('aria-gm-known-players-' + c.id);
+        const files         = localStorage.getItem('aria-gm-files-'         + c.id);
         perCampaign[c.id] = {
             monsters:     monsters     ? JSON.parse(monsters)     : null,
             rolls:        rolls        ? JSON.parse(rolls)        : null,
             cardHistory:  cardHistory  ? JSON.parse(cardHistory)  : null,
             potions:      potions      ? JSON.parse(potions)      : null,
             knownPlayers: knownPlayers ? JSON.parse(knownPlayers) : null,
+            files:        files        ? JSON.parse(files)        : null,
         };
     });
     return { campaigns, perCampaign };
@@ -105,6 +109,7 @@ function applyGMData(data) {
         if (s.cardHistory  !== null && s.cardHistory  !== undefined) localStorage.setItem('aria-gm-card-history-'  + id, JSON.stringify(s.cardHistory));
         if (s.potions      !== null && s.potions      !== undefined) localStorage.setItem('aria-gm-potions-'       + id, JSON.stringify(s.potions));
         if (s.knownPlayers !== null && s.knownPlayers !== undefined) localStorage.setItem('aria-gm-known-players-' + id, JSON.stringify(s.knownPlayers));
+        if (s.files        !== null && s.files        !== undefined) localStorage.setItem('aria-gm-files-'         + id, JSON.stringify(s.files));
     });
 }
 
@@ -228,6 +233,7 @@ function rollsKey()         { return 'aria-gm-rolls-'          + currentCampaign
 function cardHistKey()      { return 'aria-gm-card-history-'   + currentCampaignId; }
 function potionsKey()       { return 'aria-gm-potions-'        + currentCampaignId; }
 function knownPlayersKey()  { return 'aria-gm-known-players-'  + currentCampaignId; }
+function filesKey()         { return 'aria-gm-files-'          + currentCampaignId; }
 
 function saveKnownPlayers() {
     const obj = {};
@@ -262,6 +268,7 @@ function loadCampaignState(id) {
     rollFeed    = JSON.parse(localStorage.getItem(rollsKey())     || '[]');
     cardHistory = JSON.parse(localStorage.getItem(cardHistKey()) || '[]');
     gmPotions   = JSON.parse(localStorage.getItem(potionsKey())  || '[]');
+    gmFiles     = JSON.parse(localStorage.getItem(filesKey())    || '[]');
     players.clear();
     const knownRaw = JSON.parse(localStorage.getItem(knownPlayersKey()) || '{}');
     Object.entries(knownRaw).forEach(([, p]) => {
@@ -324,6 +331,7 @@ function deleteCampaign(id) {
     localStorage.removeItem('aria-gm-card-history-' + id);
     localStorage.removeItem('aria-gm-potions-' + id);
     localStorage.removeItem('aria-gm-known-players-' + id);
+    localStorage.removeItem('aria-gm-files-' + id);
     renderCampaignScreen();
 }
 
@@ -366,6 +374,8 @@ function switchCampaign() {
         debouncedSync();
     }
     gmPotions = [];
+    gmFiles = [];
+    filesGrantedSessions.clear();
     if (sweepIntervalId) { clearInterval(sweepIntervalId); sweepIntervalId = null; }
     if (renderPlayerCardsTimer) { clearTimeout(renderPlayerCardsTimer); renderPlayerCardsTimer = null; }
     if (renderMonstersTimer) { clearTimeout(renderMonstersTimer); renderMonstersTimer = null; }
@@ -391,6 +401,7 @@ function initApp() {
     renderRollFeed();
     renderCardHistory();
     renderGMPotions();
+    renderGmFiles();
     loadConfigInputs();
     if (config.dddiceKey && config.dddiceRoom) initDddice();
     if (config.ablyKey) initAbly();
@@ -565,6 +576,11 @@ function handlePresence(data) {
     saveKnownPlayers();
     clearTimeout(renderPlayerCardsTimer);
     renderPlayerCardsTimer = setTimeout(renderPlayerCards, 150);
+    // Auto-send file grants to newly connected sessions
+    if (!filesGrantedSessions.has(data.playerId)) {
+        filesGrantedSessions.add(data.playerId);
+        sendFileGrantsToPlayer(data);
+    }
 }
 function sweepOfflinePlayers() {
     const now = Date.now();
@@ -679,6 +695,20 @@ function openPlayerDetails(playerId) {
     html += `<button class="pdm-tab-toggle${tabs.cards ? ' active' : ''}" onclick="sendTabConfig('${playerId}','cards',${!tabs.cards})">🂠 Cartes</button>`;
     html += `<button class="pdm-tab-toggle${tabs.alchemy ? ' active' : ''}" onclick="sendTabConfig('${playerId}','alchemy',${!tabs.alchemy})">⚗ Alchimie</button>`;
     html += `</div></div>`;
+
+    // Files
+    if (gmFiles.length) {
+        html += `<div class="pdm-section"><div class="pdm-section-title">Documents</div><div class="pdm-tab-toggles">`;
+        for (const f of gmFiles) {
+            const isAll = f.grantedTo === 'all';
+            const hasAccess = isAll || (Array.isArray(f.grantedTo) && f.grantedTo.includes(playerId));
+            const icon = _fileIcon(f.type);
+            const disabledAttr = isAll ? ' disabled title="Accès accordé à tous"' : '';
+            const clickAttr = isAll ? '' : ` onclick="grantFileToPlayer('${f.id}','${playerId}')"`;
+            html += `<button class="pdm-tab-toggle${hasAccess ? ' active' : ''}"${disabledAttr}${clickAttr}>${icon} ${_escHtml(f.name)}</button>`;
+        }
+        html += `</div></div>`;
+    }
 
     // Alchemy — only show recipe grants if alchemy tab is enabled for this player
     if (tabs.alchemy && gmPotions.length) {
@@ -1338,4 +1368,162 @@ function sendVialGrant(playerId, qty) {
     const p = players.get(playerId);
     if (!p) return;
     ablyDamage.publish('vial-grant', { playerId: p.playerId, qty });
+}
+
+// ═══════════════════════════════════════════
+//  GM FILES
+// ═══════════════════════════════════════════
+function _escHtml(s) {
+    return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function _fileIcon(type) {
+    if (!type) return '📄';
+    if (type.startsWith('image/')) return '🖼';
+    if (type === 'application/pdf') return '📕';
+    if (type.startsWith('text/')) return '📝';
+    return '📄';
+}
+
+function saveGmFiles() { localStorage.setItem(filesKey(), JSON.stringify(gmFiles)); debouncedSync(); }
+
+async function uploadFileToStorage(file) {
+    const fileId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+    const parts = file.name.split('.');
+    const ext = parts.length > 1 ? parts.pop().toLowerCase() : '';
+    const storageName = ext ? `${fileId}.${ext}` : fileId;
+    const path = `${currentCampaignId}/${storageName}`;
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/campaign-files/${path}`, {
+        method: 'POST',
+        headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': file.type || 'application/octet-stream',
+            'x-upsert': 'false',
+        },
+        body: file,
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || `Erreur ${res.status}`);
+    }
+    return { fileId, path, url: `${SUPABASE_URL}/storage/v1/object/public/campaign-files/${path}` };
+}
+
+async function deleteFileFromStorage(path) {
+    try {
+        await fetch(`${SUPABASE_URL}/storage/v1/object/campaign-files/${path}`, {
+            method: 'DELETE',
+            headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+        });
+    } catch(e) { console.warn('[ARIA] Storage delete failed:', e); }
+}
+
+async function handleFileUpload(input) {
+    const file = input.files[0];
+    input.value = '';
+    if (!file) return;
+    if (file.size > 50 * 1024 * 1024) { alert('Fichier trop volumineux (max 50 Mo).'); return; }
+    const btn = document.getElementById('file-upload-btn');
+    const progress = document.getElementById('file-upload-progress');
+    if (btn) btn.disabled = true;
+    if (progress) { progress.style.display = ''; progress.textContent = 'Envoi en cours…'; progress.className = 'gm-files-progress'; }
+    try {
+        const { fileId, path, url } = await uploadFileToStorage(file);
+        gmFiles.push({ id: fileId, name: file.name, type: file.type || 'application/octet-stream', path, url, grantedTo: [] });
+        saveGmFiles();
+        renderGmFiles();
+        if (progress) { progress.textContent = '✓ Fichier ajouté.'; setTimeout(() => { progress.style.display = 'none'; }, 2500); }
+    } catch(e) {
+        if (progress) { progress.textContent = `Erreur : ${e.message}`; progress.className = 'gm-files-progress error'; setTimeout(() => { progress.style.display = 'none'; }, 4000); }
+        console.error('[ARIA] Upload error:', e);
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+async function removeGmFile(fileId) {
+    const f = gmFiles.find(f => f.id === fileId);
+    if (!f) return;
+    if (ablyDamage) ablyDamage.publish('file-revoke', { playerId: 'all', fileId });
+    await deleteFileFromStorage(f.path);
+    gmFiles = gmFiles.filter(f => f.id !== fileId);
+    saveGmFiles();
+    renderGmFiles();
+}
+
+function grantFileToAll(fileId) {
+    const f = gmFiles.find(f => f.id === fileId);
+    if (!f) return;
+    if (f.grantedTo === 'all') {
+        f.grantedTo = [];
+        if (ablyDamage) ablyDamage.publish('file-revoke', { playerId: 'all', fileId });
+    } else {
+        f.grantedTo = 'all';
+        if (ablyDamage) {
+            players.forEach(p => {
+                if (p.online !== false && Date.now() - p.ts < PRESENCE_TIMEOUT) {
+                    ablyDamage.publish('file-grant', { playerId: p.playerId, file: { id: f.id, name: f.name, type: f.type, url: f.url } });
+                }
+            });
+        }
+    }
+    saveGmFiles();
+    renderGmFiles();
+}
+
+function grantFileToPlayer(fileId, charId) {
+    const f = gmFiles.find(f => f.id === fileId);
+    const p = players.get(charId);
+    if (!f || !p) return;
+    if (f.grantedTo === 'all') { openPlayerDetails(charId); return; }
+    if (!Array.isArray(f.grantedTo)) f.grantedTo = [];
+    if (f.grantedTo.includes(charId)) {
+        f.grantedTo = f.grantedTo.filter(id => id !== charId);
+        if (ablyDamage) ablyDamage.publish('file-revoke', { playerId: p.playerId, fileId });
+    } else {
+        f.grantedTo.push(charId);
+        if (ablyDamage) ablyDamage.publish('file-grant', { playerId: p.playerId, file: { id: f.id, name: f.name, type: f.type, url: f.url } });
+    }
+    saveGmFiles();
+    openPlayerDetails(charId);
+}
+
+function sendFileGrantsToPlayer(playerData) {
+    if (!ablyDamage) return;
+    for (const f of gmFiles) {
+        const shouldGrant = f.grantedTo === 'all' || (Array.isArray(f.grantedTo) && f.grantedTo.includes(playerData.charId));
+        if (shouldGrant) {
+            ablyDamage.publish('file-grant', { playerId: playerData.playerId, file: { id: f.id, name: f.name, type: f.type, url: f.url } });
+        }
+    }
+}
+
+function renderGmFiles() {
+    const list = document.getElementById('gm-files-list');
+    const empty = document.getElementById('gm-files-empty');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!gmFiles.length) {
+        if (empty) { empty.style.display = ''; list.appendChild(empty); }
+        return;
+    }
+    if (empty) empty.style.display = 'none';
+    gmFiles.forEach(f => {
+        const isAll = f.grantedTo === 'all';
+        const count = isAll ? 'Tous' : (Array.isArray(f.grantedTo) ? f.grantedTo.length : 0);
+        const grantLabel = isAll ? 'Tous les joueurs' : (count > 0 ? `${count} joueur(s)` : 'Aucun accès');
+        const card = document.createElement('div');
+        card.className = 'gm-file-card';
+        card.innerHTML = `
+            <div class="gm-file-icon">${_fileIcon(f.type)}</div>
+            <div class="gm-file-info">
+                <div class="gm-file-name">${_escHtml(f.name)}</div>
+                <div class="gm-file-grant-status">${grantLabel}</div>
+            </div>
+            <div class="gm-file-actions">
+                <button class="gm-file-btn${isAll ? ' active' : ''}" onclick="grantFileToAll('${f.id}')" title="${isAll ? 'Révoquer accès global' : 'Accorder à tous'}">🌍</button>
+                <button class="gm-file-del-btn" onclick="removeGmFile('${f.id}')" title="Supprimer">✕</button>
+            </div>`;
+        list.appendChild(card);
+    });
 }

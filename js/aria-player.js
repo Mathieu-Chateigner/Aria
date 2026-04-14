@@ -88,6 +88,9 @@ let cardStatusTimer = null;
 // tab access granted by GM — stored per character in localStorage
 let playerTabs = { cards: false, alchemy: false };
 
+// files granted by GM — stored per character in localStorage
+let playerFiles = [];
+
 // pending craft recipe index — set before a roll, cleared by handleResult
 let pendingCraft = null;
 
@@ -126,15 +129,17 @@ function collectPlayerData() {
     const chars = JSON.parse(localStorage.getItem('aria-characters') || '[]');
     const perChar = {};
     chars.forEach(c => {
-        const hp    = localStorage.getItem('aria-current-hp-'  + c.id);
-        const cards = localStorage.getItem('aria-cards-'       + c.id);
-        const notes = localStorage.getItem('aria-notes-'       + c.id);
-        const tabs  = localStorage.getItem('aria-player-tabs-' + c.id);
+        const hp    = localStorage.getItem('aria-current-hp-'    + c.id);
+        const cards = localStorage.getItem('aria-cards-'         + c.id);
+        const notes = localStorage.getItem('aria-notes-'         + c.id);
+        const tabs  = localStorage.getItem('aria-player-tabs-'   + c.id);
+        const files = localStorage.getItem('aria-player-files-'  + c.id);
         perChar[c.id] = {
             hp:    hp    !== null ? parseInt(hp) : null,
             cards: cards ? JSON.parse(cards) : null,
             notes: notes ? JSON.parse(notes) : null,
             tabs:  tabs  ? JSON.parse(tabs)  : null,
+            files: files ? JSON.parse(files) : null,
         };
     });
     return { characters: chars, perChar };
@@ -145,10 +150,11 @@ function applyPlayerData(data) {
     localStorage.setItem('aria-characters', JSON.stringify(data.characters));
     if (!data.perChar) return;
     Object.entries(data.perChar).forEach(([id, s]) => {
-        if (s.hp    !== null && s.hp    !== undefined) localStorage.setItem('aria-current-hp-'  + id, s.hp);
-        if (s.cards !== null && s.cards !== undefined) localStorage.setItem('aria-cards-'        + id, JSON.stringify(s.cards));
-        if (s.notes !== null && s.notes !== undefined) localStorage.setItem('aria-notes-'        + id, JSON.stringify(s.notes));
-        if (s.tabs  !== null && s.tabs  !== undefined) localStorage.setItem('aria-player-tabs-'  + id, JSON.stringify(s.tabs));
+        if (s.hp    !== null && s.hp    !== undefined) localStorage.setItem('aria-current-hp-'    + id, s.hp);
+        if (s.cards !== null && s.cards !== undefined) localStorage.setItem('aria-cards-'          + id, JSON.stringify(s.cards));
+        if (s.notes !== null && s.notes !== undefined) localStorage.setItem('aria-notes-'          + id, JSON.stringify(s.notes));
+        if (s.tabs  !== null && s.tabs  !== undefined) localStorage.setItem('aria-player-tabs-'    + id, JSON.stringify(s.tabs));
+        if (s.files !== null && s.files !== undefined) localStorage.setItem('aria-player-files-'   + id, JSON.stringify(s.files));
     });
 }
 
@@ -356,6 +362,7 @@ function deleteCharacter(id) {
     localStorage.removeItem('aria-current-hp-' + id);
     localStorage.removeItem('aria-cards-' + id);
     localStorage.removeItem('aria-notes-' + id);
+    localStorage.removeItem('aria-player-files-' + id);
     renderSelectionScreen();
 }
 
@@ -415,6 +422,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 function initApp() {
     currentHP = null;
     playerTabs = JSON.parse(localStorage.getItem('aria-player-tabs-' + currentCharId) || '{"cards":false,"alchemy":false}');
+    playerFiles = JSON.parse(localStorage.getItem('aria-player-files-' + currentCharId) || '[]');
     initCurrentHP();
     renderAll();
     buildTracker();
@@ -563,14 +571,19 @@ function renameCurrentNote() {
 function applyTabVisibility() {
     const btnCards = document.getElementById('tab-btn-cards');
     const btnAlchemy = document.getElementById('tab-btn-alchemy');
+    const btnFiles = document.getElementById('tab-btn-files');
     if (!btnCards || !btnAlchemy) return;
     btnCards.style.display = playerTabs.cards ? '' : 'none';
     btnAlchemy.style.display = playerTabs.alchemy ? '' : 'none';
+    if (btnFiles) btnFiles.style.display = playerFiles.length > 0 ? '' : 'none';
     // If the currently active tab was just hidden, fall back to Compétences
     if (!playerTabs.cards && document.getElementById('tab-cards').classList.contains('active')) {
         switchTab('tab-skills', document.querySelector('.tab-btn'));
     }
     if (!playerTabs.alchemy && document.getElementById('tab-alchemy').classList.contains('active')) {
+        switchTab('tab-skills', document.querySelector('.tab-btn'));
+    }
+    if (!playerFiles.length && document.getElementById('tab-files')?.classList.contains('active')) {
         switchTab('tab-skills', document.querySelector('.tab-btn'));
     }
     renderInventoryEditor();
@@ -755,6 +768,7 @@ function renderAll() {
     renderCombatSidebar();
     renderPotions();
     renderEditorForm();
+    renderPlayerFiles();
 }
 
 function renderSkills() {
@@ -1387,6 +1401,29 @@ function initAbly() {
                 showToast('gm-heal-toast', `${n} fiole${n > 1 ? 's' : ''} reçue${n > 1 ? 's' : ''}`);
                 return;
             }
+            if (msg.name === 'file-grant') {
+                if (d.playerId !== myId && d.playerId !== 'all') return;
+                if (!d.file?.id) return;
+                if (!playerFiles.find(f => f.id === d.file.id)) {
+                    playerFiles.push(d.file);
+                    localStorage.setItem('aria-player-files-' + currentCharId, JSON.stringify(playerFiles));
+                    debouncedSync();
+                    applyTabVisibility();
+                    renderPlayerFiles();
+                    showToast('gm-heal-toast', `Document reçu : ${d.file.name}`);
+                }
+                return;
+            }
+            if (msg.name === 'file-revoke') {
+                if (d.playerId !== myId && d.playerId !== 'all') return;
+                if (!d.fileId) return;
+                playerFiles = playerFiles.filter(f => f.id !== d.fileId);
+                localStorage.setItem('aria-player-files-' + currentCharId, JSON.stringify(playerFiles));
+                debouncedSync();
+                applyTabVisibility();
+                renderPlayerFiles();
+                return;
+            }
             if (d.targetId && d.targetId !== myId) return;
             if (msg.name === 'damage') handleGMDamage(d);
             if (msg.name === 'heal') handleGMHeal(d);
@@ -1868,4 +1905,82 @@ async function manualReshuffle(remainingOnly) {
     document.getElementById('reshuffle-msg').textContent = remainingOnly ? '↺ Restant mélangé' : '↺ Mélangé';
     flash.classList.add('show'); await delay(900); flash.classList.remove('show');
     cardDrawing = false;
+}
+
+// ═══════════════════════════════════════════
+//  PLAYER FILES
+// ═══════════════════════════════════════════
+function _pfEscHtml(s) {
+    return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function _pfFileIcon(type) {
+    if (!type) return '📄';
+    if (type.startsWith('image/')) return '🖼';
+    if (type === 'application/pdf') return '📕';
+    if (type.startsWith('text/')) return '📝';
+    return '📄';
+}
+
+function renderPlayerFiles() {
+    const list = document.getElementById('player-files-list');
+    const empty = document.getElementById('player-files-empty');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!playerFiles.length) {
+        if (empty) empty.style.display = '';
+        return;
+    }
+    if (empty) empty.style.display = 'none';
+    playerFiles.forEach(f => {
+        const row = document.createElement('div');
+        row.className = 'player-file-row';
+        row.innerHTML = `
+            <div class="pf-icon">${_pfFileIcon(f.type)}</div>
+            <div class="pf-name">${_pfEscHtml(f.name)}</div>
+            <button class="pf-open-btn" onclick="openFileViewer('${f.id}')">Ouvrir</button>`;
+        list.appendChild(row);
+    });
+}
+
+function openFileViewer(fileId) {
+    const f = playerFiles.find(f => f.id === fileId);
+    if (!f) return;
+    document.getElementById('fv-title').textContent = f.name;
+    const body = document.getElementById('fv-body');
+    body.innerHTML = '';
+    if (f.type.startsWith('image/')) {
+        const img = document.createElement('img');
+        img.src = f.url;
+        img.className = 'fv-image';
+        body.appendChild(img);
+    } else if (f.type === 'application/pdf') {
+        const iframe = document.createElement('iframe');
+        iframe.src = f.url;
+        iframe.className = 'fv-iframe';
+        body.appendChild(iframe);
+    } else if (f.type.startsWith('text/')) {
+        const pre = document.createElement('pre');
+        pre.className = 'fv-text';
+        pre.textContent = 'Chargement…';
+        body.appendChild(pre);
+        fetch(f.url)
+            .then(r => r.text())
+            .then(text => { pre.textContent = text; })
+            .catch(() => { pre.textContent = 'Erreur de chargement.'; });
+    } else {
+        const wrap = document.createElement('div');
+        wrap.className = 'fv-unsupported';
+        wrap.innerHTML = `<div class="fv-unsupported-icon">${_pfFileIcon(f.type)}</div>
+            <div class="fv-unsupported-name">${_pfEscHtml(f.name)}</div>
+            <a class="fv-download-link" href="${f.url}" target="_blank" rel="noopener">Ouvrir dans un nouvel onglet</a>`;
+        body.appendChild(wrap);
+    }
+    document.getElementById('file-viewer-scrim').classList.add('show');
+    document.getElementById('file-viewer-modal').classList.add('show');
+}
+
+function closeFileViewer() {
+    document.getElementById('file-viewer-scrim').classList.remove('show');
+    document.getElementById('file-viewer-modal').classList.remove('show');
+    document.getElementById('fv-body').innerHTML = '';
 }

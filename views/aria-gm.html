@@ -87,6 +87,7 @@
                 <button class="tab-btn" onclick="switchTab('tab-gm-roll',this)">⚄ Jet MJ</button>
                 <button class="tab-btn" onclick="switchTab('tab-cards',this)">🂠 Cartes</button>
                 <button class="tab-btn" onclick="switchTab('tab-alchemy',this)">⚗ Alchimie</button>
+                <button class="tab-btn" onclick="switchTab('tab-files',this)">📄 Fichiers</button>
             </div>
 
             <!-- JOUEURS -->
@@ -259,6 +260,20 @@
                 </div>
                 <div class="gm-pot-list" id="gm-pot-list">
                     <div class="alchemy-empty" id="gm-pot-empty">Aucune potion dans le grimoire.</div>
+                </div>
+            </div>
+            <!-- FICHIERS -->
+            <div class="tab-content" id="tab-files">
+                <div class="gm-files-header">
+                    <div class="section-title" style="margin-bottom:0;">Fichiers de campagne</div>
+                    <label class="gm-file-upload-label" id="file-upload-btn">
+                        + Ajouter un fichier
+                        <input type="file" id="file-upload-input" style="display:none;" onchange="handleFileUpload(this)">
+                    </label>
+                </div>
+                <div class="gm-files-progress" id="file-upload-progress" style="display:none;"></div>
+                <div class="gm-files-list" id="gm-files-list">
+                    <div class="alchemy-empty" id="gm-files-empty">Aucun fichier. Ajoutez des documents pour les partager avec vos joueurs.</div>
                 </div>
             </div>
         </div>
