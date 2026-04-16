@@ -207,6 +207,35 @@
 
             <!-- CARTES -->
             <div class="tab-content" id="tab-cards">
+                <!-- GM private deck -->
+                <div class="gm-own-deck-section">
+                    <div class="section-title" style="margin-bottom:12px;">Deck MJ <span style="font-size:11px;color:var(--parchment-dim);font-family:'EB Garamond',serif;font-style:italic;">(privé)</span></div>
+                    <div class="card-tab-layout">
+                        <div class="card-deck-col">
+                            <div class="deck-wrap" id="gm-deck-wrap" onclick="gmDrawCard()">
+                                <div class="deck-back"><div class="deck-pattern">♛</div></div>
+                            </div>
+                            <div class="deck-count" id="gm-deck-count">54 cartes</div>
+                            <button class="card-action-btn" id="gm-reshuffle-btn" onclick="gmManualReshuffle(false)">↺ Mélanger</button>
+                            <button class="card-action-btn" id="gm-reshuffle-remaining-btn" onclick="gmManualReshuffle(true)">↺ Restant</button>
+                            <button class="card-action-btn" id="gm-clear-exclusions-btn" onclick="gmClearExclusions()">✕ Exclusions</button>
+                            <div class="card-status" id="gm-card-status"></div>
+                        </div>
+                        <div class="card-stage">
+                            <div class="flip-wrap hidden" id="gm-flip-wrap">
+                                <div class="flip-inner">
+                                    <div class="card-back-face"><div class="deck-pattern" style="border-color:rgba(201,168,76,.25);">♛</div></div>
+                                    <div id="gm-drawn-card"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="flex:1;min-width:220px;">
+                            <div class="field-label" style="margin-bottom:8px;">Suivi du talon</div>
+                            <div class="tracker-suits" id="gm-tracker-suits"></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Player draw display -->
                 <div class="gm-card-display">
                     <div class="gm-card-info" id="gm-card-info">En attente d'un tirage joueur…</div>
                     <div class="card-stage">
@@ -315,6 +344,18 @@
 
 
     </div><!-- /#app-wrapper -->
+
+    <!-- GM FILE VIEWER MODAL -->
+    <div class="modal-scrim" id="gm-file-viewer-scrim" onclick="closeGmFileViewer()"></div>
+    <div class="file-viewer-modal" id="gm-file-viewer-modal">
+        <div class="fv-header">
+            <div class="fv-title" id="gm-fv-title"></div>
+            <button class="fv-close-btn" onclick="closeGmFileViewer()">✕</button>
+        </div>
+        <div class="fv-body" id="gm-fv-body"></div>
+    </div>
+
+    <div class="shuffle-overlay" id="gm-shuffle-overlay"></div>
 
     <script src="../js/aria-gm.js"></script>
 </body>

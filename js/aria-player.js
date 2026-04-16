@@ -1653,7 +1653,7 @@ function craftPotion(recipeIdx) {
     character.vials = (character.vials ?? 0) - 1;
     saveCurrentCharacter();
     pendingCraft = recipeIdx;
-    doRoll(recipe.name, recipe.successChance || 0, true);
+    doRoll(recipe.name, recipe.successChance || 0);
 }
 function applyCraft(success, recipeIdx) {
     setTimeout(() => {
@@ -1667,12 +1667,17 @@ function applyCraft(success, recipeIdx) {
             } else {
                 character.potions.push({ recipeId: recipe.id, name: recipe.name, qty: 1 });
             }
+            if (!character.inventory) character.inventory = [];
+            const invEntry = character.inventory.find(i => i.name === recipe.name);
+            if (invEntry) { invEntry.qty = (invEntry.qty || 0) + 1; }
+            else { character.inventory.push({ name: recipe.name, qty: 1 }); }
             showToast('gm-heal-toast', `${recipe.name} créée avec succès !`);
         } else {
             showToast('gm-dmg-toast', `Création échouée — fiole brisée`);
         }
         saveCurrentCharacter();
         renderPotions();
+        renderInventorySidebar();
         sendPresence();
     }, 1500);
 }
@@ -1740,7 +1745,18 @@ function scheduleAutoSave() {
     autoSaveTimer = setTimeout(autoSaveChar, 700);
 }
 function autoSaveChar() {
+    initCurrentHP();
+    const oldMax = getMaxHP();
     readEditorInputs();
+    const newMax = character.stats.PV;
+    if (newMax !== oldMax) {
+        if (newMax > oldMax) {
+            currentHP = Math.min(newMax, currentHP + (newMax - oldMax));
+        } else {
+            currentHP = Math.min(currentHP, newMax);
+        }
+        localStorage.setItem(hpKey(), currentHP);
+    }
     saveCurrentCharacter();
     // Refresh non-editor UI only — avoids rebuilding editor DOM and losing focus
     document.getElementById('char-display').textContent = `${character.name} — ${character.class}`;
@@ -1899,7 +1915,7 @@ async function manualReshuffle(remainingOnly) {
     document.getElementById('drawn-card').classList.remove('ready');
     await animateShuffle();
     if (remainingOnly) { cardDeck = shuffle(cardDeck); }
-    else { cardDrawn.clear(); cardDeck = buildDeck(); lastCardId = null; }
+    else { cardDrawn.clear(); cardDeck = shuffle([...ALL_CARDS].filter(c => !cardExcluded.has(c.id))); lastCardId = null; }
     buildTracker(); updateDeckCount(); updateClearBtn(); saveCardState(); publishCard('reshuffle');
     const flash = document.getElementById('reshuffle-flash');
     document.getElementById('reshuffle-msg').textContent = remainingOnly ? '↺ Restant mélangé' : '↺ Mélangé';

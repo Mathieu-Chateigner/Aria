@@ -239,7 +239,7 @@ function showDrawnCard(data) {
     cardDismiss = setTimeout(() => {
         hideCard();
         if (MODE === 'gm') setTimeout(() => waiting.classList.add('show'), 300);
-    }, 7000);
+    }, 4000);
 }
 
 function showReshuffle() {

@@ -402,6 +402,7 @@ function initApp() {
     renderCardHistory();
     renderGMPotions();
     renderGmFiles();
+    initGmDeck();
     loadConfigInputs();
     if (config.dddiceKey && config.dddiceRoom) initDddice();
     if (config.ablyKey) initAbly();
@@ -1252,6 +1253,211 @@ function handlePlayerReshuffle() {
 }
 
 // ═══════════════════════════════════════════
+//  GM PRIVATE DECK
+// ═══════════════════════════════════════════
+let gmCardDeck = [];
+let gmCardDrawn = new Set();
+let gmCardExcluded = new Set();
+let gmLastCardId = null;
+let gmCardDrawing = false;
+let gmCardStatusTimer = null;
+
+function initGmDeck() {
+    gmCardDeck = buildDeck();
+    gmCardDrawn = new Set();
+    gmCardExcluded = new Set();
+    gmLastCardId = null;
+    gmCardDrawing = false;
+    gmBuildTracker();
+    gmUpdateDeckCount();
+}
+
+function gmBuildTracker() {
+    const container = document.getElementById('gm-tracker-suits');
+    if (!container) return;
+    container.innerHTML = '';
+    for (const suit of SUITS) {
+        const row = document.createElement('div'); row.className = 'suit-row-t';
+        const sym = document.createElement('span'); sym.className = `suit-sym ${suit.cls}`; sym.textContent = suit.sym;
+        row.appendChild(sym);
+        const pills = document.createElement('div'); pills.className = 'rank-pills';
+        for (const rank of RANKS) { pills.appendChild(gmMakePill(`${rank}-${suit.name}`, rank, suit.pillCls)); }
+        row.appendChild(pills); container.appendChild(row);
+    }
+    const jRow = document.createElement('div'); jRow.className = 'suit-row-t';
+    const jSym = document.createElement('span'); jSym.className = 'suit-sym c-purple'; jSym.textContent = '★';
+    jRow.appendChild(jSym);
+    const jPills = document.createElement('div'); jPills.className = 'rank-pills';
+    jPills.appendChild(gmMakePill('joker-red', 'R★', 'is-joker'));
+    jPills.appendChild(gmMakePill('joker-black', 'N★', 'is-joker'));
+    jRow.appendChild(jPills); container.appendChild(jRow);
+}
+
+function gmMakePill(id, label, extraCls) {
+    const p = document.createElement('span');
+    p.className = `rank-pill${extraCls ? ' ' + extraCls : ''}`;
+    p.id = `gm-pill-${id}`;
+    p.textContent = label;
+    p.onclick = () => gmTogglePill(id);
+    return p;
+}
+
+function gmRefreshPill(p, id) {
+    p.classList.toggle('drawn', gmCardDrawn.has(id));
+    p.classList.toggle('excluded', gmCardExcluded.has(id));
+}
+
+function gmRefreshAllPills() {
+    ALL_CARDS.forEach(c => { const p = document.getElementById(`gm-pill-${c.id}`); if (p) gmRefreshPill(p, c.id); });
+}
+
+function gmTogglePill(id) {
+    const card = cardById(id);
+    if (!card) return;
+    if (gmCardExcluded.has(id)) { gmCardExcluded.delete(id); gmCardDeck.splice(Math.floor(Math.random() * (gmCardDeck.length + 1)), 0, card); gmUpdateDeckCount(); }
+    else if (gmCardDrawn.has(id)) { gmCardDrawn.delete(id); gmCardDeck.splice(Math.floor(Math.random() * (gmCardDeck.length + 1)), 0, card); gmUpdateDeckCount(); }
+    else { gmCardExcluded.add(id); const idx = gmCardDeck.findIndex(c => c.id === id); if (idx !== -1) { gmCardDeck.splice(idx, 1); gmUpdateDeckCount(); } }
+    const p = document.getElementById(`gm-pill-${id}`); if (p) gmRefreshPill(p, id);
+    gmUpdateClearBtn();
+}
+
+function gmClearExclusions() { if (gmCardDrawing) return; gmCardExcluded.clear(); gmRefreshAllPills(); gmUpdateClearBtn(); gmShowCardStatus('Exclusions effacées'); }
+
+function gmUpdateDeckCount() {
+    const n = gmCardDeck.length;
+    const countEl = document.getElementById('gm-deck-count');
+    if (countEl) countEl.textContent = n === 0 ? 'Vide' : `${n} carte${n !== 1 ? 's' : ''}`;
+    const wrap = document.getElementById('gm-deck-wrap');
+    if (wrap) wrap.classList.toggle('empty', n === 0);
+    const rBtn = document.getElementById('gm-reshuffle-btn');
+    if (rBtn) rBtn.classList.toggle('visible', n === 0);
+    const rrBtn = document.getElementById('gm-reshuffle-remaining-btn');
+    if (rrBtn) rrBtn.classList.toggle('visible', n > 1 && n < ALL_CARDS.length - gmCardExcluded.size);
+    gmUpdateClearBtn();
+}
+
+function gmUpdateClearBtn() { const btn = document.getElementById('gm-clear-exclusions-btn'); if (btn) btn.classList.toggle('visible', gmCardExcluded.size > 0); }
+
+function gmShowCardStatus(msg) {
+    const el = document.getElementById('gm-card-status');
+    if (!el) return;
+    el.textContent = msg;
+    clearTimeout(gmCardStatusTimer);
+    gmCardStatusTimer = setTimeout(() => el.textContent = '', 2200);
+}
+
+function gmRenderCardContent(card) {
+    const el = document.getElementById('gm-drawn-card');
+    if (!el) return;
+    if (card.isJoker) {
+        el.className = `flip-face ${card.jokerColor === 'red' ? 'c-red' : 'c-black'}`;
+        el.innerHTML = `<div class="card-corner tl"><span class="rank" style="font-size:14px;color:var(--card-purple)">JKR</span></div><div class="card-center" style="flex-direction:column;gap:6px;"><span style="font-size:50px;line-height:1;color:var(--card-purple)">★</span><span style="font-family:'Playfair Display',serif;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--card-purple)">${card.label.toUpperCase()}</span></div><div class="card-corner br"><span class="rank" style="font-size:14px;color:var(--card-purple)">JKR</span></div>`;
+    } else {
+        el.className = `flip-face ${card.suit.cls}`;
+        el.innerHTML = `<div class="card-corner tl"><span class="rank">${card.rank}</span><span class="suit-small">${card.suit.sym}</span></div><div class="card-center">${card.suit.sym}</div><div class="card-corner br"><span class="rank">${card.rank}</span><span class="suit-small">${card.suit.sym}</span></div>`;
+    }
+}
+
+async function gmRevealCard(card) {
+    const flipWrap = document.getElementById('gm-flip-wrap');
+    const drawnEl = document.getElementById('gm-drawn-card');
+    gmRenderCardContent(card);
+    drawnEl.classList.add('ready');
+    flipWrap.classList.remove('hidden');
+    flipWrap.getBoundingClientRect();
+    await delay(30);
+    flipWrap.classList.add('flipped');
+}
+
+async function gmDrawCard() {
+    if (gmCardDrawing || gmCardDeck.length === 0) return;
+    gmCardDrawing = true;
+    const flipWrap = document.getElementById('gm-flip-wrap');
+    if (flipWrap) { flipWrap.classList.remove('flipped'); flipWrap.classList.add('hidden'); }
+    const drawnEl = document.getElementById('gm-drawn-card');
+    if (drawnEl) drawnEl.classList.remove('ready');
+    const drawn = gmCardDeck.pop();
+    gmCardDrawn.add(drawn.id);
+    gmLastCardId = drawn.id;
+    const pill = document.getElementById(`gm-pill-${drawn.id}`); if (pill) gmRefreshPill(pill, drawn.id);
+    gmUpdateDeckCount();
+    await gmRevealCard(drawn);
+    gmShowCardStatus(drawn.isJoker ? drawn.label : `${drawn.rank} de ${SUIT_FR[drawn.suit.name] || drawn.suit.name}`);
+    gmCardDrawing = false;
+}
+
+async function gmAnimateShuffle() {
+    const overlay = document.getElementById('gm-shuffle-overlay');
+    const wrap = document.getElementById('gm-deck-wrap');
+    if (!overlay || !wrap) { await delay(300); return; }
+    const rect = wrap.getBoundingClientRect();
+    const ghosts = [];
+    for (let i = 0; i < 4; i++) {
+        const g = document.createElement('div'); g.className = 'shuffle-ghost';
+        g.appendChild(Object.assign(document.createElement('div'), { className: 'deck-pattern' }));
+        g.style.cssText = `width:${rect.width}px;height:${rect.height}px;left:${rect.left}px;top:${rect.top}px;`;
+        overlay.appendChild(g); ghosts.push(g);
+    }
+    const dirs = ['left', 'right', 'left', 'right'];
+    ghosts.forEach((g, i) => { g.style.animation = `shuffle-${dirs[i]} 0.52s ${i * 0.08}s ease-in-out forwards`; });
+    wrap.classList.remove('shuffling'); wrap.getBoundingClientRect(); wrap.classList.add('shuffling');
+    await delay(680); ghosts.forEach(g => g.remove()); wrap.classList.remove('shuffling');
+}
+
+async function gmManualReshuffle(remainingOnly) {
+    if (gmCardDrawing) return;
+    gmCardDrawing = true;
+    const flipWrap = document.getElementById('gm-flip-wrap');
+    if (flipWrap) { flipWrap.classList.remove('flipped'); flipWrap.classList.add('hidden'); }
+    const drawnEl = document.getElementById('gm-drawn-card');
+    if (drawnEl) drawnEl.classList.remove('ready');
+    await gmAnimateShuffle();
+    if (remainingOnly) { gmCardDeck = shuffle(gmCardDeck); }
+    else { gmCardDrawn.clear(); gmCardDeck = shuffle([...ALL_CARDS].filter(c => !gmCardExcluded.has(c.id))); gmLastCardId = null; gmRefreshAllPills(); }
+    gmUpdateDeckCount();
+    gmShowCardStatus(remainingOnly ? '↺ Restant mélangé' : '↺ Mélangé');
+    gmCardDrawing = false;
+}
+
+// ═══════════════════════════════════════════
+//  GM FILE VIEWER
+// ═══════════════════════════════════════════
+function openGmFileViewer(fileId) {
+    const f = gmFiles.find(f => f.id === fileId);
+    if (!f) return;
+    document.getElementById('gm-fv-title').textContent = f.name;
+    const body = document.getElementById('gm-fv-body');
+    body.innerHTML = '';
+    if (f.type && f.type.startsWith('image/')) {
+        const img = document.createElement('img');
+        img.src = f.url; img.className = 'fv-image';
+        body.appendChild(img);
+    } else if (f.type === 'application/pdf') {
+        const iframe = document.createElement('iframe');
+        iframe.src = f.url; iframe.className = 'fv-iframe';
+        body.appendChild(iframe);
+    } else if (f.type && f.type.startsWith('text/')) {
+        const pre = document.createElement('pre');
+        pre.className = 'fv-text'; pre.textContent = 'Chargement…';
+        body.appendChild(pre);
+        fetch(f.url).then(r => r.text()).then(t => { pre.textContent = t; }).catch(() => { pre.textContent = 'Erreur de chargement.'; });
+    } else {
+        const wrap = document.createElement('div');
+        wrap.className = 'fv-unsupported';
+        wrap.innerHTML = `<div class="fv-unsupported-icon">${_fileIcon(f.type)}</div><div class="fv-unsupported-name">${_escHtml(f.name)}</div><a class="fv-download-link" href="${f.url}" target="_blank" rel="noopener">Ouvrir dans un nouvel onglet</a>`;
+        body.appendChild(wrap);
+    }
+    document.getElementById('gm-file-viewer-scrim').classList.add('show');
+    document.getElementById('gm-file-viewer-modal').classList.add('show');
+}
+
+function closeGmFileViewer() {
+    document.getElementById('gm-file-viewer-scrim').classList.remove('show');
+    document.getElementById('gm-file-viewer-modal').classList.remove('show');
+    document.getElementById('gm-fv-body').innerHTML = '';
+}
+
+// ═══════════════════════════════════════════
 //  GM ALCHEMY
 // ═══════════════════════════════════════════
 function saveGMPotions() { if (currentCampaignId) { localStorage.setItem(potionsKey(), JSON.stringify(gmPotions)); debouncedSync(); } }
@@ -1521,6 +1727,7 @@ function renderGmFiles() {
                 <div class="gm-file-grant-status">${grantLabel}</div>
             </div>
             <div class="gm-file-actions">
+                <button class="gm-file-open-btn" onclick="openGmFileViewer('${f.id}')" title="Ouvrir">Ouvrir</button>
                 <button class="gm-file-btn${isAll ? ' active' : ''}" onclick="grantFileToAll('${f.id}')" title="${isAll ? 'Révoquer accès global' : 'Accorder à tous'}">🌍</button>
                 <button class="gm-file-del-btn" onclick="removeGmFile('${f.id}')" title="Supprimer">✕</button>
             </div>`;
