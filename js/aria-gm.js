@@ -1363,10 +1363,14 @@ async function gmRevealCard(card) {
     const drawnEl = document.getElementById('gm-drawn-card');
     gmRenderCardContent(card);
     drawnEl.classList.add('ready');
+    const flipInner = flipWrap.querySelector('.flip-inner');
+    flipInner.style.transition = 'none';
+    flipWrap.classList.add('flipped');
     flipWrap.classList.remove('hidden');
     flipWrap.getBoundingClientRect();
+    flipInner.style.transition = '';
     await delay(30);
-    flipWrap.classList.add('flipped');
+    flipWrap.classList.remove('flipped');
 }
 
 async function gmDrawCard() {

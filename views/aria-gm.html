@@ -71,9 +71,6 @@
         <span style="font-family:'Cinzel',serif;font-size:9px;color:var(--gold-dim);letter-spacing:.1em;" id="version-display"></span>
         <span class="topbar-badge">Maître de Jeu</span>
         <input class="campaign-name-input" id="campaign-display" value="" placeholder="Campagne" onblur="saveCampaignName(this)" onkeydown="if(event.key==='Enter')this.blur()" />
-<div class="status-row"><div class="status-dot" id="dddice-dot"></div><span id="dddice-status">dddice</span></div>
-        <div class="status-row"><div class="status-dot" id="ably-dot"></div><span id="ably-status">Ably</span></div>
-        <span class="topbar-joincode" id="joincode-display" onclick="copyJoinCode()" title="Code d'accès — cliquer pour copier"></span>
         <button class="icon-btn" onclick="toggleConfig()" title="Configuration">⚙</button>
     </div>
 
@@ -328,6 +325,10 @@
     <div class="modal-scrim" id="config-scrim" onclick="toggleConfig()"></div>
     <div class="config-modal" id="config-modal">
         <h2>⚙ Configuration MJ</h2>
+        <div style="margin-bottom:14px;display:flex;align-items:center;gap:10px;">
+            <span class="config-label" style="margin-bottom:0;">Code de campagne</span>
+            <span class="topbar-joincode" id="joincode-display" onclick="copyJoinCode()" title="Code d'accès — cliquer pour copier" style="cursor:pointer;"></span>
+        </div>
         <label class="config-label">Thème dddice</label>
         <select class="config-input" id="cfg-dddice-theme" disabled><option>— connectez-vous d'abord —</option></select>
         <div style="margin-top:12px;" class="status-row"><div class="status-dot" id="cfg-dddice-dot"></div><span id="cfg-dddice-status">dddice non connecté</span></div>

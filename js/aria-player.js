@@ -753,6 +753,10 @@ function updateBMDisplay() {
         const sp = (character.specials || [])[i];
         if (sp) div.querySelector('.skill-pct').textContent = Math.max(1, Math.min(100, sp.pct + bonusMalus)) + '%';
     });
+    document.getElementById('potion-list')?.querySelectorAll('.recipe-row').forEach((div, i) => {
+        const r = (character.potionRecipes || [])[i];
+        if (r) div.querySelector('.recipe-chance').textContent = Math.max(0, Math.min(100, (r.successChance || 0) + bonusMalus)) + '%';
+    });
 }
 
 // ═══════════════════════════════════════════
@@ -1604,7 +1608,7 @@ function renderPotions() {
             row.innerHTML = `
                 <span class="recipe-name">${r.name}</span>
                 ${meta ? `<span class="recipe-meta">${meta}</span>` : '<span class="recipe-meta"></span>'}
-                <span class="recipe-chance">${r.successChance || 0}%</span>
+                <span class="recipe-chance">${Math.max(0, Math.min(100, (r.successChance || 0) + bonusMalus))}%</span>
                 <button class="recipe-craft-btn" onclick="craftPotion(${i})" ${vials <= 0 || isRolling ? 'disabled' : ''}>Créer</button>`;
             container.appendChild(row);
         });
@@ -1677,6 +1681,7 @@ function applyCraft(success, recipeIdx) {
         }
         saveCurrentCharacter();
         renderPotions();
+        renderInventoryEditor();
         renderInventorySidebar();
         sendPresence();
     }, 1500);
@@ -1691,8 +1696,12 @@ function usePotion(i) {
     const p = character.potions[i];
     if (!p || !p.qty) return;
     p.qty--;
+    const invEntry = (character.inventory || []).find(it => it.name === p.name);
+    if (invEntry && invEntry.qty > 0) invEntry.qty--;
     saveCurrentCharacter();
     renderPotions();
+    renderInventoryEditor();
+    renderInventorySidebar();
     showToast('gm-heal-toast', `${p.name || 'Potion'} utilisée${p.qty > 0 ? ` (×${p.qty} restante${p.qty > 1 ? 's' : ''})` : ' — épuisée'}`);
 }
 function renderSkillsEditor() {
