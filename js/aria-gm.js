@@ -392,7 +392,6 @@ function switchCampaign() {
 // ═══════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', async () => {
     migrateGMIfNeeded();
-    document.getElementById('version-display').textContent = 'v' + VERSION;
     await tryRestoreSupabase();
 });
 

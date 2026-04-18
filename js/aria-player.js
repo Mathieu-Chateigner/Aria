@@ -414,8 +414,6 @@ function switchCharacter() {
 // ═══════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', async () => {
     migrateIfNeeded();
-    document.getElementById('version-display').textContent = 'v' + VERSION;
-    document.getElementById('pid-display').textContent = '#' + playerId.slice(-6);
     await tryRestoreSupabase();
 });
 
