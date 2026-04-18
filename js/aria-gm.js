@@ -396,6 +396,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 
 function initApp() {
+    renderPlayerCards();
     renderMonsters();
     renderRollFeed();
     renderCardHistory();
