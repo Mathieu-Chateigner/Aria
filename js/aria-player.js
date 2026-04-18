@@ -869,7 +869,7 @@ function renderCombatSidebar() {
         html += `<div class="react-btns">`;
         if (parrySkill) {
             const eff = Math.max(1, Math.min(100, parrySkill.pct + bonusMalus));
-            html += `<button class="react-btn" onclick="doRoll('${parrySkill.name.replace(/'/g, "\\'")}',${parrySkill.pct})">🛡 ${parrySkill.name}<br><span class="react-pct">${eff}%</span></button>`;
+            html += `<button class="react-btn" onclick="doRoll('${parrySkill.name.replace(/'/g, "\\'")}',${parrySkill.pct})">🛡 Parer<br><span class="react-pct">${eff}%</span></button>`;
         }
         if (dodgeSkill) {
             const eff = Math.max(1, Math.min(100, dodgeSkill.pct + bonusMalus));
@@ -1825,7 +1825,7 @@ function togglePill(id) {
     const p = document.getElementById(`pill-${id}`); if (p) refreshPill(p, id);
     updateClearBtn(); saveCardState();
 }
-function clearExclusions() { if (cardDrawing) return; cardExcluded.clear(); refreshAllPills(); updateClearBtn(); saveCardState(); showCardStatus('Exclusions effacées'); }
+function clearExclusions() { if (cardDrawing) return; cardExcluded.forEach(id => { const c = cardById(id); if (c) cardDeck.splice(Math.floor(Math.random() * (cardDeck.length + 1)), 0, c); }); cardExcluded.clear(); updateDeckCount(); refreshAllPills(); updateClearBtn(); saveCardState(); showCardStatus('Exclusions effacées'); }
 function saveCardState() { localStorage.setItem(cardKey(), JSON.stringify({ excluded: [...cardExcluded], drawn: [...cardDrawn], deckIds: cardDeck.map(c => c.id), lastCardId })); debouncedSync(); }
 function updateDeckCount() {
     const n = cardDeck.length;

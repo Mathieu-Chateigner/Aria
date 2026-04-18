@@ -1320,7 +1320,7 @@ function gmTogglePill(id) {
     gmUpdateClearBtn();
 }
 
-function gmClearExclusions() { if (gmCardDrawing) return; gmCardExcluded.clear(); gmRefreshAllPills(); gmUpdateClearBtn(); gmShowCardStatus('Exclusions effacées'); }
+function gmClearExclusions() { if (gmCardDrawing) return; gmCardExcluded.forEach(id => { const c = cardById(id); if (c) gmCardDeck.splice(Math.floor(Math.random() * (gmCardDeck.length + 1)), 0, c); }); gmCardExcluded.clear(); gmUpdateDeckCount(); gmRefreshAllPills(); gmUpdateClearBtn(); gmShowCardStatus('Exclusions effacées'); }
 
 function gmUpdateDeckCount() {
     const n = gmCardDeck.length;
