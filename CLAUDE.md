@@ -78,6 +78,10 @@ All three apps share **one Ably key** (entered on `index.html`) and use three ch
 | `aria-cards` | `aria-player` or `aria-gm` | `aria-overlay` |
 | `aria-damage` | `aria-gm` (damage/heal events) + `aria-player` (presence heartbeat every 5s) | `aria-player` (receives GM damage) + `aria-gm` (receives presence) |
 
+### Supabase credentials
+
+`SUPABASE_URL` and `SUPABASE_ANON_KEY` are hardcoded constants at the top of `js/aria-player.js` and `js/aria-gm.js` (around line 58). Change both files when switching Supabase projects. The GM also uses Supabase Storage (bucket `campaign-files`) for file sharing.
+
 ### Save key / Supabase sync
 
 Both player and GM use a **save key** (UUID) to sync localStorage to Supabase, enabling multi-device access.
@@ -118,8 +122,9 @@ All campaign-scoped data uses keys suffixed with `currentCampaignId`:
 | `aria-gm-rolls-{id}` | roll history |
 | `aria-gm-card-history-{id}` | card draw log |
 | `aria-gm-potions-{id}` | alchemy recipes |
+| `aria-gm-files-{id}` | files uploaded by GM for this campaign |
 
-Helper functions `monstersKey()`, `rollsKey()`, `cardHistKey()`, `potionsKey()` return the scoped key for the active campaign. Always use these — never hardcode the bare key.
+Helper functions `monstersKey()`, `rollsKey()`, `cardHistKey()`, `potionsKey()`, `filesKey()` return the scoped key for the active campaign. Always use these — never hardcode the bare key.
 
 `generateJoinCode()` produces the join code. If a campaign loaded from storage lacks one, it is generated and saved on `loadCampaignState()`.
 
@@ -247,6 +252,13 @@ The GM filters incoming presence by `campaignKey === currentJoinCode` — messag
 { playerId, qty: number }
 ```
 
+### `aria-damage` / `file-grant` | `file-revoke`
+```js
+{ playerId, file: { id, name, type, url } }   // grant — player adds file to playerFiles
+{ playerId, fileId: string }                   // revoke — player removes file from playerFiles
+```
+Player stores granted files in `localStorage: aria-player-files-{charId}`. The Fichiers tab auto-hides when `playerFiles` is empty.
+
 ### `aria-cards` / `draw` | `reshuffle`
 ```js
 { cardId, excluded: [...], drawn: [...], deckIds: [...], lastCardId }
@@ -267,12 +279,14 @@ Lists all saved characters. Creating a character prompts for name, class, and an
 Lists all campaigns, each showing its join code (click to copy). `selectCampaign(id)` → `loadCampaignState(id)` → `initApp()`. After entering a campaign, the join code is shown in the topbar (click to copy) so the GM can share it with players.
 
 ### Player panel tabs
-`Compétences` | `Caractéristiques` | `Jet libre` | `Inventaire` | `Notes` | `Cartes` | `⚗ Alchimie` | `Personnage`
+`Compétences` | `Caractéristiques` | `Jet libre` | `Inventaire` | `Notes` | `Cartes` | `⚗ Alchimie` | `Fichiers` | `Personnage`
 
-`Cartes` and `⚗ Alchimie` are hidden by default — shown only when GM enables them via `tab-config`.
+`Cartes` and `⚗ Alchimie` are hidden by default — shown only when GM enables them via `tab-config`. `Fichiers` auto-shows when the GM grants at least one file (`playerFiles.length > 0`).
 
 ### GM panel tabs
-`Joueurs` | `Monstres` | `Jets` | `Jet MJ` | `Cartes` | `⚗ Alchimie`
+`Joueurs` | `Monstres` | `Jets` | `Jet MJ` | `Cartes` | `⚗ Alchimie` | `Fichiers`
+
+The GM Fichiers tab lets the GM upload files to Supabase Storage (`campaign-files` bucket) and grant/revoke access per player. `gmFiles` entries: `{ id, name, type, url, path, grantedTo: [] | 'all' }`. Upload via `uploadFileToSupabase()`, grant via `file-grant` message on `aria-damage`.
 
 ### Bonus/Malus bar
 Persistent bar between topbar and content. Buttons: +10/+20/+30/−10/−20/−30 + custom ± + reset. Applied to all rolls.
@@ -348,6 +362,14 @@ Must call `.start()` before `.connect()`. The safety timer must be cleared insid
 
 ### Campaign join code filtering
 `handlePresence()` in `aria-gm.js` early-returns if `data.campaignKey !== currentJoinCode`. When `currentJoinCode` is `null` (e.g. during init), no filtering is applied — all presence messages are accepted.
+
+---
+
+## Docs
+
+- `Docs/bugs_and_issues.md` — tracked open bugs and pending features with exact file/line locations
+- `Docs/development_plan.md` — feature roadmap (P1/P2/Exploration)
+- `Docs/Aide aux combats.pdf` — official ARIA combat rules (parade/esquive source of truth)
 
 ---
 
