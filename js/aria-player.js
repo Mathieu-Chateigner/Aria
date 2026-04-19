@@ -1792,7 +1792,7 @@ function scheduleAutoSave() {
 function autoSaveChar() {
     initCurrentHP();
     const oldMax = getMaxHP();
-    readEditorInputs();
+    if (document.getElementById('tab-char')?.classList.contains('active')) readEditorInputs();
     const newMax = character.stats.PV;
     if (newMax !== oldMax) {
         if (newMax > oldMax) {
