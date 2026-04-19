@@ -1790,9 +1790,13 @@ function scheduleAutoSave() {
     autoSaveTimer = setTimeout(autoSaveChar, 700);
 }
 function autoSaveChar() {
+    if (!document.getElementById('tab-char')?.classList.contains('active')) {
+        saveCurrentCharacter();
+        return;
+    }
     initCurrentHP();
     const oldMax = getMaxHP();
-    if (document.getElementById('tab-char')?.classList.contains('active')) readEditorInputs();
+    readEditorInputs();
     const newMax = character.stats.PV;
     if (newMax !== oldMax) {
         if (newMax > oldMax) {
