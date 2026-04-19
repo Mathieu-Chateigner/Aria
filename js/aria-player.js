@@ -309,6 +309,7 @@ function loadCharacterState(id) {
     if (!character.potions) character.potions = [];
     if (!character.potionRecipes) character.potionRecipes = [];
     if (character.vials === undefined || character.vials === null) character.vials = 0;
+    if (!character.money) character.money = { couronne: 0, orbe: 0, sceptre: 0, sou: 0 };
     if (!character.specials) character.specials = [];
     const saved = JSON.parse(localStorage.getItem(cardKey()) || 'null');
     cardDeck = saved?.deckIds?.map(cid => cardById(cid)).filter(Boolean) || buildDeck();
@@ -828,15 +829,32 @@ function setMult(m) {
     renderStats();
 }
 
+const MONEY_COINS = [
+    { key: 'couronne', label: 'Couronne', color: '#c9a84c' },
+    { key: 'orbe',     label: 'Orbe',     color: '#b8c4cc' },
+    { key: 'sceptre',  label: 'Sceptre',  color: '#c87533' },
+    { key: 'sou',      label: 'Sou',      color: '#8a8a94' },
+];
 function renderInventorySidebar() {
     const body = document.getElementById('inv-sidebar-body');
     const items = character.inventory || [];
     const vials = character.vials ?? 0;
     const showVials = playerTabs.alchemy && vials > 0;
-    if (!items.length && !showVials) { body.innerHTML = `<div style="font-family:'EB Garamond',serif;font-size:13px;color:var(--parchment-dim);font-style:italic;opacity:.5;">Vide</div>`; return; }
-    let html = showVials ? `<div class="inv-item"><span style="font-style:italic">Fioles vides</span><span style="color:var(--gold-dim);font-family:'Cinzel',serif;font-size:12px;">×${vials}</span></div>` : '';
-    html += items.map(it => `<div class="inv-item"><span style="font-style:italic">${it.name || '—'}</span><span style="color:var(--gold-dim);font-family:'Cinzel',serif;font-size:12px;">×${it.qty || 1}</span></div>`).join('');
-    body.innerHTML = html;
+    if (!items.length && !showVials) { body.innerHTML = `<div style="font-family:'EB Garamond',serif;font-size:13px;color:var(--parchment-dim);font-style:italic;opacity:.5;">Vide</div>`; }
+    else {
+        let html = showVials ? `<div class="inv-item"><span style="font-style:italic">Fioles vides</span><span style="color:var(--gold-dim);font-family:'Cinzel',serif;font-size:12px;">×${vials}</span></div>` : '';
+        html += items.map(it => `<div class="inv-item"><span style="font-style:italic">${it.name || '—'}</span><span style="color:var(--gold-dim);font-family:'Cinzel',serif;font-size:12px;">×${it.qty || 1}</span></div>`).join('');
+        body.innerHTML = html;
+    }
+    const moneyEl = document.getElementById('inv-money-display');
+    if (moneyEl) {
+        const m = character.money || {};
+        const parts = MONEY_COINS.map(c => {
+            const v = m[c.key] ?? 0;
+            return v > 0 ? `<span style="color:${c.color};" title="${c.label}">●${v}</span>` : '';
+        }).filter(Boolean);
+        moneyEl.innerHTML = parts.join('');
+    }
 }
 
 function renderCombatSidebar() {
@@ -1469,6 +1487,7 @@ function sendPresence() {
         vials: character.vials ?? 0,
         potionRecipeIds: (character.potionRecipes || []).map(r => r.id),
         tabs: playerTabs,
+        money: character.money || { couronne: 0, orbe: 0, sceptre: 0, sou: 0 },
         campaignKey: character.campaignKey || '',
     }, err => { if (err) console.error('[ARIA] publish error:', err); });
 }
@@ -1549,7 +1568,26 @@ function renderWeaponsEditor() {
         list.appendChild(row);
     });
 }
+function renderMoneyEditor() {
+    const el = document.getElementById('inv-money-editor');
+    if (!el) return;
+    const m = character.money || {};
+    el.innerHTML = `<div class="money-editor-row">${MONEY_COINS.map(c =>
+        `<div class="money-field">
+            <span class="money-dot" style="color:${c.color}">●</span>
+            <span class="money-label">${c.label}</span>
+            <input class="editor-input money-input" type="text" inputmode="numeric" value="${m[c.key] ?? 0}" oninput="updateMoney('${c.key}',this.value)" />
+        </div>`
+    ).join('')}</div>`;
+}
+function updateMoney(key, val) {
+    if (!character.money) character.money = { couronne: 0, orbe: 0, sceptre: 0, sou: 0 };
+    character.money[key] = parseInt(val.replace(/[^0-9]/g, '')) || 0;
+    saveCurrentCharacter();
+    renderInventorySidebar();
+}
 function renderInventoryEditor() {
+    renderMoneyEditor();
     const list = document.getElementById('inv-editor-list');
     if (!list) return;
     list.innerHTML = '';

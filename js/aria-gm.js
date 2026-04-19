@@ -762,6 +762,20 @@ function openPlayerDetails(playerId) {
         html += `</div></div>`;
     }
 
+    // Money
+    const money = p.money || {};
+    const MONEY_COINS = [
+        { key: 'couronne', label: 'Couronne', color: '#c9a84c' },
+        { key: 'orbe',     label: 'Orbe',     color: '#b8c4cc' },
+        { key: 'sceptre',  label: 'Sceptre',  color: '#c87533' },
+        { key: 'sou',      label: 'Sou',      color: '#8a8a94' },
+    ];
+    html += `<div class="pdm-section"><div class="pdm-section-title">Monnaie</div><div class="pdm-money-row">`;
+    for (const c of MONEY_COINS) {
+        html += `<div class="pdm-coin-block"><span class="pdm-coin-dot" style="color:${c.color}">●</span><span class="pdm-coin-label">${c.label}</span><span class="pdm-coin-val">${money[c.key] ?? 0}</span></div>`;
+    }
+    html += `</div></div>`;
+
     // Inventory
     const vials = p.vials ?? 0;
     const showVials = tabs.alchemy && vials > 0;

@@ -2277,6 +2277,39 @@ body {
     opacity: .7;
 }
 
+/* Money in player details modal */
+.pdm-money-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+}
+.pdm-coin-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    background: rgba(0,0,0,.2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 4px;
+}
+.pdm-coin-dot {
+    font-size: 18px;
+    line-height: 1;
+}
+.pdm-coin-label {
+    font-family: 'Cinzel', serif;
+    font-size: 9px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--parchment-dim);
+}
+.pdm-coin-val {
+    font-family: 'Cinzel', serif;
+    font-size: 16px;
+    color: var(--parchment);
+}
+
 /* ═══════════════════════════════════════════
    THEME TOGGLE (config modal)
 ═══════════════════════════════════════════ */

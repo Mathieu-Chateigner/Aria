@@ -2447,6 +2447,37 @@ body.light-mode .hp-number.low { color: #8c4a08; }
     padding: 4px 14px 12px;
 }
 
+/* Money editor in inventory tab */
+.money-editor-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid var(--border);
+}
+.money-field {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+}
+.money-dot {
+    font-size: 16px;
+    line-height: 1;
+}
+.money-label {
+    font-family: 'Cinzel', serif;
+    font-size: 9px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--parchment-dim);
+}
+.money-input {
+    text-align: center;
+    width: 100%;
+    font-family: 'Cinzel', serif;
+}
+
 /* attributes */
 .cs-attrs-row {
     display: flex;
