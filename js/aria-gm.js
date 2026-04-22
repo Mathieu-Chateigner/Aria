@@ -234,6 +234,7 @@ function cardHistKey()      { return 'aria-gm-card-history-'   + currentCampaign
 function potionsKey()       { return 'aria-gm-potions-'        + currentCampaignId; }
 function knownPlayersKey()  { return 'aria-gm-known-players-'  + currentCampaignId; }
 function filesKey()         { return 'aria-gm-files-'          + currentCampaignId; }
+function gmNotesKey()       { return 'aria-gm-notes-'          + currentCampaignId; }
 
 function saveKnownPlayers() {
     const obj = {};
@@ -402,6 +403,7 @@ function initApp() {
     renderCardHistory();
     renderGMPotions();
     renderGmFiles();
+    loadGMNotes();
     initGmDeck();
     loadConfigInputs();
     if (config.dddiceKey && config.dddiceRoom) initDddice();
@@ -1609,6 +1611,118 @@ function _fileIcon(type) {
 }
 
 function saveGmFiles() { localStorage.setItem(filesKey(), JSON.stringify(gmFiles)); debouncedSync(); }
+
+// ═══════════════════════════════════════════
+//  NOTES MJ
+// ═══════════════════════════════════════════
+let gmNotesList = [];
+let gmCurrentNoteId = null;
+
+function _gmNoteId() {
+    return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+}
+
+function loadGMNotes() {
+    const raw = localStorage.getItem(gmNotesKey());
+    if (!raw) {
+        gmNotesList = [];
+    } else {
+        try {
+            const parsed = JSON.parse(raw);
+            gmNotesList = Array.isArray(parsed) ? parsed : [{ id: _gmNoteId(), name: 'Notes', content: raw }];
+        } catch(e) {
+            gmNotesList = [{ id: _gmNoteId(), name: 'Notes', content: raw }];
+        }
+    }
+    gmCurrentNoteId = gmNotesList.length > 0 ? gmNotesList[0].id : null;
+    renderGMNotesList();
+    loadGMNoteContent();
+}
+
+function persistGMNotes() {
+    localStorage.setItem(gmNotesKey(), JSON.stringify(gmNotesList));
+    debouncedSync();
+}
+
+function renderGMNotesList() {
+    const list = document.getElementById('gm-notes-list');
+    if (!list) return;
+    list.innerHTML = '';
+    gmNotesList.forEach(note => {
+        const item = document.createElement('div');
+        item.className = 'notes-item' + (note.id === gmCurrentNoteId ? ' active' : '');
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'notes-item-name';
+        nameSpan.textContent = note.name || 'Sans titre';
+        nameSpan.addEventListener('click', () => selectGMNote(note.id));
+        const delBtn = document.createElement('button');
+        delBtn.className = 'notes-item-delete';
+        delBtn.title = 'Supprimer';
+        delBtn.textContent = '✕';
+        delBtn.addEventListener('click', (e) => { e.stopPropagation(); deleteGMNote(note.id); });
+        item.appendChild(nameSpan);
+        item.appendChild(delBtn);
+        list.appendChild(item);
+    });
+}
+
+function loadGMNoteContent() {
+    const nameInput = document.getElementById('gm-notes-name-input');
+    const area = document.getElementById('gm-notes-area');
+    if (!nameInput || !area) return;
+    const note = gmNotesList.find(n => n.id === gmCurrentNoteId);
+    if (note) {
+        nameInput.value = note.name;
+        area.value = note.content;
+        nameInput.disabled = false;
+        area.disabled = false;
+    } else {
+        nameInput.value = '';
+        area.value = '';
+        nameInput.disabled = true;
+        area.disabled = true;
+    }
+}
+
+function selectGMNote(id) {
+    gmCurrentNoteId = id;
+    renderGMNotesList();
+    loadGMNoteContent();
+    document.getElementById('gm-notes-area').focus();
+}
+
+function addGMNote() {
+    const note = { id: _gmNoteId(), name: 'Nouvelle note', content: '' };
+    gmNotesList.push(note);
+    persistGMNotes();
+    selectGMNote(note.id);
+    const nameInput = document.getElementById('gm-notes-name-input');
+    if (nameInput) { nameInput.focus(); nameInput.select(); }
+}
+
+function deleteGMNote(id) {
+    const idx = gmNotesList.findIndex(n => n.id === id);
+    gmNotesList = gmNotesList.filter(n => n.id !== id);
+    gmCurrentNoteId = gmNotesList[Math.min(idx, gmNotesList.length - 1)]?.id || null;
+    persistGMNotes();
+    renderGMNotesList();
+    loadGMNoteContent();
+}
+
+function saveCurrentGMNote() {
+    const note = gmNotesList.find(n => n.id === gmCurrentNoteId);
+    if (!note) return;
+    note.content = document.getElementById('gm-notes-area').value;
+    persistGMNotes();
+}
+
+function renameCurrentGMNote() {
+    const note = gmNotesList.find(n => n.id === gmCurrentNoteId);
+    if (!note) return;
+    note.name = document.getElementById('gm-notes-name-input').value;
+    persistGMNotes();
+    renderGMNotesList();
+}
 
 async function uploadFileToStorage(file) {
     const fileId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);

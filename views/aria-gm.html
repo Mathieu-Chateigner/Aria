@@ -83,6 +83,7 @@
                 <button class="tab-btn" onclick="switchTab('tab-cards',this)">🂠 Cartes</button>
                 <button class="tab-btn" onclick="switchTab('tab-alchemy',this)">⚗ Alchimie</button>
                 <button class="tab-btn" onclick="switchTab('tab-files',this)">📄 Fichiers</button>
+                <button class="tab-btn" onclick="switchTab('tab-gm-notes',this)">Notes</button>
             </div>
 
             <!-- JOUEURS -->
@@ -298,6 +299,22 @@
                 <div class="gm-files-progress" id="file-upload-progress" style="display:none;"></div>
                 <div class="gm-files-list" id="gm-files-list">
                     <div class="alchemy-empty" id="gm-files-empty">Aucun fichier. Ajoutez des documents pour les partager avec vos joueurs.</div>
+                </div>
+            </div>
+            <!-- NOTES MJ -->
+            <div class="tab-content" id="tab-gm-notes">
+                <div class="notes-wrap">
+                    <div class="notes-sidebar">
+                        <div class="notes-sidebar-header">
+                            <span class="notes-sidebar-title">Notes</span>
+                            <button class="notes-add-btn" onclick="addGMNote()" title="Nouvelle note">+</button>
+                        </div>
+                        <div class="notes-list" id="gm-notes-list"></div>
+                    </div>
+                    <div class="notes-editor">
+                        <input class="notes-name-input" id="gm-notes-name-input" placeholder="Nom de la note…" oninput="renameCurrentGMNote()" />
+                        <textarea class="notes-area" id="gm-notes-area" placeholder="Contenu…" oninput="saveCurrentGMNote()"></textarea>
+                    </div>
                 </div>
             </div>
         </div>
