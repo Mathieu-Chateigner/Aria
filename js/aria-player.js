@@ -99,92 +99,147 @@ let _pendingNewKey = null;
 let syncTimer      = null;
 
 // ═══════════════════════════════════════════
-//  SUPABASE CONFIG
-//  Replace with your values from:
-//  Supabase dashboard → Project Settings → API
+//  CLOUD SAVE — per-entity sync
 // ═══════════════════════════════════════════
-const SUPABASE_URL = 'https://npybuksklkvdmbhyzdjs.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_hUkdwmlgNNhLXn6t38GHHg_N7XXVOn4';
+function _supabaseReady() { return !!SUPABASE_URL && !!SUPABASE_ANON_KEY && !!saveKey; }
 
-// ═══════════════════════════════════════════
-//  CLOUD SAVE SYSTEM
-// ═══════════════════════════════════════════
-function _supabaseReady() {
-    return !!SUPABASE_URL && !!SUPABASE_ANON_KEY && !!saveKey;
+function _nowISO() { return new Date().toISOString(); }
+
+function _charToRow(char) {
+    return {
+        id: char.id, save_key: saveKey, name: char.name, class: char.class,
+        campaign_key: char.campaignKey || null,
+        stats: char.stats || null, physical: char.physical || null,
+        skills: char.skills || null, specials: char.specials || null,
+        weapons: char.weapons || null, protection: char.protection || null,
+        inventory: char.inventory || null, potion_recipes: char.potionRecipes || null,
+        vials: char.vials || 0, updated_at: _nowISO(),
+    };
 }
 
-async function _sbFetch(path, options = {}) {
-    return fetch(SUPABASE_URL + path, {
-        ...options,
-        headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-            'Content-Type': 'application/json',
-            ...options.headers,
-        },
+async function _syncAllPlayerData() {
+    if (!_supabaseReady()) return;
+    const chars = getCharacters();
+    await Promise.all(chars.map(c => sbUpsert('characters', _charToRow(c))));
+    await Promise.all(chars.map(c => sbUpsert('character_state', {
+        character_id: c.id,
+        hp:    (() => { const v = localStorage.getItem('aria-current-hp-'   + c.id); return v !== null ? parseInt(v) : null; })(),
+        cards: (() => { const v = localStorage.getItem('aria-cards-'        + c.id); return v ? JSON.parse(v) : null; })(),
+        tabs:  (() => { const v = localStorage.getItem('aria-player-tabs-'  + c.id); return v ? JSON.parse(v) : null; })(),
+        updated_at: _nowISO(),
+    })));
+}
+
+let _charTimer = null;
+function debouncedSync() {
+    clearTimeout(_charTimer);
+    _charTimer = setTimeout(_syncAllPlayerData, 800);
+}
+
+let _stateTimer = null;
+function debouncedSyncState() {
+    clearTimeout(_stateTimer);
+    _stateTimer = setTimeout(() => syncCharacterState(currentCharId), 800);
+}
+
+let _noteTimer = null;
+function debouncedSyncNote(note) {
+    clearTimeout(_noteTimer);
+    _noteTimer = setTimeout(() => syncCharacterNote(note), 800);
+}
+
+async function syncCharacterState(charId) {
+    if (!_supabaseReady() || !charId) return;
+    const hp    = localStorage.getItem('aria-current-hp-'  + charId);
+    const cards = localStorage.getItem('aria-cards-'       + charId);
+    const tabs  = localStorage.getItem('aria-player-tabs-' + charId);
+    await sbUpsert('character_state', {
+        character_id: charId,
+        hp:    hp    !== null ? parseInt(hp) : null,
+        cards: cards ? JSON.parse(cards) : null,
+        tabs:  tabs  ? JSON.parse(tabs)  : null,
+        updated_at: _nowISO(),
     });
 }
 
-function collectPlayerData() {
-    const chars = JSON.parse(localStorage.getItem('aria-characters') || '[]');
-    const perChar = {};
-    chars.forEach(c => {
-        const hp    = localStorage.getItem('aria-current-hp-'    + c.id);
-        const cards = localStorage.getItem('aria-cards-'         + c.id);
-        const notes = localStorage.getItem('aria-notes-'         + c.id);
-        const tabs  = localStorage.getItem('aria-player-tabs-'   + c.id);
-        const files = localStorage.getItem('aria-player-files-'  + c.id);
-        perChar[c.id] = {
-            hp:    hp    !== null ? parseInt(hp) : null,
-            cards: cards ? JSON.parse(cards) : null,
-            notes: notes ? JSON.parse(notes) : null,
-            tabs:  tabs  ? JSON.parse(tabs)  : null,
-            files: files ? JSON.parse(files) : null,
-        };
+async function syncCharacterNote(note) {
+    if (!_supabaseReady() || !currentCharId || !note?.id) return;
+    await sbUpsert('character_notes', {
+        id: note.id, character_id: currentCharId,
+        name: note.name || '', content: note.content || '',
+        position: notesList.indexOf(note),
+        updated_at: _nowISO(),
     });
-    return { characters: chars, perChar };
 }
 
-function applyPlayerData(data) {
-    if (!data || !Array.isArray(data.characters)) return;
-    localStorage.setItem('aria-characters', JSON.stringify(data.characters));
-    if (!data.perChar) return;
-    Object.entries(data.perChar).forEach(([id, s]) => {
-        if (s.hp    !== null && s.hp    !== undefined) localStorage.setItem('aria-current-hp-'    + id, s.hp);
-        if (s.cards !== null && s.cards !== undefined) localStorage.setItem('aria-cards-'          + id, JSON.stringify(s.cards));
-        if (s.notes !== null && s.notes !== undefined) localStorage.setItem('aria-notes-'          + id, JSON.stringify(s.notes));
-        if (s.tabs  !== null && s.tabs  !== undefined) localStorage.setItem('aria-player-tabs-'    + id, JSON.stringify(s.tabs));
-        if (s.files !== null && s.files !== undefined) localStorage.setItem('aria-player-files-'   + id, JSON.stringify(s.files));
+async function deleteCharacterNote(id) {
+    if (!_supabaseReady()) return;
+    await sbDelete('character_notes', 'id=eq.' + encodeURIComponent(id));
+}
+
+async function syncCharacterFile(file, charId) {
+    if (!_supabaseReady() || !charId || !file?.id) return;
+    await sbUpsert('character_files', {
+        id: file.id, character_id: charId, file_id: file.id,
+        name: file.name || '', type: file.type || '', url: file.url || '',
+        updated_at: _nowISO(),
     });
+}
+
+async function deleteCharacterFile(fileId) {
+    if (!_supabaseReady()) return;
+    await sbDelete('character_files', 'id=eq.' + encodeURIComponent(fileId));
 }
 
 async function loadFromSupabase() {
     if (!_supabaseReady()) return;
     try {
-        const res = await _sbFetch(`/rest/v1/saves?save_key=eq.${encodeURIComponent(saveKey)}&select=data`);
-        if (!res.ok) return;
-        const rows = await res.json();
-        if (!rows.length) return;
-        const data = rows[0].data;
-        if (data.player) applyPlayerData(data.player);
-        else if (Array.isArray(data.characters)) applyPlayerData(data);
-    } catch(e) { console.warn('[ARIA] Supabase load failed:', e); }
-}
+        await runMigration(saveKey, 'player');
+        const chars = await sbSelect('characters', 'save_key=eq.' + encodeURIComponent(saveKey));
+        if (!chars.length) return;
 
-async function syncToSupabase() {
-    if (!_supabaseReady()) return;
-    try {
-        await _sbFetch('/rest/v1/saves', {
-            method: 'POST',
-            headers: { 'Prefer': 'resolution=merge-duplicates' },
-            body: JSON.stringify({ save_key: saveKey, data: { version: 2, player: collectPlayerData() }, updated_at: new Date().toISOString() }),
+        const dbChars = chars.map(row => ({
+            id: row.id, name: row.name, class: row.class,
+            campaignKey: row.campaign_key || '',
+            stats: row.stats || {}, physical: row.physical || {},
+            skills: row.skills || [], specials: row.specials || [],
+            weapons: row.weapons || [], protection: row.protection || {},
+            inventory: row.inventory || [],
+            potionRecipes: row.potion_recipes || [],
+            vials: row.vials || 0,
+        }));
+        localStorage.setItem('aria-characters', JSON.stringify(dbChars));
+
+        const ids = chars.map(c => c.id).join(',');
+        const [states, notes, files] = await Promise.all([
+            sbSelect('character_state', 'character_id=in.(' + ids + ')'),
+            sbSelect('character_notes', 'character_id=in.(' + ids + ')&order=position.asc'),
+            sbSelect('character_files', 'character_id=in.(' + ids + ')'),
+        ]);
+
+        states.forEach(s => {
+            if (s.hp    !== null && s.hp    !== undefined) localStorage.setItem('aria-current-hp-'   + s.character_id, s.hp);
+            if (s.cards) localStorage.setItem('aria-cards-'       + s.character_id, JSON.stringify(s.cards));
+            if (s.tabs)  localStorage.setItem('aria-player-tabs-' + s.character_id, JSON.stringify(s.tabs));
         });
-    } catch(e) { console.warn('[ARIA] Supabase sync failed:', e); }
-}
 
-function debouncedSync() {
-    clearTimeout(syncTimer);
-    syncTimer = setTimeout(syncToSupabase, 800);
+        const notesByChar = {};
+        notes.forEach(n => {
+            if (!notesByChar[n.character_id]) notesByChar[n.character_id] = [];
+            notesByChar[n.character_id].push({ id: n.id, name: n.name, content: n.content });
+        });
+        Object.entries(notesByChar).forEach(([cid, arr]) =>
+            localStorage.setItem('aria-notes-' + cid, JSON.stringify(arr)));
+
+        const filesByChar = {};
+        files.forEach(f => {
+            if (!filesByChar[f.character_id]) filesByChar[f.character_id] = [];
+            filesByChar[f.character_id].push({ id: f.file_id, name: f.name, type: f.type, url: f.url });
+        });
+        Object.entries(filesByChar).forEach(([cid, arr]) =>
+            localStorage.setItem('aria-player-files-' + cid, JSON.stringify(arr)));
+
+    } catch(e) { console.warn('[ARIA] Supabase load failed:', e); }
 }
 
 function showGateway() {
@@ -217,7 +272,8 @@ async function confirmNewKey() {
     if (!_pendingNewKey) return;
     saveKey = _pendingNewKey;
     localStorage.setItem('aria-save-key', saveKey);
-    await syncToSupabase();
+    await sbUpsert('saves', { save_key: saveKey, type: 'player' });
+    await _syncAllPlayerData();
     hideGateway();
     showSelectionScreen();
 }
@@ -358,6 +414,7 @@ function selectCharacter(id) {
 
 function deleteCharacter(id) {
     if (!confirm('Supprimer ce personnage ? Cette action est irréversible.')) return;
+    sbDelete('characters', 'id=eq.' + encodeURIComponent(id));
     const chars = getCharacters().filter(c => c.id !== id);
     saveCharacters(chars);
     localStorage.removeItem('aria-current-hp-' + id);
@@ -484,7 +541,6 @@ function _noteId() {
 
 function persistNotes() {
     localStorage.setItem(notesKey(), JSON.stringify(notesList));
-    debouncedSync();
 }
 
 function renderNotesList() {
@@ -538,12 +594,14 @@ function addNote() {
     const note = { id: _noteId(), name: 'Nouvelle note', content: '' };
     notesList.push(note);
     persistNotes();
+    syncCharacterNote(note);
     selectNote(note.id);
     const nameInput = document.getElementById('notes-name-input');
     if (nameInput) { nameInput.focus(); nameInput.select(); }
 }
 
 function deleteNote(id) {
+    deleteCharacterNote(id);
     const idx = notesList.findIndex(n => n.id === id);
     notesList = notesList.filter(n => n.id !== id);
     currentNoteId = notesList[Math.min(idx, notesList.length - 1)]?.id || null;
@@ -557,6 +615,7 @@ function saveCurrentNote() {
     if (!note) return;
     note.content = document.getElementById('notes-area').value;
     persistNotes();
+    debouncedSyncNote(note);
 }
 
 function renameCurrentNote() {
@@ -565,6 +624,7 @@ function renameCurrentNote() {
     note.name = document.getElementById('notes-name-input').value;
     persistNotes();
     renderNotesList();
+    debouncedSyncNote(note);
 }
 
 function applyTabVisibility() {
@@ -630,7 +690,7 @@ function handleGMDamage(data) {
     const { damage, hpBefore, hpAfter, maxHP } = data;
     animateHPChange(hpBefore, hpAfter, maxHP);
     currentHP = hpAfter;
-    localStorage.setItem(hpKey(), currentHP); debouncedSync();
+    localStorage.setItem(hpKey(), currentHP); debouncedSyncState();
     updateHPDisplay();
     triggerDamageVFX(damage, false);
     showToast('gm-dmg-toast', `⚔ Dégâts reçus : -${damage} PV`);
@@ -640,7 +700,7 @@ function handleGMHeal(data) {
     const { amount, hpBefore, hpAfter, maxHP } = data;
     animateHPChange(hpBefore, hpAfter, maxHP);
     currentHP = hpAfter;
-    localStorage.setItem(hpKey(), currentHP); debouncedSync();
+    localStorage.setItem(hpKey(), currentHP); debouncedSyncState();
     updateHPDisplay();
     showHealNumber(amount);
     showToast('gm-heal-toast', `♥ Soins reçus : +${amount} PV`);
@@ -1124,7 +1184,7 @@ function applySoigner(success) {
                     const after = Math.min(max, before + heal);
                     animateHPChange(before, after, max);
                     currentHP = after;
-                    localStorage.setItem(hpKey(), currentHP); debouncedSync();
+                    localStorage.setItem(hpKey(), currentHP); debouncedSyncState();
                     updateHPDisplay();
                     showHealNumber(heal);
                     showToast('gm-heal-toast', `♥ Soins : +${heal} PV`);
@@ -1143,7 +1203,7 @@ function applySoigner(success) {
                     const after = Math.max(0, before - dmg);
                     animateHPChange(before, after, max);
                     currentHP = after;
-                    localStorage.setItem(hpKey(), currentHP); debouncedSync();
+                    localStorage.setItem(hpKey(), currentHP); debouncedSyncState();
                     updateHPDisplay();
                     triggerDamageVFX(dmg, true);
                     showToast('gm-dmg-toast', `⚔ Blessure : -${dmg} PV`);
@@ -1389,7 +1449,7 @@ function initAbly() {
                 if (d.playerId !== myId) return;
                 playerTabs = { ...playerTabs, ...d.tabs };
                 localStorage.setItem('aria-player-tabs-' + currentCharId, JSON.stringify(playerTabs));
-                debouncedSync();
+                debouncedSyncState();
                 applyTabVisibility();
                 return;
             }
@@ -1427,7 +1487,7 @@ function initAbly() {
                 if (!playerFiles.find(f => f.id === d.file.id)) {
                     playerFiles.push(d.file);
                     localStorage.setItem('aria-player-files-' + currentCharId, JSON.stringify(playerFiles));
-                    debouncedSync();
+                    syncCharacterFile(d.file, currentCharId);
                     applyTabVisibility();
                     renderPlayerFiles();
                     showToast('gm-heal-toast', `Document reçu : ${d.file.name}`);
@@ -1439,7 +1499,7 @@ function initAbly() {
                 if (!d.fileId) return;
                 playerFiles = playerFiles.filter(f => f.id !== d.fileId);
                 localStorage.setItem('aria-player-files-' + currentCharId, JSON.stringify(playerFiles));
-                debouncedSync();
+                deleteCharacterFile(d.fileId);
                 applyTabVisibility();
                 renderPlayerFiles();
                 return;
@@ -1868,7 +1928,7 @@ function togglePill(id) {
     updateClearBtn(); saveCardState();
 }
 function clearExclusions() { if (cardDrawing) return; cardExcluded.forEach(id => { const c = cardById(id); if (c) cardDeck.splice(Math.floor(Math.random() * (cardDeck.length + 1)), 0, c); }); cardExcluded.clear(); updateDeckCount(); refreshAllPills(); updateClearBtn(); saveCardState(); showCardStatus('Exclusions effacées'); }
-function saveCardState() { localStorage.setItem(cardKey(), JSON.stringify({ excluded: [...cardExcluded], drawn: [...cardDrawn], deckIds: cardDeck.map(c => c.id), lastCardId })); debouncedSync(); }
+function saveCardState() { localStorage.setItem(cardKey(), JSON.stringify({ excluded: [...cardExcluded], drawn: [...cardDrawn], deckIds: cardDeck.map(c => c.id), lastCardId })); debouncedSyncState(); }
 function updateDeckCount() {
     const n = cardDeck.length;
     document.getElementById('deck-count').textContent = n === 0 ? 'Vide' : `${n} carte${n !== 1 ? 's' : ''}`;

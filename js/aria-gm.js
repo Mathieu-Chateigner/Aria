@@ -48,97 +48,125 @@ let gmFiles = [];
 const filesGrantedSessions = new Set();
 let saveKey        = localStorage.getItem('aria-save-key') || null;
 let _pendingNewKey = null;
-let syncTimer      = null;
 
 // ═══════════════════════════════════════════
-//  SUPABASE CONFIG
-//  Replace with your values from:
-//  Supabase dashboard → Project Settings → API
+//  CLOUD SAVE — RELATIONAL SYNC
 // ═══════════════════════════════════════════
-const SUPABASE_URL = 'https://npybuksklkvdmbhyzdjs.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_hUkdwmlgNNhLXn6t38GHHg_N7XXVOn4';
+function _supabaseReady() { return !!saveKey; }
+function _nowISO() { return new Date().toISOString(); }
 
-// ═══════════════════════════════════════════
-//  CLOUD SAVE SYSTEM
-// ═══════════════════════════════════════════
-function _supabaseReady() {
-    return !!SUPABASE_URL && !!SUPABASE_ANON_KEY && !!saveKey;
+async function syncCampaign(camp) {
+    if (!_supabaseReady()) return;
+    await sbUpsert('campaigns', { id: camp.id, save_key: saveKey, name: camp.name, join_code: camp.joinCode || null, updated_at: _nowISO() });
 }
 
-async function _sbFetch(path, options = {}) {
-    return fetch(SUPABASE_URL + path, {
-        ...options,
-        headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-            'Content-Type': 'application/json',
-            ...options.headers,
-        },
-    });
+async function syncMonster(m) {
+    if (!_supabaseReady() || !currentCampaignId) return;
+    await sbUpsert('monsters', { id: String(m.id), campaign_id: currentCampaignId, name: m.name, pv: m.pv, max_pv: m.maxPV, armor: m.armor || 0, stats: m.stats || null, attacks: m.attacks || null, updated_at: _nowISO() });
 }
 
-function collectGMData() {
-    const campaigns = JSON.parse(localStorage.getItem('aria-gm-campaigns') || '[]');
-    const perCampaign = {};
-    campaigns.forEach(c => {
-        const monsters      = localStorage.getItem('aria-gm-monsters-'      + c.id);
-        const rolls         = localStorage.getItem('aria-gm-rolls-'         + c.id);
-        const cardHistory   = localStorage.getItem('aria-gm-card-history-'  + c.id);
-        const potions       = localStorage.getItem('aria-gm-potions-'       + c.id);
-        const knownPlayers  = localStorage.getItem('aria-gm-known-players-' + c.id);
-        const files         = localStorage.getItem('aria-gm-files-'         + c.id);
-        perCampaign[c.id] = {
-            monsters:     monsters     ? JSON.parse(monsters)     : null,
-            rolls:        rolls        ? JSON.parse(rolls)        : null,
-            cardHistory:  cardHistory  ? JSON.parse(cardHistory)  : null,
-            potions:      potions      ? JSON.parse(potions)      : null,
-            knownPlayers: knownPlayers ? JSON.parse(knownPlayers) : null,
-            files:        files        ? JSON.parse(files)        : null,
-        };
-    });
-    return { campaigns, perCampaign };
+let _monstersTimer = null;
+function debouncedSyncMonsters() {
+    clearTimeout(_monstersTimer);
+    _monstersTimer = setTimeout(() => { if (_supabaseReady() && currentCampaignId) Promise.all(monsters.map(m => syncMonster(m))); }, 800);
 }
 
-function applyGMData(data) {
-    if (!data || !Array.isArray(data.campaigns)) return;
-    localStorage.setItem('aria-gm-campaigns', JSON.stringify(data.campaigns));
-    if (!data.perCampaign) return;
-    Object.entries(data.perCampaign).forEach(([id, s]) => {
-        if (s.monsters     !== null && s.monsters     !== undefined) localStorage.setItem('aria-gm-monsters-'      + id, JSON.stringify(s.monsters));
-        if (s.rolls        !== null && s.rolls        !== undefined) localStorage.setItem('aria-gm-rolls-'         + id, JSON.stringify(s.rolls));
-        if (s.cardHistory  !== null && s.cardHistory  !== undefined) localStorage.setItem('aria-gm-card-history-'  + id, JSON.stringify(s.cardHistory));
-        if (s.potions      !== null && s.potions      !== undefined) localStorage.setItem('aria-gm-potions-'       + id, JSON.stringify(s.potions));
-        if (s.knownPlayers !== null && s.knownPlayers !== undefined) localStorage.setItem('aria-gm-known-players-' + id, JSON.stringify(s.knownPlayers));
-        if (s.files        !== null && s.files        !== undefined) localStorage.setItem('aria-gm-files-'         + id, JSON.stringify(s.files));
-    });
+async function insertRoll(data) {
+    if (!_supabaseReady() || !currentCampaignId) return;
+    await sbInsert('campaign_rolls', { campaign_id: currentCampaignId, skill_name: data.skillName || '', threshold: data.threshold ?? null, roll: data.roll, success: !!data.success, char_name: data.char || data.playerId || '', bonus_malus: data.bonusMalus || 0, created_at: _nowISO() });
+}
+
+async function insertCardHistory(cardId) {
+    if (!_supabaseReady() || !currentCampaignId) return;
+    await sbInsert('campaign_card_history', { campaign_id: currentCampaignId, card_id: cardId, drawn_at: _nowISO() });
+}
+
+async function syncPotion(p) {
+    if (!_supabaseReady() || !currentCampaignId) return;
+    await sbUpsert('campaign_potions', { id: p.id, campaign_id: currentCampaignId, name: p.name, description: p.desc || '', ingredients: p.ingredients || null, success_chance: p.successChance || 0, updated_at: _nowISO() });
+}
+
+let _potionsTimer = null;
+function debouncedSyncPotions() {
+    clearTimeout(_potionsTimer);
+    _potionsTimer = setTimeout(() => { if (_supabaseReady() && currentCampaignId) Promise.all(gmPotions.map(p => syncPotion(p))); }, 800);
+}
+
+async function syncFile(f) {
+    if (!_supabaseReady() || !currentCampaignId) return;
+    await sbUpsert('campaign_files', { id: f.id, campaign_id: currentCampaignId, name: f.name, type: f.type || '', url: f.url || '', path: f.path || '', granted_to: f.grantedTo || [], updated_at: _nowISO() });
+}
+
+let _filesTimer = null;
+function debouncedSyncFiles() {
+    clearTimeout(_filesTimer);
+    _filesTimer = setTimeout(() => { if (_supabaseReady() && currentCampaignId) Promise.all(gmFiles.map(f => syncFile(f))); }, 800);
+}
+
+async function syncGMNote(note) {
+    if (!_supabaseReady() || !currentCampaignId) return;
+    const pos = gmNotesList.findIndex(n => n.id === note.id);
+    await sbUpsert('campaign_notes', { id: note.id, campaign_id: currentCampaignId, name: note.name || 'Note', content: note.content || '', position: pos >= 0 ? pos : 0, updated_at: _nowISO() });
+}
+
+let _gmNoteTimer = null;
+function debouncedSyncGMNote(note) { clearTimeout(_gmNoteTimer); _gmNoteTimer = setTimeout(() => syncGMNote(note), 800); }
+
+async function deleteGMNoteFromDB(id) {
+    if (!_supabaseReady()) return;
+    await sbDelete('campaign_notes', 'id=eq.' + encodeURIComponent(id));
+}
+
+async function syncKnownPlayer(charId, data) {
+    if (!_supabaseReady() || !currentCampaignId) return;
+    await sbUpsert('campaign_known_players', { id: charId + ':' + currentCampaignId, campaign_id: currentCampaignId, char_id: charId, data, updated_at: _nowISO() }, 'campaign_id,char_id');
+}
+
+async function _syncAllGMData() {
+    if (!_supabaseReady()) return;
+    await sbUpsert('saves', { save_key: saveKey, type: 'gm' });
+    const campaigns = getCampaigns();
+    await Promise.all(campaigns.map(c => syncCampaign(c)));
+    if (currentCampaignId) {
+        const now = _nowISO();
+        await Promise.all(monsters.map(m => syncMonster(m)));
+        await Promise.all(gmPotions.map(p => syncPotion(p)));
+        await Promise.all(gmFiles.map(f => syncFile(f)));
+        for (const [charId, p] of players) {
+            await sbUpsert('campaign_known_players', { id: charId + ':' + currentCampaignId, campaign_id: currentCampaignId, char_id: charId, data: p, updated_at: now }, 'campaign_id,char_id');
+        }
+        const notes = gmNotesList;
+        await Promise.all(notes.map((n, i) => sbUpsert('campaign_notes', { id: n.id, campaign_id: currentCampaignId, name: n.name || 'Note', content: n.content || '', position: i, updated_at: now })));
+    }
 }
 
 async function loadFromSupabase() {
     if (!_supabaseReady()) return;
+    await runMigration(saveKey, 'gm');
     try {
-        const res = await _sbFetch(`/rest/v1/saves?save_key=eq.${encodeURIComponent(saveKey)}&select=data`);
-        if (!res.ok) return;
-        const rows = await res.json();
-        if (!rows.length) return;
-        const data = rows[0].data;
-        if (data.gm) applyGMData(data.gm);
-    } catch(e) { console.warn('[ARIA] Supabase load failed:', e); }
-}
-
-async function syncToSupabase() {
-    if (!_supabaseReady()) return;
-    try {
-        await _sbFetch('/rest/v1/saves', {
-            method: 'POST',
-            headers: { 'Prefer': 'resolution=merge-duplicates' },
-            body: JSON.stringify({ save_key: saveKey, data: { version: 2, gm: collectGMData() }, updated_at: new Date().toISOString() }),
-        });
-    } catch(e) { console.warn('[ARIA] Supabase sync failed:', e); }
-}
-
-function debouncedSync() {
-    clearTimeout(syncTimer);
-    syncTimer = setTimeout(syncToSupabase, 800);
+        const camps = await sbSelect('campaigns', 'save_key=eq.' + encodeURIComponent(saveKey) + '&select=id,name,join_code');
+        if (!camps.length) return;
+        const campaigns = camps.map(c => ({ id: c.id, name: c.name, joinCode: c.join_code }));
+        localStorage.setItem('aria-gm-campaigns', JSON.stringify(campaigns));
+        for (const c of campaigns) {
+            const [mons, pots, files, kp, notes] = await Promise.all([
+                sbSelect('monsters', 'campaign_id=eq.' + encodeURIComponent(c.id) + '&select=*'),
+                sbSelect('campaign_potions', 'campaign_id=eq.' + encodeURIComponent(c.id) + '&select=*'),
+                sbSelect('campaign_files', 'campaign_id=eq.' + encodeURIComponent(c.id) + '&select=*'),
+                sbSelect('campaign_known_players', 'campaign_id=eq.' + encodeURIComponent(c.id) + '&select=*'),
+                sbSelect('campaign_notes', 'campaign_id=eq.' + encodeURIComponent(c.id) + '&select=*&order=position.asc'),
+            ]);
+            if (mons.length) localStorage.setItem('aria-gm-monsters-' + c.id, JSON.stringify(mons.map(m => ({ id: m.id, name: m.name, pv: m.pv, maxPV: m.max_pv, armor: m.armor || 0, stats: m.stats || {}, attacks: m.attacks || [] }))));
+            if (pots.length) localStorage.setItem('aria-gm-potions-' + c.id, JSON.stringify(pots.map(p => ({ id: p.id, name: p.name, desc: p.description, ingredients: p.ingredients, successChance: p.success_chance }))));
+            if (files.length) localStorage.setItem('aria-gm-files-' + c.id, JSON.stringify(files.map(f => ({ id: f.id, name: f.name, type: f.type, url: f.url, path: f.path, grantedTo: f.granted_to || [] }))));
+            if (kp.length) {
+                const obj = {};
+                kp.forEach(row => { if (row.char_id) obj[row.char_id] = row.data; });
+                localStorage.setItem('aria-gm-known-players-' + c.id, JSON.stringify(obj));
+            }
+            if (notes.length) localStorage.setItem('aria-gm-notes-' + c.id, JSON.stringify(notes.map(n => ({ id: n.id, name: n.name, content: n.content }))));
+        }
+    } catch(e) { console.warn('[ARIA] GM load failed:', e); }
 }
 
 function showGateway() {
@@ -171,7 +199,8 @@ async function confirmNewKey() {
     if (!_pendingNewKey) return;
     saveKey = _pendingNewKey;
     localStorage.setItem('aria-save-key', saveKey);
-    await syncToSupabase();
+    await sbUpsert('saves', { save_key: saveKey, type: 'gm' });
+    await _syncAllGMData();
     hideGateway();
     showSelectionScreen();
 }
@@ -243,7 +272,7 @@ function saveKnownPlayers() {
 }
 
 function getCampaigns() { return JSON.parse(localStorage.getItem('aria-gm-campaigns') || '[]'); }
-function saveCampaigns(campaigns) { localStorage.setItem('aria-gm-campaigns', JSON.stringify(campaigns)); debouncedSync(); }
+function saveCampaigns(campaigns) { localStorage.setItem('aria-gm-campaigns', JSON.stringify(campaigns)); Promise.all(campaigns.map(c => syncCampaign(c))); }
 
 function migrateGMIfNeeded() {
     if (localStorage.getItem('aria-gm-campaigns')) return;
@@ -325,6 +354,7 @@ function selectCampaign(id) {
 
 function deleteCampaign(id) {
     if (!confirm('Supprimer cette campagne ? Tous les monstres et données seront perdus.')) return;
+    sbDelete('campaigns', 'id=eq.' + encodeURIComponent(id));
     const campaigns = getCampaigns().filter(c => c.id !== id);
     saveCampaigns(campaigns);
     localStorage.removeItem('aria-gm-monsters-' + id);
@@ -333,6 +363,7 @@ function deleteCampaign(id) {
     localStorage.removeItem('aria-gm-potions-' + id);
     localStorage.removeItem('aria-gm-known-players-' + id);
     localStorage.removeItem('aria-gm-files-' + id);
+    localStorage.removeItem('aria-gm-notes-' + id);
     renderCampaignScreen();
 }
 
@@ -372,7 +403,6 @@ function switchCampaign() {
         saveGMPotions();
         localStorage.setItem(rollsKey(), JSON.stringify(rollFeed));
         localStorage.setItem(cardHistKey(), JSON.stringify(cardHistory));
-        debouncedSync();
     }
     gmPotions = [];
     gmFiles = [];
@@ -575,8 +605,10 @@ function publishHeal(targetId, amount, hpBefore, hpAfter, maxHP, charName) {
 function handlePresence(data) {
     if (!data?.playerId || !data?.charId) return;
     if (currentJoinCode && (data.campaignKey || '') !== currentJoinCode) return;
-    players.set(data.charId, { ...data, ts: Date.now(), online: true });
+    const playerData = { ...data, ts: Date.now(), online: true };
+    players.set(data.charId, playerData);
     saveKnownPlayers();
+    syncKnownPlayer(data.charId, playerData);
     clearTimeout(renderPlayerCardsTimer);
     renderPlayerCardsTimer = setTimeout(renderPlayerCards, 150);
     // Auto-send file grants to newly connected sessions
@@ -849,7 +881,7 @@ function applyPlayerHeal(playerId) {
 // ═══════════════════════════════════════════
 //  MONSTERS
 // ═══════════════════════════════════════════
-function saveMonsters() { localStorage.setItem(monstersKey(), JSON.stringify(monsters)); debouncedSync(); }
+function saveMonsters() { localStorage.setItem(monstersKey(), JSON.stringify(monsters)); debouncedSyncMonsters(); }
 function addMonster() {
     const name = document.getElementById('amf-name').value.trim();
     if (!name) { alert('Entrez un nom.'); return; }
@@ -862,7 +894,7 @@ function addMonster() {
         INT: parseInt(document.getElementById('amf-int').value) || 10,
         CHA: parseInt(document.getElementById('amf-cha').value) || 10,
     };
-    const monster = { id: Date.now(), name, pv, maxPV: pv, armor, stats, attacks: [...newMonsterAttacks] };
+    const monster = { id: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2), name, pv, maxPV: pv, armor, stats, attacks: [...newMonsterAttacks] };
     monsters.push(monster);
     saveMonsters();
     // Reset form
@@ -873,6 +905,7 @@ function addMonster() {
     refreshMonsterSelect();
 }
 function removeMonster(id) {
+    sbDelete('monsters', 'id=eq.' + encodeURIComponent(String(id)));
     monsters = monsters.filter(m => m.id !== id);
     saveMonsters();
     renderMonsters();
@@ -1053,7 +1086,7 @@ function handleIncomingRoll(data) {
     rollFeed.unshift({ ...data, receivedAt: Date.now() });
     if (rollFeed.length > 50) rollFeed.pop();
     localStorage.setItem(rollsKey(), JSON.stringify(rollFeed));
-    debouncedSync();
+    insertRoll(data);
     renderRollFeed();
 }
 function classify(roll, threshold, success) {
@@ -1084,7 +1117,7 @@ function renderRollFeed() {
         feed.appendChild(row);
     });
 }
-function clearRolls() { rollFeed = []; localStorage.removeItem(rollsKey()); debouncedSync(); renderRollFeed(); }
+function clearRolls() { rollFeed = []; localStorage.removeItem(rollsKey()); renderRollFeed(); }
 
 // ═══════════════════════════════════════════
 //  GM ROLLS
@@ -1230,7 +1263,6 @@ function renderCardHistory() {
 function clearCardHistory() {
     cardHistory = [];
     localStorage.removeItem(cardHistKey());
-    debouncedSync();
     renderCardHistory();
 }
 async function handlePlayerCard(data) {
@@ -1242,7 +1274,7 @@ async function handlePlayerCard(data) {
     document.getElementById('gm-card-info').textContent = who;
     cardHistory.unshift({ cardId: data.cardId, playerName: data.playerName || '?', ts: Date.now() });
     localStorage.setItem(cardHistKey(), JSON.stringify(cardHistory));
-    debouncedSync();
+    insertCardHistory(data.cardId);
     renderCardHistory();
     const flipWrap = document.getElementById('flip-wrap');
     const flipInner = flipWrap.querySelector('.flip-inner');
@@ -1480,7 +1512,7 @@ function closeGmFileViewer() {
 // ═══════════════════════════════════════════
 //  GM ALCHEMY
 // ═══════════════════════════════════════════
-function saveGMPotions() { if (currentCampaignId) { localStorage.setItem(potionsKey(), JSON.stringify(gmPotions)); debouncedSync(); } }
+function saveGMPotions() { if (currentCampaignId) { localStorage.setItem(potionsKey(), JSON.stringify(gmPotions)); debouncedSyncPotions(); } }
 
 function addGMPotion() {
     const name = document.getElementById('apf-name').value.trim();
@@ -1496,6 +1528,7 @@ function addGMPotion() {
 }
 
 function removeGMPotion(id) {
+    sbDelete('campaign_potions', 'id=eq.' + encodeURIComponent(id));
     gmPotions = gmPotions.filter(p => p.id !== id);
     saveGMPotions();
     renderGMPotions();
@@ -1562,6 +1595,7 @@ function importAlchemyFrom(sourceId, sourceName) {
     const sourcePotions = JSON.parse(localStorage.getItem('aria-gm-potions-' + sourceId) || '[]');
     if (!sourcePotions.length) { alert(`Aucune recette dans la campagne "${sourceName}".`); return; }
     if (!confirm(`Remplacer le grimoire actuel par les ${sourcePotions.length} recette(s) de "${sourceName}" ?`)) return;
+    gmPotions.forEach(p => sbDelete('campaign_potions', 'id=eq.' + encodeURIComponent(p.id)));
     gmPotions = sourcePotions.map(p => ({
         ...p,
         id: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)
@@ -1610,7 +1644,7 @@ function _fileIcon(type) {
     return '📄';
 }
 
-function saveGmFiles() { localStorage.setItem(filesKey(), JSON.stringify(gmFiles)); debouncedSync(); }
+function saveGmFiles() { localStorage.setItem(filesKey(), JSON.stringify(gmFiles)); debouncedSyncFiles(); }
 
 // ═══════════════════════════════════════════
 //  NOTES MJ
@@ -1641,7 +1675,6 @@ function loadGMNotes() {
 
 function persistGMNotes() {
     localStorage.setItem(gmNotesKey(), JSON.stringify(gmNotesList));
-    debouncedSync();
 }
 
 function renderGMNotesList() {
@@ -1695,12 +1728,14 @@ function addGMNote() {
     const note = { id: _gmNoteId(), name: 'Nouvelle note', content: '' };
     gmNotesList.push(note);
     persistGMNotes();
+    syncGMNote(note);
     selectGMNote(note.id);
     const nameInput = document.getElementById('gm-notes-name-input');
     if (nameInput) { nameInput.focus(); nameInput.select(); }
 }
 
 function deleteGMNote(id) {
+    deleteGMNoteFromDB(id);
     const idx = gmNotesList.findIndex(n => n.id === id);
     gmNotesList = gmNotesList.filter(n => n.id !== id);
     gmCurrentNoteId = gmNotesList[Math.min(idx, gmNotesList.length - 1)]?.id || null;
@@ -1714,6 +1749,7 @@ function saveCurrentGMNote() {
     if (!note) return;
     note.content = document.getElementById('gm-notes-area').value;
     persistGMNotes();
+    debouncedSyncGMNote(note);
 }
 
 function renameCurrentGMNote() {
@@ -1722,6 +1758,7 @@ function renameCurrentGMNote() {
     note.name = document.getElementById('gm-notes-name-input').value;
     persistGMNotes();
     renderGMNotesList();
+    debouncedSyncGMNote(note);
 }
 
 async function uploadFileToStorage(file) {
@@ -1784,6 +1821,7 @@ async function removeGmFile(fileId) {
     if (!f) return;
     if (ablyDamage) ablyDamage.publish('file-revoke', { playerId: 'all', fileId });
     await deleteFileFromStorage(f.path);
+    sbDelete('campaign_files', 'id=eq.' + encodeURIComponent(fileId));
     gmFiles = gmFiles.filter(f => f.id !== fileId);
     saveGmFiles();
     renderGmFiles();
