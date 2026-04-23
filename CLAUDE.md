@@ -57,6 +57,7 @@ css/
   aria-gm.css
   aria-overlay.css
 js/
+  aria-supabase.js   ← shared Supabase helpers (loaded first, before panel scripts)
   aria-player.js
   aria-gm.js
   aria-overlay.js
@@ -80,7 +81,7 @@ All three apps share **one Ably key** (entered on `index.html`) and use three ch
 
 ### Supabase credentials
 
-`SUPABASE_URL` and `SUPABASE_ANON_KEY` are hardcoded constants at the top of `js/aria-player.js` and `js/aria-gm.js` (around line 58). Change both files when switching Supabase projects. The GM also uses Supabase Storage (bucket `campaign-files`) for file sharing.
+`SUPABASE_URL` and `SUPABASE_ANON_KEY` are hardcoded at the top of `js/aria-supabase.js`. Change only that file when switching Supabase projects. The GM also uses Supabase Storage (bucket `campaign-files`) for file sharing.
 
 ### Save key / Supabase sync
 
@@ -90,8 +91,13 @@ Both player and GM use a **save key** (UUID) to sync localStorage to Supabase, e
   - Key found → calls `loadFromSupabase()` then `hideGateway()` + `showSelectionScreen()` (no flash)
   - No key → calls `showGateway()` which sets `display:flex`, prompting the user to create or enter a key
 - `saveKey` is stored in `localStorage('aria-save-key')` and also held in the module-level `saveKey` variable
-- Sync is debounced (`debouncedSync()` → 800ms → `syncToSupabase()`) to avoid hammering the API
 - **Never set `#file-gateway` to `display:flex` in HTML** — it must start hidden to avoid the flash on load
+
+**Sync architecture** — `js/aria-supabase.js` exposes shared helpers (`sbUpsert`, `sbDelete`, `sbSelect`, `sbInsert`, `runMigration`). Both panels use **per-entity granular sync** — separate debounced functions per data type — rather than one monolithic blob. `localStorage` is always the runtime source of truth; Supabase is only the persistence layer.
+
+- Player: `debouncedSync()` for character data, `debouncedSyncState()` for HP/cards/tabs, `syncCharacterNote` / `deleteCharacterNote` for notes, `syncCharacterFile` / `deleteCharacterFile` for files.
+- GM: `syncCampaign`, `debouncedSyncMonsters`, `insertRoll` / `insertCardHistory` (append-only — `clearRolls()` / `clearCardHistory()` never touch the DB), `debouncedSyncPotions`, `debouncedSyncFiles`, `syncGMNote` / `deleteGMNoteFromDB`, `syncKnownPlayer` (called on every presence heartbeat).
+- `runMigration` is a one-time runner that reads the old JSON blob from `saves` and populates the relational tables. It checks `player_migrated_at` / `gm_migrated_at` flags to skip if already done.
 
 ### No server, no build
 
