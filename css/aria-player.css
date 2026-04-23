@@ -252,7 +252,7 @@ body {
 .sidebar > .panel { flex-shrink: 0; }
 
 .sidebar > .panel:last-child {
-    flex: 1;
+    flex: 0 1 auto;
     min-height: 0;
     overflow: hidden;
     display: flex;
@@ -261,7 +261,6 @@ body {
 
 .sidebar > .panel:last-child .panel-body {
     overflow-y: auto;
-    flex: 1;
     min-height: 0;
 }
 
