@@ -1855,7 +1855,7 @@ function autoSaveChar() {
         return;
     }
     initCurrentHP();
-    const oldMax = getMaxHP();
+    const oldMax = character.stats.PV;
     readEditorInputs();
     const newMax = character.stats.PV;
     if (newMax !== oldMax) {
