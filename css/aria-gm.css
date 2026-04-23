@@ -442,6 +442,7 @@ body {
     font-family: 'Cinzel',serif;
     font-size: 12px;
     color: var(--gold-dim);
+    margin-top: 4px;
 }
 
 .no-players {

@@ -935,7 +935,7 @@ function renderCombatSidebar() {
         html += `<div style="font-family:'EB Garamond',serif;font-size:13px;color:var(--parchment-dim);font-style:italic;opacity:.5;">Aucune arme</div>`;
     }
     html += `<div style="margin:8px 0 6px;border-top:1px solid var(--border);"></div>`;
-    html += `<div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase;">Protection</span><span style="font-family:'Cinzel',serif;font-size:12px;">${prot.nom || '—'} ${prot.valeur ? `<span style="color:var(--gold)">${prot.valeur}</span>` : ''}</span></div>`;
+    html += `<div style="margin-bottom:6px;"><div style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:3px;">Protection</div><div style="font-family:'Cinzel',serif;font-size:12px;">${prot.nom || '—'} ${prot.valeur ? `<span style="color:var(--gold)">${prot.valeur}</span>` : ''}</div></div>`;
 
     // Reaction buttons — look up Parade and Esquiver in the character's skills/specials
     const allSkills = [...(character.skills || []), ...(character.specials || [])];

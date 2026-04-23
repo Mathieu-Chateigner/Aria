@@ -677,8 +677,8 @@ function renderPlayerCards() {
                 <div style="font-family:'Cinzel',serif;font-size:9px;color:var(--parchment-dim);">/ ${maxHP} PV</div>
               </div>
               <div class="pc-hp-bar-wrap"><div class="pc-hp-bar" style="width:${Math.round(pct * 100)}%;background:${hpColor};"></div></div>
-              ${p.protection ? `<div class="pc-prot" title="Protection">🛡 ${p.protection.nom || ''} ${p.protection.valeur ? p.protection.valeur : ''}</div>` : ''}
             </div>
+            ${p.protection ? `<div class="pc-prot" title="Protection">🛡 ${p.protection.nom || ''}${p.protection.valeur ? ' ' + p.protection.valeur : ''}</div>` : ''}
             <div class="pc-stats">
               ${Object.entries(stats).filter(([k]) => k !== 'PV').map(([k, v]) => `<span class="pc-stat">${k} <span>${v}</span></span>`).join('')}
             </div>
