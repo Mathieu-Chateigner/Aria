@@ -246,7 +246,23 @@ body {
     flex-direction: column;
     padding: 16px;
     gap: 16px;
+    overflow: hidden;
+}
+
+.sidebar > .panel { flex-shrink: 0; }
+
+.sidebar > .panel:last-child {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar > .panel:last-child .panel-body {
     overflow-y: auto;
+    flex: 1;
+    min-height: 0;
 }
 
 .panel {
