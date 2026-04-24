@@ -3,6 +3,12 @@ const MODE = params.get('mode') || 'gm';
 const ABLY_KEY = params.get('ably') || '';
 const DDDICE_KEY = params.get('dddice_key') || '';
 const DDDICE_ROOM = params.get('dddice_room') || '';
+const OVERLAY_ID = params.get('overlay') || '';
+
+let overlayConfig = { widgets: [] };
+const presenceCache = new Map();
+const rollHistory = [];
+const ROLL_HISTORY_MAX = 20;
 
 let rollDismiss = null;
 let cardDismiss = null;
@@ -21,6 +27,9 @@ if (ABLY_KEY) {
     // Dice rolls
     const rollCh = ably.channels.get('aria-rolls');
     rollCh.subscribe('roll', msg => {
+        rollHistory.push(msg.data);
+        if (rollHistory.length > ROLL_HISTORY_MAX) rollHistory.shift();
+        updateWidgetData();
         const data = msg.data;
         if (diceConnected) {
             // SDK is active: store data and wait for RollFinished to display it
@@ -55,6 +64,37 @@ if (ABLY_KEY) {
     const dmgCh = ably.channels.get('aria-damage');
     dmgCh.subscribe('damage', msg => showDamage(msg.data));
     dmgCh.subscribe('heal', msg => showHeal(msg.data));
+    dmgCh.subscribe('presence', msg => {
+        const d = msg.data;
+        if (d?.charId) {
+            presenceCache.set(d.charId, d);
+            updateWidgetData();
+        }
+    });
+
+    if (OVERLAY_ID) {
+        const cfgCh = ably.channels.get('aria-overlay-config');
+        cfgCh.subscribe('layout-update', msg => {
+            if (msg.data.overlayId !== OVERLAY_ID) return;
+            overlayConfig = msg.data.config;
+            renderWidgetLayer();
+        });
+        cfgCh.subscribe('content-update', msg => {
+            if (msg.data.overlayId !== OVERLAY_ID) return;
+            const widget = overlayConfig.widgets.find(w => w.id === msg.data.widgetId);
+            if (!widget) return;
+            widget.config = { ...widget.config, content: msg.data.content };
+            const el = document.querySelector(`.overlay-widget[data-widget-id="${msg.data.widgetId}"]`);
+            if (el) el.innerHTML = renderWidgetContent(widget);
+        });
+        cfgCh.subscribe('monster-state', msg => {
+            if (msg.data.overlayId !== OVERLAY_ID) return;
+            const widget = overlayConfig.widgets.find(w => w.type === 'monster_list');
+            if (!widget) return;
+            widget.config = { ...widget.config, monsters: msg.data.monsters };
+            updateWidgetData();
+        });
+    }
 } else {
     console.warn('No Ably key. Pass ?ably=YOUR_KEY in the URL.');
 }
@@ -489,3 +529,148 @@ function showHeal(data) {
         ghost.style.background = ''; // reset
     }, 4200);
 }
+
+// ── OVERLAY CONFIG ────────────────────────────
+function getEventWidgetStyle(type) {
+    const widget = overlayConfig.widgets.find(w => w.type === type && w.category === 'event');
+    if (!widget) return null;
+    return { left: widget.x + '%', top: widget.y + '%', width: widget.w + '%', height: widget.h + '%' };
+}
+
+function applyEventWidgetPosition(elId, widgetType) {
+    const style = getEventWidgetStyle(widgetType);
+    if (!style) return;
+    const el = document.getElementById(elId);
+    if (!el) return;
+    Object.assign(el.style, style);
+}
+
+function renderWidgetContent(widget) {
+    const cfg = widget.config || {};
+    switch (widget.type) {
+        case 'character_name': {
+            const p = [...presenceCache.values()][0];
+            if (!p) return '<div class="ow-char-name">—</div>';
+            return `<div class="ow-char-name">${p.name}${p.charClass ? ' — ' + p.charClass : ''}</div>`;
+        }
+        case 'hp_bar': {
+            const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
+            if (!p) return '<div class="ow-hp-wrap"><div class="ow-hp-label">—</div><div class="ow-hp-track"><div class="ow-hp-fill" style="width:0%"></div><div class="ow-hp-text">— PV</div></div></div>';
+            const pct = Math.max(0, Math.min(100, (p.hp / (p.maxHP || 1)) * 100));
+            const colorCls = pct > 60 ? '' : pct > 30 ? ' yellow' : ' red';
+            return `<div class="ow-hp-wrap"><div class="ow-hp-label">${p.name}</div><div class="ow-hp-track"><div class="ow-hp-fill${colorCls}" style="width:${pct}%"></div><div class="ow-hp-text">${p.hp} / ${p.maxHP} PV</div></div></div>`;
+        }
+        case 'stats': {
+            const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
+            if (!p?.stats) return '<div class="ow-stats">—</div>';
+            return `<div class="ow-stats">${['FOR','DEX','END','INT','CHA'].map(s => `<div class="ow-stat"><span class="ow-stat-label">${s}</span><span class="ow-stat-value">${p.stats[s] ?? '—'}</span></div>`).join('')}</div>`;
+        }
+        case 'protection': {
+            const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
+            if (!p?.protection) return '<div class="ow-protection">—</div>';
+            return `<div class="ow-protection">⊞ ${p.protection.nom || '—'} — ${p.protection.valeur ?? 0}</div>`;
+        }
+        case 'skills': {
+            const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
+            if (!p?.skills?.length) return '<div class="ow-list">—</div>';
+            return `<div class="ow-list">${p.skills.slice(0, cfg.maxItems || 10).map(s => `<div class="ow-list-item"><span class="ow-list-name">${s.name}</span><span class="ow-list-value">${s.pct}%</span></div>`).join('')}</div>`;
+        }
+        case 'weapons': {
+            const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
+            if (!p?.weapons?.length) return '<div class="ow-list">—</div>';
+            return `<div class="ow-list">${p.weapons.filter(w => w.nom).map(w => `<div class="ow-list-item"><span class="ow-list-name">${w.nom}</span><span class="ow-list-value">${w.degats}</span></div>`).join('')}</div>`;
+        }
+        case 'inventory': {
+            const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
+            if (!p?.inventory?.length) return '<div class="ow-list">—</div>';
+            return `<div class="ow-list">${p.inventory.slice(0, cfg.maxItems || 10).map(i => `<div class="ow-list-item"><span class="ow-list-name">${i.name}</span><span class="ow-list-value">×${i.qty}</span></div>`).join('')}</div>`;
+        }
+        case 'potions': {
+            const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
+            if (!p?.potions?.length) return '<div class="ow-list">—</div>';
+            return `<div class="ow-list">${p.potions.slice(0, cfg.maxItems || 8).map(pt => `<div class="ow-list-item"><span class="ow-list-name">${pt.name}</span><span class="ow-list-value">×${pt.qty ?? 1}</span></div>`).join('')}</div>`;
+        }
+        case 'custom_text': return `<div class="ow-custom-text">${cfg.content || ''}</div>`;
+        case 'campaign_name': return `<div class="ow-campaign-name">${cfg.content || '—'}</div>`;
+        case 'player_hp_summary': {
+            if (!presenceCache.size) return '<div class="ow-list">—</div>';
+            return [...presenceCache.values()].map(p => {
+                const pct = Math.max(0, Math.min(100, (p.hp / (p.maxHP || 1)) * 100));
+                const colorCls = pct > 60 ? '' : pct > 30 ? ' yellow' : ' red';
+                return `<div class="ow-hp-wrap" style="margin-bottom:4px"><div class="ow-hp-label">${p.name}</div><div class="ow-hp-track"><div class="ow-hp-fill${colorCls}" style="width:${pct}%"></div><div class="ow-hp-text">${p.hp} / ${p.maxHP} PV</div></div></div>`;
+            }).join('');
+        }
+        case 'player_stats': {
+            if (!presenceCache.size) return '<div>—</div>';
+            return [...presenceCache.values()].map(p => `<div style="margin-bottom:6px"><div class="ow-char-name" style="font-size:0.8em">${p.name}</div><div class="ow-stats">${['FOR','DEX','END','INT','CHA'].map(s => `<div class="ow-stat"><span class="ow-stat-label">${s}</span><span class="ow-stat-value">${p.stats?.[s] ?? '—'}</span></div>`).join('')}</div></div>`).join('');
+        }
+        case 'player_inventory': {
+            if (!presenceCache.size) return '<div class="ow-list">—</div>';
+            return [...presenceCache.values()].map(p => `<div style="margin-bottom:4px"><div style="font-family:'Cinzel',serif;font-size:0.7em;color:var(--parchment-dim)">${p.name}</div>${(p.inventory || []).slice(0, 5).map(i => `<div class="ow-list-item"><span class="ow-list-name">${i.name}</span><span class="ow-list-value">×${i.qty}</span></div>`).join('')}</div>`).join('');
+        }
+        case 'player_skills': {
+            if (!presenceCache.size) return '<div class="ow-list">—</div>';
+            return [...presenceCache.values()].map(p => `<div style="margin-bottom:4px"><div style="font-family:'Cinzel',serif;font-size:0.7em;color:var(--parchment-dim)">${p.name}</div>${(p.skills || []).slice(0, 5).map(s => `<div class="ow-list-item"><span class="ow-list-name">${s.name}</span><span class="ow-list-value">${s.pct}%</span></div>`).join('')}</div>`).join('');
+        }
+        case 'monster_list': {
+            const monsters = cfg.monsters || [];
+            if (!monsters.length) return '<div class="ow-list">—</div>';
+            return monsters.map(m => {
+                const pct = Math.max(0, Math.min(100, (m.pv / (m.maxPV || 1)) * 100));
+                const colorCls = pct > 60 ? '' : pct > 30 ? ' yellow' : ' red';
+                return `<div class="ow-hp-wrap" style="margin-bottom:4px"><div class="ow-hp-label">${m.name}</div><div class="ow-hp-track"><div class="ow-hp-fill${colorCls}" style="width:${pct}%"></div><div class="ow-hp-text">${m.pv} / ${m.maxPV} PV</div></div></div>`;
+            }).join('');
+        }
+        case 'roll_history': {
+            if (!rollHistory.length) return '<div class="ow-list">—</div>';
+            const shown = rollHistory.slice(-(cfg.maxItems || 8)).reverse();
+            return `<div class="ow-list">${shown.map(r => `<div class="ow-roll-row"><span class="ow-roll-char">${r.char || ''}</span><span class="ow-roll-skill">${r.skillName}</span><span class="ow-roll-result ${r.success ? 'success' : 'fail'}">${r.roll}</span></div>`).join('')}</div>`;
+        }
+        default: return '';
+    }
+}
+
+function renderWidgetLayer() {
+    const container = document.getElementById('overlay-widgets');
+    container.innerHTML = '';
+    for (const widget of overlayConfig.widgets) {
+        if (!widget.visible) continue;
+        if (widget.category === 'event') continue;
+        const el = document.createElement('div');
+        el.className = 'overlay-widget';
+        el.dataset.widgetId = widget.id;
+        el.style.left    = widget.x + '%';
+        el.style.top     = widget.y + '%';
+        el.style.width   = widget.w + '%';
+        el.style.height  = widget.h + '%';
+        el.style.opacity = widget.config?.opacity ?? 1;
+        el.style.fontSize = (widget.config?.fontSize ?? 14) + 'px';
+        el.innerHTML = renderWidgetContent(widget);
+        container.appendChild(el);
+    }
+    applyEventWidgetPosition('roll-card', 'roll_card');
+    applyEventWidgetPosition('drawn-card-overlay', 'card_draw');
+    applyEventWidgetPosition('dmg-hpbar-wrap', 'hp_bar_animation');
+    applyEventWidgetPosition('dmg-number', 'damage_number');
+    applyEventWidgetPosition('heal-number', 'heal_number');
+    applyEventWidgetPosition('dmg-mort', 'mort_screen');
+}
+
+function updateWidgetData() {
+    document.querySelectorAll('.overlay-widget').forEach(el => {
+        const widget = overlayConfig.widgets.find(w => w.id === el.dataset.widgetId);
+        if (!widget) return;
+        el.innerHTML = renderWidgetContent(widget);
+    });
+}
+
+async function loadOverlayConfig() {
+    if (!OVERLAY_ID) return;
+    const rows = await sbSelect('overlay_configs', 'id=eq.' + encodeURIComponent(OVERLAY_ID));
+    if (rows.length && rows[0].config) {
+        overlayConfig = rows[0].config;
+        renderWidgetLayer();
+    }
+}
+
+if (OVERLAY_ID) loadOverlayConfig();

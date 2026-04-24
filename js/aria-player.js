@@ -495,6 +495,14 @@ function initApp() {
     if (presenceIntervalId) clearInterval(presenceIntervalId);
     presenceIntervalId = setInterval(sendPresence, 5000);
     document.title = character.name ? `ARIA – ${character.name}` : 'ARIA – Joueur';
+    updateOverlayEditorBtn();
+}
+
+function updateOverlayEditorBtn() {
+    const btn = document.getElementById('btn-open-overlay-editor');
+    if (!btn || !currentCharId) return;
+    btn.style.display = '';
+    btn.onclick = () => window.open('../views/aria-overlay-editor.html?type=player&id=' + currentCharId, '_blank');
 }
 
 // ═══════════════════════════════════════════

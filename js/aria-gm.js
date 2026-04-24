@@ -450,6 +450,23 @@ function initApp() {
     if (el && camp) el.value = camp.name;
     const jel = document.getElementById('joincode-display');
     if (jel) jel.textContent = currentJoinCode || '';
+    updateOverlayEditorBtn();
+}
+
+function updateOverlayEditorBtn() {
+    const btn = document.getElementById('btn-open-overlay-editor');
+    if (!btn || !currentCampaignId) return;
+    btn.style.display = '';
+    btn.onclick = () => window.open('../views/aria-overlay-editor.html?type=gm&id=' + currentCampaignId, '_blank');
+}
+
+function publishMonsterStateToOverlay() {
+    if (!currentCampaignId) return;
+    const overlayId = 'gm_' + currentCampaignId;
+    const monsters  = JSON.parse(localStorage.getItem(monstersKey()) || '[]');
+    if (typeof ablyDamage !== 'undefined' && ablyDamage) {
+        ablyDamage.publish('monster-state', { overlayId, monsters });
+    }
 }
 
 function copyJoinCode() {
@@ -881,7 +898,7 @@ function applyPlayerHeal(playerId) {
 // ═══════════════════════════════════════════
 //  MONSTERS
 // ═══════════════════════════════════════════
-function saveMonsters() { localStorage.setItem(monstersKey(), JSON.stringify(monsters)); debouncedSyncMonsters(); }
+function saveMonsters() { localStorage.setItem(monstersKey(), JSON.stringify(monsters)); debouncedSyncMonsters(); publishMonsterStateToOverlay(); }
 function addMonster() {
     const name = document.getElementById('amf-name').value.trim();
     if (!name) { alert('Entrez un nom.'); return; }

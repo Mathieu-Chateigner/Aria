@@ -5,6 +5,7 @@ MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "views", "views", "{B1B2C3D4-E5F6-7890-ABCD-EF1234567891}"
 	ProjectSection(SolutionItems) = preProject
 		views\aria-gm.html = views\aria-gm.html
+		views\aria-overlay-editor.html = views\aria-overlay-editor.html
 		views\aria-overlay.html = views\aria-overlay.html
 		views\aria-player.html = views\aria-player.html
 	EndProjectSection
@@ -12,6 +13,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "css", "css", "{C1B2C3D4-E5F6-7890-ABCD-EF1234567892}"
 	ProjectSection(SolutionItems) = preProject
 		css\aria-gm.css = css\aria-gm.css
+		css\aria-overlay-editor.css = css\aria-overlay-editor.css
 		css\aria-overlay.css = css\aria-overlay.css
 		css\aria-player.css = css\aria-player.css
 	EndProjectSection
@@ -19,13 +21,16 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "js", "js", "{D1B2C3D4-E5F6-7890-ABCD-EF1234567893}"
 	ProjectSection(SolutionItems) = preProject
 		js\aria-gm.js = js\aria-gm.js
+		js\aria-overlay-editor.js = js\aria-overlay-editor.js
 		js\aria-overlay.js = js\aria-overlay.js
 		js\aria-player.js = js\aria-player.js
+		js\aria-supabase.js = js\aria-supabase.js
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Docs", "Docs", "{E1B2C3D4-E5F6-7890-ABCD-EF1234567894}"
 	ProjectSection(SolutionItems) = preProject
 		Docs\superpowers\specs\2026-04-22-db-rewrite-design.md = Docs\superpowers\specs\2026-04-22-db-rewrite-design.md
+		Docs\superpowers\specs\2026-04-24-overlay-editor-design.md = Docs\superpowers\specs\2026-04-24-overlay-editor-design.md
 		Docs\Aide aux combats.pdf = Docs\Aide aux combats.pdf
 		Docs\bugs_and_issues.md = Docs\bugs_and_issues.md
 		Docs\development_plan.md = Docs\development_plan.md
