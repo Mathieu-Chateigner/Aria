@@ -89,7 +89,14 @@
 
             <!-- JOUEURS -->
             <div class="tab-content active" id="tab-players">
-                <div class="section-title">Joueurs connectés</div>
+                <div class="gm-bulk-bar">
+                    <span class="field-label" style="margin:0;white-space:nowrap;">Tous les joueurs</span>
+                    <input class="gm-input" id="bulk-dmg-input" type="text" inputmode="numeric" placeholder="Dégâts" style="width:80px;" oninput="this.value=this.value.replace(/[^0-9]/g,'')" onkeydown="if(event.key==='Enter')bulkDamageAll()" />
+                    <button class="gm-action-btn gm-action-dmg" onclick="bulkDamageAll()">⚔ Tous</button>
+                    <input class="gm-input" id="bulk-heal-input" type="text" inputmode="numeric" placeholder="Soins" style="width:80px;" oninput="this.value=this.value.replace(/[^0-9]/g,'')" onkeydown="if(event.key==='Enter')bulkHealAll()" />
+                    <button class="gm-action-btn gm-action-heal" onclick="bulkHealAll()">♥ Tous</button>
+                </div>
+                <div class="section-title" style="margin-top:10px;">Joueurs connectés</div>
                 <div class="players-grid" id="players-grid">
                 </div>
                 <div class="no-players" id="no-players">En attente de joueurs… <br><span style="font-size:13px;opacity:.6;">Les joueurs apparaissent automatiquement dès qu'ils ouvrent aria-player.html</span></div>
@@ -129,7 +136,13 @@
                         <div id="amf-attacks-list"></div>
                         <button class="add-atk-btn" onclick="addAmfAttack()">+ Attaque</button>
                     </div>
-                    <div style="margin-top:14px;"><button class="amf-add-btn" onclick="addMonster()">Ajouter le monstre</button></div>
+                    <div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                        <button class="amf-add-btn" onclick="addMonster()">Ajouter le(s) monstre(s)</button>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <label class="amf-label" style="margin:0;">×</label>
+                            <input class="amf-input" id="amf-count" type="text" inputmode="numeric" placeholder="1" style="width:48px;text-align:center;" oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Monsters list -->
@@ -194,7 +207,17 @@
                         </div>
                     </div>
                     <div>
-                        <div class="section-title">Résultat</div>
+                        <div class="section-title">Dés simples</div>
+                        <div class="gm-dice-tray">
+                            <button class="die-btn" onclick="gmRollDie(4)">d4</button>
+                            <button class="die-btn" onclick="gmRollDie(6)">d6</button>
+                            <button class="die-btn" onclick="gmRollDie(8)">d8</button>
+                            <button class="die-btn" onclick="gmRollDie(10)">d10</button>
+                            <button class="die-btn" onclick="gmRollDie(20)">d20</button>
+                            <button class="die-btn" onclick="gmRollDie(100)">d100</button>
+                        </div>
+                        <div class="gm-die-result" id="gm-die-result"></div>
+                        <div class="section-title" style="margin-top:16px;">Résultat d100</div>
                         <div class="gm-roll-result" id="gm-roll-result">
                             <div style="font-family:'EB Garamond',serif;font-size:14px;font-style:italic;color:var(--parchment-dim);opacity:.5;">Pas encore de jet</div>
                         </div>

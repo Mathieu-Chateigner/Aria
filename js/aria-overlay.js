@@ -14,7 +14,7 @@ let rollDismiss = null;
 let cardDismiss = null;
 
 // State for synchronising Ably roll data with the dddice animation
-let pendingRollData = null;   // roll payload from Ably, waiting for animation to finish
+const pendingRollQueue = [];  // queue of roll payloads waiting for animation to finish
 let diceFinished = false;     // set true when dddice RollFinished fires before Ably message arrives
 let diceConnected = false;    // true once the dddice SDK is connected to the room
 
@@ -32,19 +32,19 @@ if (ABLY_KEY) {
         updateWidgetData();
         const data = msg.data;
         if (diceConnected) {
-            // SDK is active: store data and wait for RollFinished to display it
-            pendingRollData = data;
+            // SDK is active: queue data and wait for RollFinished to display it
+            pendingRollQueue.push(data);
             if (diceFinished) {
                 // Animation already finished before Ably message arrived
                 diceFinished = false;
-                pendingRollData = null;
-                showRoll(data);
+                showRoll(pendingRollQueue.shift());
             } else {
                 // Safety: if RollFinished never fires (e.g. SDK connected but not rendering),
                 // fall back to showing the result after 8s
                 setTimeout(() => {
-                    if (pendingRollData === data) {
-                        pendingRollData = null;
+                    const idx = pendingRollQueue.indexOf(data);
+                    if (idx !== -1) {
+                        pendingRollQueue.splice(idx, 1);
                         showRoll(data);
                     }
                 }, 8000);
@@ -120,11 +120,9 @@ if (DDDICE_KEY && DDDICE_ROOM) {
 
             sdk.on(ThreeDDiceRollEvent.RollFinished, () => {
                 setTimeout(() => sdk.clear(), 1500);
-                if (pendingRollData) {
-                    const data = pendingRollData;
-                    pendingRollData = null;
+                if (pendingRollQueue.length > 0) {
                     diceFinished = false;
-                    showRoll(data);
+                    showRoll(pendingRollQueue.shift());
                 } else {
                     // Ably message hasn't arrived yet — flag it and wait briefly
                     diceFinished = true;

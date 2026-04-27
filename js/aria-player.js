@@ -360,13 +360,15 @@ function loadCharacterState(id) {
     delete character.id;
     if (!character.physical) character.physical = { age:'', taille:'', poids:'', yeux:'', cheveux:'', signes:'' };
     if (!character.inventory) character.inventory = [];
-    if (!character.weapons) character.weapons = [{ nom:'', degats:'' },{ nom:'', degats:'' },{ nom:'', degats:'' }];
+    if (!character.weapons) character.weapons = [{ nom:'', degats:'', favourite: false }];
+    else character.weapons.forEach(w => { if (w.favourite === undefined) w.favourite = false; });
     if (!character.protection) character.protection = { nom:'', valeur:0 };
     if (!character.potions) character.potions = [];
     if (!character.potionRecipes) character.potionRecipes = [];
     if (character.vials === undefined || character.vials === null) character.vials = 0;
     if (!character.money) character.money = { couronne: 0, orbe: 0, sceptre: 0, sou: 0 };
     if (!character.specials) character.specials = [];
+    if (character.karma === undefined) character.karma = 0;
     const saved = JSON.parse(localStorage.getItem(cardKey()) || 'null');
     cardDeck = saved?.deckIds?.map(cid => cardById(cid)).filter(Boolean) || buildDeck();
     cardDrawn = new Set(saved?.drawn || []);
@@ -787,7 +789,8 @@ function showToast(id, msg) {
 // ═══════════════════════════════════════════
 let otherRollToastTimer = null;
 function showOtherRollToast(d) {
-    const type = classify(d.roll, d.threshold, d.success);
+    const isDie = d.threshold === null;
+    const type = isDie ? 'die' : classify(d.roll, d.threshold, d.success);
     const vcls = { success: 's', fail: 'f', 'crit-success': 'cs', 'crit-fail': 'cf' };
     const vlbl = { success: 'SUCCÈS', fail: 'ÉCHEC', 'crit-success': 'SUCCÈS CRITIQUE', 'crit-fail': 'ÉCHEC CRITIQUE' };
     const toast = document.getElementById('other-roll-toast');
@@ -795,7 +798,8 @@ function showOtherRollToast(d) {
     document.getElementById('ort-skill').textContent = d.skillName;
     document.getElementById('ort-roll').textContent = d.roll;
     const vEl = document.getElementById('ort-verdict');
-    vEl.textContent = vlbl[type]; vEl.className = `ort-verdict ${vcls[type]}`;
+    if (isDie) { vEl.textContent = ''; vEl.className = 'ort-verdict'; }
+    else { vEl.textContent = vlbl[type]; vEl.className = `ort-verdict ${vcls[type]}`; }
     toast.classList.add('show');
     clearTimeout(otherRollToastTimer);
     otherRollToastTimer = setTimeout(() => toast.classList.remove('show'), 4000);
@@ -803,6 +807,13 @@ function showOtherRollToast(d) {
 
 function addBM(v) { bonusMalus += v; updateBMDisplay(); }
 function resetBM() { bonusMalus = 0; updateBMDisplay(); }
+function renderKarma() {
+    const el = document.getElementById('karma-display');
+    if (!el) return;
+    const k = character.karma ?? 0;
+    el.textContent = (k > 0 ? '+' : '') + k;
+    el.className = 'karma-display' + (k > 0 ? ' positive' : k < 0 ? ' negative' : '');
+}
 function addCustomBM(sign) {
     const v = parseInt(document.getElementById('bm-custom-val').value);
     if (!isNaN(v)) { bonusMalus += sign * Math.abs(v); updateBMDisplay(); }
@@ -840,6 +851,7 @@ function renderAll() {
     renderPotions();
     renderEditorForm();
     renderPlayerFiles();
+    renderKarma();
 }
 
 function renderSkills() {
@@ -928,7 +940,9 @@ function renderInventorySidebar() {
 function renderCombatSidebar() {
     const body = document.getElementById('combat-sidebar-body');
     if (!body) return;
-    const weapons = (character.weapons || []).filter(w => w.nom.trim());
+    const allWeapons = (character.weapons || []).filter(w => w.nom.trim());
+    const favourites = allWeapons.filter(w => w.favourite);
+    const weapons = favourites.length ? favourites : allWeapons;
     const prot = character.protection || {};
     let html = '';
     if (weapons.length) {
@@ -952,14 +966,15 @@ function renderCombatSidebar() {
     if (parrySkill || dodgeSkill) {
         html += `<div style="margin:8px 0 6px;border-top:1px solid var(--border);"></div>`;
         html += `<div style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:6px;">Réactions</div>`;
+        const bmLabel = bm => bm !== 0 ? ` <span style="font-size:10px;color:${bm > 0 ? 'var(--success)' : 'var(--fail)'}">${bm > 0 ? '+' : ''}${bm}</span>` : '';
         html += `<div class="react-btns">`;
         if (parrySkill) {
             const eff = Math.max(1, Math.min(100, parrySkill.pct + bonusMalus));
-            html += `<button class="react-btn" onclick="doRoll('${parrySkill.name.replace(/'/g, "\\'")}',${parrySkill.pct})">🛡 Parer<br><span class="react-pct">${eff}%</span></button>`;
+            html += `<button class="react-btn" onclick="doRoll('${parrySkill.name.replace(/'/g, "\\'")}',${parrySkill.pct})">🛡 Parer<br><span class="react-pct">${parrySkill.pct}%${bmLabel(bonusMalus)} = ${eff}%</span></button>`;
         }
         if (dodgeSkill) {
             const eff = Math.max(1, Math.min(100, dodgeSkill.pct + bonusMalus));
-            html += `<button class="react-btn" onclick="doRoll('${dodgeSkill.name.replace(/'/g, "\\'")}',${dodgeSkill.pct})">⚡ ${dodgeSkill.name}<br><span class="react-pct">${eff}%</span></button>`;
+            html += `<button class="react-btn" onclick="doRoll('${dodgeSkill.name.replace(/'/g, "\\'")}',${dodgeSkill.pct})">⚡ ${dodgeSkill.name}<br><span class="react-pct">${dodgeSkill.pct}%${bmLabel(bonusMalus)} = ${eff}%</span></button>`;
         }
         html += `</div>`;
     }
@@ -1022,7 +1037,9 @@ function rollDie(sides) {
     if (pendingDddiceRoll || pendingSecondaryRoll) return;
     rollDieViaDddice(sides, result => {
         showDieCard(`d${sides}`, result);
-        publishRoll({ skillName: `d${sides}`, threshold: null, roll: result, success: null, char: character.name, bonusMalus: 0, playerId });
+        const dieData = { skillName: `d${sides}`, threshold: null, roll: result, success: null, char: character.name, bonusMalus: 0, playerId };
+        publishRoll(dieData);
+        pushRollHistory(dieData);
     });
 }
 
@@ -1138,12 +1155,47 @@ function rollStat(key, val) {
     const t = Math.max(1, Math.min(100, val * multiplier + bonusMalus));
     doRoll(`${multiplier > 1 ? multiplier + '× ' : ''}${key}`, val * multiplier);
 }
+// ── ROLL HISTORY ─────────────────────────────
+const playerRollHistory = [];
+const PLAYER_ROLL_HISTORY_MAX = 30;
+
+function pushRollHistory(entry) {
+    playerRollHistory.unshift(entry);
+    if (playerRollHistory.length > PLAYER_ROLL_HISTORY_MAX) playerRollHistory.pop();
+    renderRollHistory();
+}
+
+function renderRollHistory() {
+    const list = document.getElementById('roll-history-list');
+    if (!list) return;
+    if (!playerRollHistory.length) {
+        list.innerHTML = '<div class="roll-history-empty">Aucun jet pour l\'instant.</div>';
+        return;
+    }
+    list.innerHTML = playerRollHistory.map(r => {
+        const isDie = r.threshold === null;
+        if (isDie) {
+            return `<div class="rh-row rh-die"><span class="rh-skill">${r.skillName}</span><span class="rh-roll">${r.roll}</span></div>`;
+        }
+        const type = classify(r.roll, r.threshold, r.success);
+        const cls = { success: 'rh-success', fail: 'rh-fail', 'crit-success': 'rh-crit-success', 'crit-fail': 'rh-crit-fail' }[type] || '';
+        const lbl = { success: 'SUCCÈS', fail: 'ÉCHEC', 'crit-success': 'SUCCÈS CRIT.', 'crit-fail': 'ÉCHEC CRIT.' }[type] || '';
+        return `<div class="rh-row ${cls}"><span class="rh-skill">${r.skillName}</span><span class="rh-roll">${r.roll}</span><span class="rh-verdict">${lbl}</span></div>`;
+    }).join('');
+}
+
+function clearRollHistory() {
+    playerRollHistory.length = 0;
+    renderRollHistory();
+}
+
 function handleResult(skillName, threshold, roll) {
     const success = roll <= threshold;
     const data = { skillName, threshold, roll, success, char: character.name, bonusMalus, playerId };
     setRolling(false);
     showFloatCard(data);
     publishRoll(data);
+    pushRollHistory(data);
     if (skillName === 'Soigner') applySoigner(success);
     if (pendingCraft !== null) { applyCraft(success, pendingCraft); pendingCraft = null; }
 }
@@ -1512,6 +1564,13 @@ function initAbly() {
                 renderPlayerFiles();
                 return;
             }
+            if (msg.name === 'karma-set') {
+                if (d.playerId !== myId) return;
+                character.karma = d.karma ?? 0;
+                saveCurrentCharacter();
+                renderKarma();
+                return;
+            }
             if (d.targetId && d.targetId !== myId) return;
             if (msg.name === 'damage') handleGMDamage(d);
             if (msg.name === 'heal') handleGMHeal(d);
@@ -1632,9 +1691,27 @@ function renderWeaponsEditor() {
     (character.weapons || []).forEach((w, i) => {
         const row = document.createElement('div');
         row.className = 'weap-row';
-        row.innerHTML = `<input class="editor-input" value="${w.nom}" placeholder="Nom de l'arme" oninput="character.weapons[${i}].nom=this.value" /><input class="editor-input weap-dmg" value="${w.degats}" placeholder="ex: 2d6+2" oninput="character.weapons[${i}].degats=this.value" />`;
+        row.innerHTML = `<input class="editor-input" value="${w.nom}" placeholder="Nom de l'arme" oninput="character.weapons[${i}].nom=this.value;renderCombatSidebar()" /><input class="editor-input weap-dmg" value="${w.degats}" placeholder="ex: 2d6+2" oninput="character.weapons[${i}].degats=this.value;renderCombatSidebar()" /><button class="weap-fav-btn${w.favourite ? ' active' : ''}" title="Équipée (affichée dans la barre de combat)" onclick="toggleWeaponFavourite(${i})">★</button><button class="del-btn" onclick="removeWeapon(${i})">✕</button>`;
         list.appendChild(row);
     });
+}
+function addWeapon() {
+    if (!character.weapons) character.weapons = [];
+    character.weapons.push({ nom: '', degats: '', favourite: false });
+    renderWeaponsEditor();
+    saveCurrentCharacter();
+}
+function removeWeapon(i) {
+    character.weapons.splice(i, 1);
+    renderWeaponsEditor();
+    renderCombatSidebar();
+    saveCurrentCharacter();
+}
+function toggleWeaponFavourite(i) {
+    character.weapons[i].favourite = !character.weapons[i].favourite;
+    renderWeaponsEditor();
+    renderCombatSidebar();
+    saveCurrentCharacter();
 }
 function renderMoneyEditor() {
     const el = document.getElementById('inv-money-editor');
@@ -1753,6 +1830,25 @@ function changeVials(delta) {
     renderInventoryEditor();
     renderInventorySidebar();
     renderPotions();
+}
+function toggleCustomPotionForm() {
+    const form = document.getElementById('custom-potion-form');
+    if (!form) return;
+    form.style.display = form.style.display === 'none' ? '' : 'none';
+}
+function addCustomPotion() {
+    const name = (document.getElementById('cpf-name')?.value || '').trim();
+    if (!name) return;
+    const desc = (document.getElementById('cpf-desc')?.value || '').trim();
+    if (!character.potions) character.potions = [];
+    const existing = character.potions.find(p => p.name === name && !p.recipeId);
+    if (existing) { existing.qty = (existing.qty || 0) + 1; }
+    else { character.potions.push({ name, desc, qty: 1 }); }
+    document.getElementById('cpf-name').value = '';
+    document.getElementById('cpf-desc').value = '';
+    saveCurrentCharacter();
+    renderPotions();
+    sendPresence();
 }
 function craftPotion(recipeIdx) {
     if ((character.vials ?? 0) <= 0 || isRolling) return;

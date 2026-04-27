@@ -96,6 +96,9 @@
         </div>
         <div class="bm-sep"></div>
         <button class="bm-btn reset-btn" onclick="resetBM()">↺ Reset</button>
+        <div class="bm-sep"></div>
+        <span class="bm-bar-label">Karma</span>
+        <div class="karma-display" id="karma-display">0</div>
     </div>
 
     <!-- MAIN -->
@@ -178,10 +181,20 @@
                         <div class="dice-btns">
                             <button class="die-btn" onclick="rollDie(4)">d4</button>
                             <button class="die-btn" onclick="rollDie(6)">d6</button>
+                            <button class="die-btn" onclick="rollDie(8)">d8</button>
                             <button class="die-btn" onclick="rollDie(10)">d10</button>
                             <button class="die-btn" onclick="rollDie(20)">d20</button>
                             <button class="die-btn" onclick="rollDie(100)">d100</button>
                         </div>
+                    </div>
+                </div>
+                <div class="roll-history-section">
+                    <div class="roll-history-hdr">
+                        <span class="field-label" style="margin:0;">Historique</span>
+                        <button class="clear-btn" onclick="clearRollHistory()">Effacer</button>
+                    </div>
+                    <div class="roll-history-list" id="roll-history-list">
+                        <div class="roll-history-empty">Aucun jet pour l'instant.</div>
                     </div>
                 </div>
             </div>
@@ -247,6 +260,12 @@
             <div class="tab-content" id="tab-alchemy">
                 <div class="alchemy-header">
                     <div class="section-title" style="margin-bottom:0;">Potions</div>
+                    <button class="add-skill-btn" onclick="toggleCustomPotionForm()">+ Potion personnalisée</button>
+                </div>
+                <div class="custom-potion-form" id="custom-potion-form" style="display:none;">
+                    <input class="free-input" id="cpf-name" placeholder="Nom de la potion" style="margin-bottom:6px;" />
+                    <input class="free-input" id="cpf-desc" placeholder="Description / effet" style="margin-bottom:6px;" />
+                    <button class="roll-btn" style="font-size:13px;padding:7px 18px;" onclick="addCustomPotion()">Ajouter au stock</button>
                 </div>
                 <div id="potion-list"></div>
                 <div class="alchemy-empty" id="alchemy-empty">Aucune potion. Le MJ vous accordera accès aux potions découvertes.</div>
@@ -318,8 +337,11 @@
                         <div class="cs-col-hdr cs-weapons-hdr">
                             <span class="editor-label">Nom</span>
                             <span class="editor-label center">Dégâts</span>
+                            <span class="editor-label center" title="Équipée (affichée dans la barre de combat)">★</span>
+                            <span></span>
                         </div>
                         <div class="cs-list-body" id="weapons-editor-list"></div>
+                        <div class="cs-block-footer"><button class="add-skill-btn" onclick="addWeapon()">+ Ajouter une arme</button></div>
                     </div>
 
                     <!-- Compétences -->

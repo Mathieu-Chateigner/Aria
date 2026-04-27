@@ -150,6 +150,20 @@ body {
     white-space: nowrap;
 }
 
+.karma-display {
+    font-family: 'Cinzel',serif;
+    font-size: 14px;
+    font-weight: 700;
+    min-width: 36px;
+    text-align: center;
+    color: var(--parchment-dim);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 3px 7px;
+}
+.karma-display.positive { color: var(--success); border-color: rgba(76,175,119,.3); }
+.karma-display.negative { color: var(--fail); border-color: rgba(192,57,43,.3); }
+
 .bm-display {
     font-family: 'Cinzel',serif;
     font-size: 15px;
@@ -1078,7 +1092,7 @@ body {
 /* weapon rows (JS-generated) */
 .weap-row {
     display: grid;
-    grid-template-columns: 1fr 80px;
+    grid-template-columns: 1fr 80px 28px 24px;
     gap: 6px;
     align-items: center;
     padding: 4px 0;
@@ -1088,6 +1102,82 @@ body {
     .weap-row:last-child { border-bottom: none; }
     .weap-row .editor-input { font-size: 14px; padding: 6px 8px; }
     .weap-row .weap-dmg { color: var(--gold); font-family: 'Cinzel',serif; font-size: 13px; font-weight: 600; text-align: center; }
+
+.weap-fav-btn {
+    background: none;
+    border: none;
+    color: var(--parchment-dim);
+    font-size: 15px;
+    cursor: pointer;
+    padding: 2px;
+    opacity: .4;
+    transition: opacity .15s, color .15s;
+    line-height: 1;
+}
+.weap-fav-btn:hover { opacity: .8; }
+.weap-fav-btn.active { color: var(--gold); opacity: 1; }
+
+/* ROLL HISTORY */
+.roll-history-section {
+    margin-top: 20px;
+    border-top: 1px solid var(--border);
+    padding-top: 14px;
+}
+.roll-history-hdr {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+.roll-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 280px;
+    overflow-y: auto;
+}
+.roll-history-empty {
+    font-family: 'EB Garamond',serif;
+    font-size: 13px;
+    font-style: italic;
+    color: var(--parchment-dim);
+    opacity: .5;
+}
+.rh-row {
+    display: grid;
+    grid-template-columns: 1fr 40px auto;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: var(--radius);
+    background: var(--bg2);
+    border-left: 3px solid var(--border);
+    font-size: 13px;
+}
+.rh-row.rh-die { border-left-color: rgba(201,168,76,.3); }
+.rh-row.rh-success { border-left-color: var(--success); }
+.rh-row.rh-fail { border-left-color: var(--fail); }
+.rh-row.rh-crit-success { border-left-color: #a8ff78; background: rgba(168,255,120,.05); }
+.rh-row.rh-crit-fail { border-left-color: #ff4444; background: rgba(255,68,68,.05); }
+.rh-skill { font-family: 'EB Garamond',serif; font-style: italic; color: var(--parchment-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rh-roll { font-family: 'Cinzel',serif; font-weight: 600; text-align: right; color: var(--parchment); }
+.rh-verdict { font-family: 'Cinzel',serif; font-size: 10px; letter-spacing: .08em; text-align: right; }
+.rh-success .rh-verdict { color: var(--success); }
+.rh-fail .rh-verdict { color: var(--fail); }
+.rh-crit-success .rh-verdict { color: #a8ff78; }
+.rh-crit-fail .rh-verdict { color: #ff4444; }
+
+/* CUSTOM POTION FORM */
+.custom-potion-form {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+    margin-bottom: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
 
 /* inventory rows (JS-generated) */
 .inv-row {
@@ -2449,7 +2539,7 @@ body.light-mode .hp-number.low { color: #8c4a08; }
     border-bottom: 1px solid rgba(201,168,76,.08);
 }
 
-.cs-weapons-hdr { grid-template-columns: 1fr 80px; }
+.cs-weapons-hdr { grid-template-columns: 1fr 80px 28px 24px; }
 .cs-inv-hdr     { grid-template-columns: 1fr 52px 28px; }
 .cs-specials-hdr { grid-template-columns: 1.2fr 52px 2fr auto; }
 

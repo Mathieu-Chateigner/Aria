@@ -709,6 +709,12 @@ function renderPlayerCards() {
                 onkeydown="if(event.key==='Enter')applyPlayerHeal('${playerId}')" />
               <button class="pc-btn heal" onclick="applyPlayerHeal('${playerId}')">♥</button>
             </div>
+            <div class="pc-karma-row">
+              <span class="pc-karma-label">Karma</span>
+              <button class="pc-karma-btn minus" onclick="setPlayerKarma('${playerId}',-1)">−</button>
+              <span class="pc-karma-val ${(gmKarma[playerId]??0)>0?'positive':(gmKarma[playerId]??0)<0?'negative':''}">${(gmKarma[playerId]??0)>0?'+':''}${gmKarma[playerId]??0}</span>
+              <button class="pc-karma-btn plus" onclick="setPlayerKarma('${playerId}',1)">+</button>
+            </div>
           </div>`;
         grid.appendChild(card);
     });
@@ -870,10 +876,12 @@ function sendTabConfig(playerId, tab, enabled) {
 
 function applyPlayerDamage(playerId) {
     const inp = document.getElementById(`dmg-${playerId}`);
-    const dmg = parseInt(inp.value);
-    if (!dmg || dmg <= 0) return;
+    const rawDmg = parseInt(inp.value);
+    if (!rawDmg || rawDmg <= 0) return;
     const p = players.get(playerId);
     if (!p) return;
+    const prot = p.protection?.valeur || 0;
+    const dmg = Math.max(0, rawDmg - prot);
     const hpBefore = p.hp ?? p.maxHP ?? 0;
     const hpAfter = Math.max(0, hpBefore - dmg);
     p.hp = hpAfter;
@@ -904,6 +912,7 @@ function addMonster() {
     if (!name) { alert('Entrez un nom.'); return; }
     const pv = parseInt(document.getElementById('amf-pv').value) || 20;
     const armor = parseInt(document.getElementById('amf-armor').value) || 0;
+    const count = Math.max(1, Math.min(20, parseInt(document.getElementById('amf-count')?.value) || 1));
     const stats = {
         FOR: parseInt(document.getElementById('amf-for').value) || 10,
         DEX: parseInt(document.getElementById('amf-dex').value) || 10,
@@ -911,11 +920,15 @@ function addMonster() {
         INT: parseInt(document.getElementById('amf-int').value) || 10,
         CHA: parseInt(document.getElementById('amf-cha').value) || 10,
     };
-    const monster = { id: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2), name, pv, maxPV: pv, armor, stats, attacks: [...newMonsterAttacks] };
-    monsters.push(monster);
+    for (let n = 0; n < count; n++) {
+        const label = count > 1 ? ` ${n + 1}` : '';
+        const monster = { id: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2), name: name + label, pv, maxPV: pv, armor, stats, attacks: [...newMonsterAttacks.map(a => ({ ...a }))] };
+        monsters.push(monster);
+    }
     saveMonsters();
     // Reset form
     ['amf-name', 'amf-pv', 'amf-armor', 'amf-for', 'amf-dex', 'amf-end', 'amf-int', 'amf-cha'].forEach(id => { document.getElementById(id).value = ''; });
+    const countEl = document.getElementById('amf-count'); if (countEl) countEl.value = '';
     newMonsterAttacks = [];
     document.getElementById('amf-attacks-list').innerHTML = '';
     renderMonsters();
@@ -923,7 +936,7 @@ function addMonster() {
 }
 function removeMonster(id) {
     sbDelete('monsters', 'id=eq.' + encodeURIComponent(String(id)));
-    monsters = monsters.filter(m => m.id !== id);
+    monsters = monsters.filter(m => String(m.id) !== String(id));
     saveMonsters();
     renderMonsters();
     refreshMonsterSelect();
@@ -1025,17 +1038,24 @@ function renderMonsters() {
     monsters.forEach(m => {
         const pct = m.maxPV > 0 ? m.pv / m.maxPV : 0;
         const hpColor = pct > 0.5 ? 'var(--fail)' : pct > 0.25 ? '#e85020' : '#ff4444';
+        const safeId = String(m.id).replace(/[^a-zA-Z0-9_-]/g, '-');
         const card = document.createElement('div'); card.className = 'monster-card';
         card.innerHTML = `
           <div class="mc-header">
             <div class="mc-name">${m.name}</div>
-            <button class="mc-del" onclick="removeMonster(${m.id})">✕</button>
+            <button class="mc-del" onclick="removeMonster('${m.id}')">✕</button>
           </div>
           <div class="mc-body">
             <div class="mc-hp-row">
               <div><div class="mc-hp-num" style="color:${hpColor}">${m.pv}</div><div style="font-family:'Cinzel',serif;font-size:9px;color:rgba(255,150,150,.5);">/ ${m.maxPV} PV</div></div>
               <div class="mc-hp-bar-wrap"><div class="mc-hp-bar" style="width:${Math.round(pct * 100)}%;background:${hpColor};"></div></div>
               <div style="font-family:'Cinzel',serif;font-size:10px;color:rgba(255,150,150,.5);">🛡 ${m.armor}</div>
+            </div>
+            <div class="mc-inline-actions">
+              <input class="mc-inline-input" id="mc-dmg-${safeId}" type="text" inputmode="numeric" placeholder="Dégâts" oninput="this.value=this.value.replace(/[^0-9]/g,'')" onkeydown="if(event.key==='Enter')monsterInlineDamage('${m.id}')" />
+              <button class="mc-inline-btn dmg" onclick="monsterInlineDamage('${m.id}')">⚔</button>
+              <input class="mc-inline-input" id="mc-heal-${safeId}" type="text" inputmode="numeric" placeholder="Soins" oninput="this.value=this.value.replace(/[^0-9]/g,'')" onkeydown="if(event.key==='Enter')monsterInlineHeal('${m.id}')" />
+              <button class="mc-inline-btn heal" onclick="monsterInlineHeal('${m.id}')">♥</button>
             </div>
             <div class="mc-stats">
               ${Object.entries(m.stats).map(([k, v]) => `<span class="mc-stat">${k} <span>${v}</span></span>`).join('')}
@@ -1049,29 +1069,29 @@ function renderMonsters() {
               </div>
               ${m.attacks.map((a, i) => `
               <div class="mc-atk-edit-row">
-                <input class="mc-atk-input" value="${a.name}" placeholder="Nom" oninput="updateMonsterAttack(${m.id},${i},'name',this.value)" />
-                <input class="mc-atk-input center" type="text" inputmode="numeric" value="${a.pct}" placeholder="%" oninput="this.value=this.value.replace(/[^0-9]/g,'');updateMonsterAttack(${m.id},${i},'pct',+this.value||0)" />
-                <input class="mc-atk-input center" value="${a.dmg || ''}" placeholder="1d6" oninput="updateMonsterAttack(${m.id},${i},'dmg',this.value)" />
-                <button class="del-btn" onclick="removeMonsterAttack(${m.id},${i})">✕</button>
+                <input class="mc-atk-input" value="${a.name}" placeholder="Nom" oninput="updateMonsterAttack('${m.id}',${i},'name',this.value)" />
+                <input class="mc-atk-input center" type="text" inputmode="numeric" value="${a.pct}" placeholder="%" oninput="this.value=this.value.replace(/[^0-9]/g,'');updateMonsterAttack('${m.id}',${i},'pct',+this.value||0)" />
+                <input class="mc-atk-input center" value="${a.dmg || ''}" placeholder="1d6" oninput="updateMonsterAttack('${m.id}',${i},'dmg',this.value)" />
+                <button class="del-btn" onclick="removeMonsterAttack('${m.id}',${i})">✕</button>
               </div>`).join('')}
-              <button class="add-atk-btn mc-add-atk" onclick="addMonsterAttack(${m.id})">+ Attaque</button>
+              <button class="add-atk-btn mc-add-atk" onclick="addMonsterAttack('${m.id}')">+ Attaque</button>
             </div>
           </div>`;
         grid.appendChild(card);
     });
 }
 function addMonsterAttack(mId) {
-    const m = monsters.find(m => m.id === mId); if (!m) return;
+    const m = monsters.find(m => String(m.id) === String(mId)); if (!m) return;
     m.attacks.push({ name: '', pct: 50, dmg: '' });
     saveMonsters(); renderMonsters(); refreshMonsterSelect();
 }
 function removeMonsterAttack(mId, idx) {
-    const m = monsters.find(m => m.id === mId); if (!m) return;
+    const m = monsters.find(m => String(m.id) === String(mId)); if (!m) return;
     m.attacks.splice(idx, 1);
     saveMonsters(); renderMonsters(); refreshMonsterSelect();
 }
 function updateMonsterAttack(mId, idx, field, value) {
-    const m = monsters.find(m => m.id === mId); if (!m || !m.attacks[idx]) return;
+    const m = monsters.find(m => String(m.id) === String(mId)); if (!m || !m.attacks[idx]) return;
     m.attacks[idx][field] = value;
     saveMonsters();
     // Silently refresh GM roll dropdowns without re-rendering cards (preserves focus)
@@ -1207,13 +1227,88 @@ function showGMRollResult(name, threshold, roll, success, dmgResult) {
 function applyDamageToPlayer(playerId, amount) {
     const p = players.get(playerId);
     if (!p) return;
+    const prot = p.protection?.valeur || 0;
+    const dmg = Math.max(0, amount - prot);
     const hpBefore = p.hp ?? p.maxHP ?? 0;
-    const hpAfter = Math.max(0, hpBefore - amount);
+    const hpAfter = Math.max(0, hpBefore - dmg);
     p.hp = hpAfter;
-    publishDamage(p.playerId, amount, hpBefore, hpAfter, p.maxHP || hpBefore, p.name);
+    publishDamage(p.playerId, dmg, hpBefore, hpAfter, p.maxHP || hpBefore, p.name);
     renderPlayerCards();
     const btn = document.querySelector(`.gm-target-btn[data-pid="${playerId}"]`);
     if (btn) { btn.disabled = true; btn.classList.add('applied'); btn.textContent = `✓ ${p.name || playerId}`; }
+}
+
+// ── GM DICE TRAY ─────────────────────────────
+function gmRollDie(sides) {
+    const result = Math.floor(Math.random() * sides) + 1;
+    const el = document.getElementById('gm-die-result');
+    if (el) { el.textContent = `d${sides} → ${result}`; el.style.animation = 'none'; void el.offsetWidth; el.style.animation = 'fadeIn .3s ease'; }
+    handleIncomingRoll({ skillName: `d${sides}`, threshold: null, roll: result, success: null, char: 'MJ', bonusMalus: 0, playerId: 'gm' });
+}
+
+// ── GM BULK DAMAGE / HEAL ─────────────────────
+function bulkDamageAll() {
+    const inp = document.getElementById('bulk-dmg-input');
+    const rawDmg = parseInt(inp?.value);
+    if (!rawDmg || rawDmg <= 0) return;
+    const online = [...players.entries()].filter(([, p]) => p.online !== false && Date.now() - p.ts < PRESENCE_TIMEOUT);
+    online.forEach(([id, p]) => {
+        const prot = p.protection?.valeur || 0;
+        const dmg = Math.max(0, rawDmg - prot);
+        const hpBefore = p.hp ?? p.maxHP ?? 0;
+        const hpAfter = Math.max(0, hpBefore - dmg);
+        p.hp = hpAfter;
+        publishDamage(p.playerId, dmg, hpBefore, hpAfter, p.maxHP || hpBefore, p.name);
+    });
+    if (inp) inp.value = '';
+    renderPlayerCards();
+}
+function bulkHealAll() {
+    const inp = document.getElementById('bulk-heal-input');
+    const amt = parseInt(inp?.value);
+    if (!amt || amt <= 0) return;
+    const online = [...players.entries()].filter(([, p]) => p.online !== false && Date.now() - p.ts < PRESENCE_TIMEOUT);
+    online.forEach(([id, p]) => {
+        const hpBefore = p.hp ?? 0;
+        const hpAfter = Math.min(p.maxHP || hpBefore, hpBefore + amt);
+        p.hp = hpAfter;
+        publishHeal(p.playerId, amt, hpBefore, hpAfter, p.maxHP || hpBefore, p.name);
+    });
+    if (inp) inp.value = '';
+    renderPlayerCards();
+}
+
+// ── KARMA ─────────────────────────────────────
+const gmKarma = {};
+function setPlayerKarma(charId, delta) {
+    gmKarma[charId] = (gmKarma[charId] ?? 0) + delta;
+    const p = players.get(charId);
+    if (p && ablyDamage) {
+        ablyDamage.publish('karma-set', { playerId: p.playerId, karma: gmKarma[charId] });
+    }
+    renderPlayerCards();
+}
+
+// ── MONSTER INLINE DAMAGE / HEAL ─────────────
+function monsterInlineDamage(id) {
+    const m = monsters.find(m => String(m.id) === String(id)); if (!m) return;
+    const safeId = String(id).replace(/[^a-zA-Z0-9_-]/g, '-');
+    const inp = document.getElementById(`mc-dmg-${safeId}`);
+    const dmg = parseInt(inp?.value); if (!dmg || dmg <= 0) return;
+    m.pv = Math.max(0, m.pv - dmg);
+    if (inp) inp.value = '';
+    saveMonsters();
+    clearTimeout(renderMonstersTimer); renderMonstersTimer = setTimeout(renderMonsters, 50);
+}
+function monsterInlineHeal(id) {
+    const m = monsters.find(m => String(m.id) === String(id)); if (!m) return;
+    const safeId = String(id).replace(/[^a-zA-Z0-9_-]/g, '-');
+    const inp = document.getElementById(`mc-heal-${safeId}`);
+    const amt = parseInt(inp?.value); if (!amt || amt <= 0) return;
+    m.pv = Math.min(m.maxPV, m.pv + amt);
+    if (inp) inp.value = '';
+    saveMonsters();
+    clearTimeout(renderMonstersTimer); renderMonstersTimer = setTimeout(renderMonsters, 50);
 }
 
 // ═══════════════════════════════════════════

@@ -457,8 +457,8 @@ body {
 
 /* ═══ MONSTERS ═══ */
 .monsters-grid {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 12px;
 }
 
@@ -2073,7 +2073,7 @@ body {
 .gm-pot-list {
     margin-top: 16px;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+    grid-template-columns: repeat(3, 1fr);
     gap: 14px;
 }
 .gm-pot-card {
@@ -2884,3 +2884,130 @@ body.light-mode .file-viewer-modal { background: rgba(250,245,235,.97); border-c
 body.light-mode .fv-text { color: var(--parchment); }
 body.light-mode .notes-area { background: rgba(255,255,255,.6); }
 body.light-mode .notes-name-input { color: var(--parchment); }
+
+/* ── MONSTER INLINE DAMAGE/HEAL ── */
+.mc-inline-actions {
+    display: flex;
+    gap: 6px;
+    margin: 8px 0 4px;
+    align-items: center;
+}
+.mc-inline-input {
+    flex: 1;
+    min-width: 0;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(201,168,76,.15);
+    border-radius: var(--radius);
+    color: var(--parchment);
+    font-family: 'Cinzel',serif;
+    font-size: 12px;
+    padding: 5px 8px;
+    text-align: center;
+}
+.mc-inline-input:focus { outline: none; border-color: rgba(201,168,76,.4); }
+.mc-inline-btn {
+    font-family: 'Cinzel',serif;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 5px 10px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all .15s;
+    border: 1px solid;
+    white-space: nowrap;
+}
+.mc-inline-btn.dmg { background: rgba(148,36,24,.12); border-color: rgba(148,36,24,.3); color: #e05050; }
+.mc-inline-btn.dmg:hover { background: rgba(148,36,24,.25); }
+.mc-inline-btn.heal { background: rgba(42,110,68,.12); border-color: rgba(42,110,68,.3); color: var(--success); }
+.mc-inline-btn.heal:hover { background: rgba(42,110,68,.25); }
+
+/* ── GM DICE TRAY ── */
+.gm-dice-tray {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+.die-btn {
+    font-family: 'Cinzel',serif;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 7px 14px;
+    background: rgba(201,168,76,.08);
+    border: 1px solid rgba(201,168,76,.25);
+    border-radius: var(--radius);
+    color: var(--gold);
+    cursor: pointer;
+    transition: all .2s;
+}
+.die-btn:hover { background: rgba(201,168,76,.18); border-color: var(--gold); }
+.gm-die-result {
+    font-family: 'Cinzel',serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--gold);
+    min-height: 28px;
+    margin-bottom: 4px;
+}
+
+/* ── GM BULK BAR ── */
+.gm-bulk-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0 4px;
+    flex-wrap: wrap;
+}
+
+/* ── PLAYER KARMA ROW ── */
+.pc-karma-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border);
+}
+.pc-karma-label {
+    font-family: 'Cinzel',serif;
+    font-size: 10px;
+    letter-spacing: .1em;
+    color: var(--parchment-dim);
+    text-transform: uppercase;
+    flex: 1;
+}
+.pc-karma-val {
+    font-family: 'Cinzel',serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--parchment-dim);
+    min-width: 28px;
+    text-align: center;
+}
+.pc-karma-val.positive { color: var(--success); }
+.pc-karma-val.negative { color: var(--fail); }
+.pc-karma-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--parchment-dim);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 2px 8px;
+    transition: all .15s;
+}
+.pc-karma-btn.plus:hover { color: var(--success); border-color: var(--success); }
+.pc-karma-btn.minus:hover { color: var(--fail); border-color: var(--fail); }
+
+/* ── KARMA DISPLAY (player panel) ── */
+.karma-display {
+    font-family: 'Cinzel',serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--parchment-dim);
+    min-width: 36px;
+    text-align: center;
+}
+.karma-display.positive { color: var(--success); }
+.karma-display.negative { color: var(--fail); }
