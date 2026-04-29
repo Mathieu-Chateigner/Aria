@@ -695,7 +695,7 @@ function renderPlayerCards() {
               </div>
               <div class="pc-hp-bar-wrap"><div class="pc-hp-bar" style="width:${Math.round(pct * 100)}%;background:${hpColor};"></div></div>
             </div>
-            ${p.protection ? `<div class="pc-prot" title="Protection">🛡 ${p.protection.nom || ''}${p.protection.valeur ? ' ' + p.protection.valeur : ''}</div>` : ''}
+            ${p.protection ? `<div class="pc-prot" title="Protection">🛡 <span style="color:var(--parchment-dim)">${p.protection.nom || ''}</span>${p.protection.valeur ? ` <span style="color:var(--gold);font-weight:600;">${p.protection.valeur}</span>` : ''}</div>` : ''}
             <div class="pc-stats">
               ${Object.entries(stats).filter(([k]) => k !== 'PV').map(([k, v]) => `<span class="pc-stat">${k} <span>${v}</span></span>`).join('')}
             </div>
@@ -961,17 +961,18 @@ function removeAmfAttack(idx) {
     });
 }
 function doGMMonsterDamage() {
-    const mId = parseInt(getSelectValue('gm-monster-select'));
-    const m = monsters.find(m => m.id === mId); if (!m) return;
+    const mId = getSelectValue('gm-monster-select');
+    const m = monsters.find(m => String(m.id) === mId); if (!m) return;
     const dmg = parseInt(document.getElementById('gm-monster-dmg-input').value); if (!dmg || dmg <= 0) return;
-    m.pv = Math.max(0, m.pv - dmg);
+    const effective = Math.max(0, dmg - (m.armor || 0));
+    m.pv = Math.max(0, m.pv - effective);
     document.getElementById('gm-monster-dmg-input').value = '';
     saveMonsters();
     clearTimeout(renderMonstersTimer); renderMonstersTimer = setTimeout(renderMonsters, 50);
 }
 function doGMMonsterHeal() {
-    const mId = parseInt(getSelectValue('gm-monster-select'));
-    const m = monsters.find(m => m.id === mId); if (!m) return;
+    const mId = getSelectValue('gm-monster-select');
+    const m = monsters.find(m => String(m.id) === mId); if (!m) return;
     const amt = parseInt(document.getElementById('gm-monster-heal-input').value); if (!amt || amt <= 0) return;
     m.pv = Math.min(m.maxPV, m.pv + amt);
     document.getElementById('gm-monster-heal-input').value = '';
@@ -1003,13 +1004,13 @@ function rollDiceFormula(formula) {
     return { total, breakdown: parts.join(' ') };
 }
 function onMonsterSelectChange() {
-    const mId = parseInt(getSelectValue('gm-monster-select'));
+    const mId = getSelectValue('gm-monster-select');
     const panel = document.getElementById('gm-attack-select')?.querySelector('.gm-select-panel');
     if (!panel) return;
     panel.innerHTML = '';
     setSelectValue('gm-attack-select', '', '— Attaque personnalisée —');
     document.getElementById('gm-monster-threshold').value = '';
-    const m = monsters.find(m => m.id === mId);
+    const m = monsters.find(m => String(m.id) === mId);
     if (!m) return;
     addSelectOpt(panel, '', '— Attaque personnalisée —', () => setSelectValue('gm-attack-select', '', '— Attaque personnalisée —'));
     m.attacks.forEach((a, i) => {
@@ -1018,10 +1019,10 @@ function onMonsterSelectChange() {
     });
 }
 function onAttackSelectChange() {
-    const mId = parseInt(getSelectValue('gm-monster-select'));
+    const mId = getSelectValue('gm-monster-select');
     const atkIdx = getSelectValue('gm-attack-select');
     if (atkIdx === '') return;
-    const m = monsters.find(m => m.id === mId);
+    const m = monsters.find(m => String(m.id) === mId);
     if (!m) return;
     const atk = m.attacks[parseInt(atkIdx)];
     if (atk) document.getElementById('gm-monster-threshold').value = atk.pct;
@@ -1173,10 +1174,10 @@ function doGMFreeRoll() {
     }
 }
 function doGMMonsterRoll() {
-    const mId = parseInt(getSelectValue('gm-monster-select'));
+    const mId = getSelectValue('gm-monster-select');
     const t = parseInt(document.getElementById('gm-monster-threshold').value);
     if (isNaN(t) || t < 1 || t > 100) { alert('Seuil invalide.'); return; }
-    const m = monsters.find(m => m.id === mId);
+    const m = monsters.find(m => String(m.id) === mId);
     const atkIdx = getSelectValue('gm-attack-select');
     const atk = (m && atkIdx !== '') ? m.attacks[parseInt(atkIdx)] : null;
     const name = atk ? `${m.name} — ${atk.name}` : m ? `${m.name} (${t}%)` : `Jet MJ (${t}%)`;
@@ -1295,7 +1296,8 @@ function monsterInlineDamage(id) {
     const safeId = String(id).replace(/[^a-zA-Z0-9_-]/g, '-');
     const inp = document.getElementById(`mc-dmg-${safeId}`);
     const dmg = parseInt(inp?.value); if (!dmg || dmg <= 0) return;
-    m.pv = Math.max(0, m.pv - dmg);
+    const effective = Math.max(0, dmg - (m.armor || 0));
+    m.pv = Math.max(0, m.pv - effective);
     if (inp) inp.value = '';
     saveMonsters();
     clearTimeout(renderMonstersTimer); renderMonstersTimer = setTimeout(renderMonsters, 50);

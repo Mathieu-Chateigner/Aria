@@ -24,7 +24,7 @@ const DEFAULT_CHAR = {
     name: "",
     class: "",
     stats: { FOR: 0, DEX: 0, END: 0, INT: 0, CHA: 0, PV: 0 },
-    physical: { age: "", taille: "", poids: "", yeux: "", cheveux: "", signes: "" },
+    physical: { age: "", taille: "", poids: "", yeux: "", cheveux: "", signes: "", histoire: "" },
     inventory: [],
     weapons: [{ nom: '', degats: '' }, { nom: '', degats: '' }, { nom: '', degats: '' }],
     protection: { nom: '', valeur: 0 },
@@ -358,7 +358,8 @@ function loadCharacterState(id) {
     currentCharId = id;
     character = { ...data };
     delete character.id;
-    if (!character.physical) character.physical = { age:'', taille:'', poids:'', yeux:'', cheveux:'', signes:'' };
+    if (!character.physical) character.physical = { age:'', taille:'', poids:'', yeux:'', cheveux:'', signes:'', histoire:'' };
+    if (character.physical.histoire === undefined) character.physical.histoire = '';
     if (!character.inventory) character.inventory = [];
     if (!character.weapons) character.weapons = [{ nom:'', degats:'', favourite: false }];
     else character.weapons.forEach(w => { if (w.favourite === undefined) w.favourite = false; });
@@ -825,15 +826,15 @@ function updateBMDisplay() {
     // Update only the percentage text in existing skill elements — no DOM rebuild
     document.getElementById('skill-list').querySelectorAll('.skill-item').forEach((div, i) => {
         const skill = (character.skills || [])[i];
-        if (skill) div.querySelector('.skill-pct').textContent = Math.max(1, Math.min(100, skill.pct + bonusMalus)) + '%';
+        if (skill) div.querySelector('.skill-pct').textContent = Math.max(1, Math.min(100, skill.pct + bonusMalus + (character?.karma ?? 0))) + '%';
     });
     document.getElementById('special-list').querySelectorAll('.skill-item').forEach((div, i) => {
         const sp = (character.specials || [])[i];
-        if (sp) div.querySelector('.skill-pct').textContent = Math.max(1, Math.min(100, sp.pct + bonusMalus)) + '%';
+        if (sp) div.querySelector('.skill-pct').textContent = Math.max(1, Math.min(100, sp.pct + bonusMalus + (character?.karma ?? 0))) + '%';
     });
     document.getElementById('potion-list')?.querySelectorAll('.recipe-row').forEach((div, i) => {
         const r = (character.potionRecipes || [])[i];
-        if (r) div.querySelector('.recipe-chance').textContent = Math.max(0, Math.min(100, (r.successChance || 0) + bonusMalus)) + '%';
+        if (r) div.querySelector('.recipe-chance').textContent = Math.max(0, Math.min(100, (r.successChance || 0) + bonusMalus + (character?.karma ?? 0))) + '%';
     });
 }
 
@@ -858,7 +859,7 @@ function renderSkills() {
     const list = document.getElementById('skill-list');
     list.innerHTML = '';
     (character.skills || []).forEach(skill => {
-        const eff = Math.max(1, Math.min(100, skill.pct + bonusMalus));
+        const eff = Math.max(1, Math.min(100, skill.pct + bonusMalus + (character.karma ?? 0)));
         const div = document.createElement('div');
         const isSoigner = skill.name === 'Soigner';
         div.className = 'skill-item' + (isSoigner ? ' soigner-skill' : '');
@@ -873,7 +874,7 @@ function renderSkills() {
     const slist = document.getElementById('special-list');
     slist.innerHTML = '';
     (character.specials || []).forEach(sp => {
-        const eff = Math.max(1, Math.min(100, sp.pct + bonusMalus));
+        const eff = Math.max(1, Math.min(100, sp.pct + bonusMalus + (character.karma ?? 0)));
         const div = document.createElement('div');
         div.className = 'skill-item';
         div.style.borderColor = 'rgba(123,63,160,.3)';
@@ -942,7 +943,7 @@ function renderCombatSidebar() {
     if (!body) return;
     const allWeapons = (character.weapons || []).filter(w => w.nom.trim());
     const favourites = allWeapons.filter(w => w.favourite);
-    const weapons = favourites.length ? favourites : allWeapons;
+    const weapons = favourites;
     const prot = character.protection || {};
     let html = '';
     if (weapons.length) {
@@ -957,7 +958,7 @@ function renderCombatSidebar() {
         html += `<div style="font-family:'EB Garamond',serif;font-size:13px;color:var(--parchment-dim);font-style:italic;opacity:.5;">Aucune arme</div>`;
     }
     html += `<div style="margin:8px 0 6px;border-top:1px solid var(--border);"></div>`;
-    html += `<div style="margin-bottom:6px;"><div style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:3px;">Protection</div><div style="font-family:'Cinzel',serif;font-size:12px;">${prot.nom || '—'} ${prot.valeur ? `<span style="color:var(--gold)">${prot.valeur}</span>` : ''}</div></div>`;
+    html += `<div style="margin-bottom:6px;"><div style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:3px;">Protection</div><div style="display:flex;justify-content:space-between;align-items:center;font-family:'Cinzel',serif;font-size:12px;"><span>${prot.nom || '—'}</span>${prot.valeur ? `<span class="prot-val-badge">${prot.valeur}</span>` : ''}</div></div>`;
 
     // Reaction buttons — look up Parade and Esquiver in the character's skills/specials
     const allSkills = [...(character.skills || []), ...(character.specials || [])];
@@ -966,15 +967,14 @@ function renderCombatSidebar() {
     if (parrySkill || dodgeSkill) {
         html += `<div style="margin:8px 0 6px;border-top:1px solid var(--border);"></div>`;
         html += `<div style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:6px;">Réactions</div>`;
-        const bmLabel = bm => bm !== 0 ? ` <span style="font-size:10px;color:${bm > 0 ? 'var(--success)' : 'var(--fail)'}">${bm > 0 ? '+' : ''}${bm}</span>` : '';
         html += `<div class="react-btns">`;
         if (parrySkill) {
-            const eff = Math.max(1, Math.min(100, parrySkill.pct + bonusMalus));
-            html += `<button class="react-btn" onclick="doRoll('${parrySkill.name.replace(/'/g, "\\'")}',${parrySkill.pct})">🛡 Parer<br><span class="react-pct">${parrySkill.pct}%${bmLabel(bonusMalus)} = ${eff}%</span></button>`;
+            const eff = Math.max(1, Math.min(100, parrySkill.pct + bonusMalus + (character.karma ?? 0)));
+            html += `<button class="react-btn" onclick="doRoll('${parrySkill.name.replace(/'/g, "\\'")}',${parrySkill.pct})">🛡 Parer<br><span class="react-pct">${eff}%</span></button>`;
         }
         if (dodgeSkill) {
-            const eff = Math.max(1, Math.min(100, dodgeSkill.pct + bonusMalus));
-            html += `<button class="react-btn" onclick="doRoll('${dodgeSkill.name.replace(/'/g, "\\'")}',${dodgeSkill.pct})">⚡ ${dodgeSkill.name}<br><span class="react-pct">${dodgeSkill.pct}%${bmLabel(bonusMalus)} = ${eff}%</span></button>`;
+            const eff = Math.max(1, Math.min(100, dodgeSkill.pct + bonusMalus + (character.karma ?? 0)));
+            html += `<button class="react-btn" onclick="doRoll('${dodgeSkill.name.replace(/'/g, "\\'")}',${dodgeSkill.pct})">⚡ ${dodgeSkill.name}<br><span class="react-pct">${eff}%</span></button>`;
         }
         html += `</div>`;
     }
@@ -1093,6 +1093,7 @@ function _showWeaponDamageResult(name, formula, result) {
     card.classList.add('show');
     floatCardTimer = setTimeout(dismissFloatCard, 5000);
     publishRoll({ skillName: `${name} (dégâts)`, threshold: null, roll: result.total, success: null, char: character.name, bonusMalus: 0, playerId });
+    pushRollHistory({ skillName: `${name} (dégâts)`, threshold: null, roll: result.total, success: null, char: character.name, bonusMalus: 0, playerId });
 }
 async function rollWeaponDamage(name, formula) {
     if (!formula || !formula.trim()) return;
@@ -1146,7 +1147,8 @@ function showDieCard(diceName, result) {
 }
 function doRoll(skillName, basePct, skipBM = false) {
     if (isRolling) return;
-    const threshold = skipBM ? Math.max(1, Math.min(100, basePct)) : Math.max(1, Math.min(100, basePct + bonusMalus));
+    const karma = character?.karma ?? 0;
+    const threshold = skipBM ? Math.max(1, Math.min(100, basePct)) : Math.max(1, Math.min(100, basePct + bonusMalus + karma));
     setRolling(true);
     if (dddiceAPI) rollViaDddice(skillName, threshold);
     else setTimeout(() => handleResult(skillName, threshold, Math.floor(Math.random() * 100) + 1), 600);
@@ -1569,6 +1571,8 @@ function initAbly() {
                 character.karma = d.karma ?? 0;
                 saveCurrentCharacter();
                 renderKarma();
+                updateBMDisplay();
+                renderCombatSidebar();
                 return;
             }
             if (d.targetId && d.targetId !== myId) return;
@@ -1676,6 +1680,7 @@ function renderEditorForm() {
     document.getElementById('ed-yeux').value = p.yeux || '';
     document.getElementById('ed-cheveux').value = p.cheveux || '';
     document.getElementById('ed-signes').value = p.signes || '';
+    document.getElementById('ed-histoire').value = p.histoire || '';
     const prot = character.protection || {};
     document.getElementById('ed-prot-nom').value = prot.nom || '';
     document.getElementById('ed-prot-val').value = prot.valeur || 0;
@@ -1944,6 +1949,7 @@ function readEditorInputs() {
         yeux: document.getElementById('ed-yeux').value.trim(),
         cheveux: document.getElementById('ed-cheveux').value.trim(),
         signes: document.getElementById('ed-signes').value.trim(),
+        histoire: document.getElementById('ed-histoire').value.trim(),
     };
     character.protection = { nom: document.getElementById('ed-prot-nom').value.trim(), valeur: +document.getElementById('ed-prot-val').value || 0 };
 }

@@ -335,18 +335,22 @@ body {
 
 .pc-stats {
     display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
+    gap: 4px;
+    flex-wrap: nowrap;
+    overflow: hidden;
 }
 
 .pc-stat {
     font-family: 'Cinzel',serif;
-    font-size: 12px;
+    font-size: 10px;
     color: var(--parchment-dim);
     background: rgba(0,0,0,.2);
     border: 1px solid var(--border);
-    padding: 2px 7px;
+    padding: 2px 5px;
     border-radius: 3px;
+    white-space: nowrap;
+    flex-shrink: 1;
+    min-width: 0;
 }
 
     .pc-stat span {
@@ -724,6 +728,7 @@ body {
     font-size: 13px;
     font-weight: 600;
     padding: 6px 12px;
+    min-width: 110px;
     cursor: pointer;
     border-radius: var(--radius);
     transition: all .15s;
@@ -2957,6 +2962,14 @@ body.light-mode .notes-name-input { color: var(--parchment); }
     gap: 8px;
     padding: 8px 0 4px;
     flex-wrap: wrap;
+}
+
+.gm-bulk-bar .field-label {
+    display: flex;
+    align-items: center;
+    margin: 0;
+    align-self: center;
+    line-height: 1;
 }
 
 /* ── PLAYER KARMA ROW ── */
