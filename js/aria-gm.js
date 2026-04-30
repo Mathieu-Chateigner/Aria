@@ -450,7 +450,7 @@ function switchCampaign() {
     if (renderMonstersTimer) { clearTimeout(renderMonstersTimer); renderMonstersTimer = null; }
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch(_){} dddiceSDK = null; }
     if (ablyInstance) { try { ablyInstance.close(); } catch(_){} ablyInstance = null; }
-    ablyRolls = null; ablyCards = null; ablyDamage = null;
+    ablyRolls = null; ablyCards = null; ablyDamage = null; ablyMusic = null;
     players.clear();
     rollFilter.clear(); playerFilter.clear();
     currentCampaignId = null;
@@ -625,6 +625,8 @@ function initAbly() {
         ablyRolls = ablyInstance.channels.get('aria-rolls');
         ablyCards = ablyInstance.channels.get('aria-cards');
         ablyDamage = ablyInstance.channels.get('aria-damage');
+        ablyMusic = ablyInstance.channels.get('aria-music');
+        // GM does NOT subscribe — playback is driven locally; Ably is outbound-only for the GM
         ablyInstance.connection.on('connected', () => setAblyStatus(true));
         ablyInstance.connection.on('failed', () => setAblyStatus(false));
         // Listen for player rolls
@@ -654,6 +656,16 @@ function publishDamage(targetId, damage, hpBefore, hpAfter, maxHP, charName) {
 function publishHeal(targetId, amount, hpBefore, hpAfter, maxHP, charName) {
     if (!ablyDamage) return;
     ablyDamage.publish('heal', { targetId, amount, hpBefore, hpAfter, maxHP, charName, source: 'gm' });
+}
+
+function publishMusicPlay(track) {
+    if (!ablyMusic) return;
+    ablyMusic.publish('music', { type: 'play', track, fadeDuration: musicFadeDuration });
+}
+
+function publishMusicStop() {
+    if (!ablyMusic) return;
+    ablyMusic.publish('music', { type: 'stop' });
 }
 
 // ═══════════════════════════════════════════
@@ -1457,7 +1469,7 @@ function saveConfig() {
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch (_) {} dddiceSDK = null; }
     if (dddiceResizeHandler) { window.removeEventListener('resize', dddiceResizeHandler); dddiceResizeHandler = null; }
     pendingGMRoll = null; dddiceAPI = null;
-    ablyInstance = null; ablyRolls = null; ablyCards = null; ablyDamage = null;
+    ablyInstance = null; ablyRolls = null; ablyCards = null; ablyDamage = null; ablyMusic = null;
     if (config.dddiceKey && config.dddiceRoom) initDddice();
     if (config.ablyKey) initAbly();
     toggleConfig();
