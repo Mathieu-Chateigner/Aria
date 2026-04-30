@@ -107,6 +107,29 @@ function debouncedSyncFiles() {
     _filesTimer = setTimeout(() => { if (_supabaseReady() && currentCampaignId) Promise.all(gmFiles.map(f => syncFile(f))); }, 800);
 }
 
+async function syncMusicTrack(t) {
+    if (!_supabaseReady() || !currentCampaignId) return;
+    const pos = gmMusic.findIndex(x => x.id === t.id);
+    await sbUpsert('campaign_music', {
+        id: t.id, campaign_id: currentCampaignId, name: t.name,
+        type: t.type, url: t.url || null, youtube_id: t.youtubeId || null,
+        path: t.path || null, position: pos >= 0 ? pos : 0, updated_at: _nowISO(),
+    });
+}
+
+let _musicSyncTimer = null;
+function debouncedSyncMusic() {
+    clearTimeout(_musicSyncTimer);
+    _musicSyncTimer = setTimeout(() => {
+        if (_supabaseReady() && currentCampaignId) Promise.all(gmMusic.map(t => syncMusicTrack(t)));
+    }, 800);
+}
+
+async function deleteMusicTrackFromDB(id) {
+    if (!_supabaseReady()) return;
+    await sbDelete('campaign_music', 'id=eq.' + encodeURIComponent(id));
+}
+
 async function syncGMNote(note) {
     if (!_supabaseReady() || !currentCampaignId) return;
     const pos = gmNotesList.findIndex(n => n.id === note.id);
@@ -136,6 +159,7 @@ async function _syncAllGMData() {
         await Promise.all(monsters.map(m => syncMonster(m)));
         await Promise.all(gmPotions.map(p => syncPotion(p)));
         await Promise.all(gmFiles.map(f => syncFile(f)));
+        await Promise.all(gmMusic.map(t => syncMusicTrack(t)));
         for (const [charId, p] of players) {
             await sbUpsert('campaign_known_players', { id: charId + ':' + currentCampaignId, campaign_id: currentCampaignId, char_id: charId, data: p, updated_at: now }, 'campaign_id,char_id');
         }
@@ -153,12 +177,13 @@ async function loadFromSupabase() {
         const campaigns = camps.map(c => ({ id: c.id, name: c.name, joinCode: c.join_code }));
         localStorage.setItem('aria-gm-campaigns', JSON.stringify(campaigns));
         for (const c of campaigns) {
-            const [mons, pots, files, kp, notes] = await Promise.all([
+            const [mons, pots, files, kp, notes, music] = await Promise.all([
                 sbSelect('monsters', 'campaign_id=eq.' + encodeURIComponent(c.id) + '&select=*'),
                 sbSelect('campaign_potions', 'campaign_id=eq.' + encodeURIComponent(c.id) + '&select=*'),
                 sbSelect('campaign_files', 'campaign_id=eq.' + encodeURIComponent(c.id) + '&select=*'),
                 sbSelect('campaign_known_players', 'campaign_id=eq.' + encodeURIComponent(c.id) + '&select=*'),
                 sbSelect('campaign_notes', 'campaign_id=eq.' + encodeURIComponent(c.id) + '&select=*&order=position.asc'),
+                sbSelect('campaign_music', 'campaign_id=eq.' + encodeURIComponent(c.id) + '&select=*&order=position.asc'),
             ]);
             if (mons.length) localStorage.setItem('aria-gm-monsters-' + c.id, JSON.stringify(mons.map(m => ({ id: m.id, name: m.name, pv: m.pv, maxPV: m.max_pv, armor: m.armor || 0, stats: m.stats || {}, attacks: m.attacks || [] }))));
             if (pots.length) localStorage.setItem('aria-gm-potions-' + c.id, JSON.stringify(pots.map(p => ({ id: p.id, name: p.name, desc: p.description, ingredients: p.ingredients, successChance: p.success_chance }))));
@@ -169,6 +194,9 @@ async function loadFromSupabase() {
                 localStorage.setItem('aria-gm-known-players-' + c.id, JSON.stringify(obj));
             }
             if (notes.length) localStorage.setItem('aria-gm-notes-' + c.id, JSON.stringify(notes.map(n => ({ id: n.id, name: n.name, content: n.content }))));
+            if (music.length) localStorage.setItem('aria-gm-music-' + c.id, JSON.stringify(
+                music.map(t => ({ id: t.id, name: t.name, type: t.type, url: t.url, youtubeId: t.youtube_id, path: t.path }))
+            ));
         }
     } catch(e) { console.warn('[ARIA] GM load failed:', e); }
 }
