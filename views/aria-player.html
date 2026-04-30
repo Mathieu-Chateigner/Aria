@@ -101,6 +101,15 @@
         <div class="karma-display" id="karma-display">0</div>
     </div>
 
+    <!-- MUSIC BAR -->
+    <div class="music-bar" id="music-bar" style="visibility:hidden;">
+        <span class="music-bar-note">♪</span>
+        <span class="music-bar-title" id="music-bar-title">—</span>
+        <span class="music-bar-vol-icon">🔊</span>
+        <input class="music-bar-slider" id="music-bar-volume" type="range" min="0" max="100" value="80"
+            oninput="onMusicVolumeChange(this.value)" />
+    </div>
+
     <!-- MAIN -->
     <div class="main">
 
@@ -466,6 +475,10 @@
 
     <script src="../js/aria-supabase.js"></script>
     <script src="../js/aria-player.js"></script>
+
+    <!-- Hidden YouTube IFrame players for music crossfade -->
+    <div id="yt-player-a" style="position:fixed;top:-2px;left:-2px;width:1px;height:1px;overflow:hidden;pointer-events:none;opacity:0;"></div>
+    <div id="yt-player-b" style="position:fixed;top:-2px;left:-4px;width:1px;height:1px;overflow:hidden;pointer-events:none;opacity:0;"></div>
 
 </body>
 </html>
