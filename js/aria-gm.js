@@ -38,6 +38,8 @@ let currentJoinCode = null;
 let monsters = [];
 let newMonsterAttacks = [];
 let rollFeed = [];
+let rollFilter   = new Set();
+let playerFilter = new Set();
 let cardHistory = [];
 let sweepIntervalId = null;
 let gmClickHandlerRegistered = false;
@@ -414,6 +416,7 @@ function switchCampaign() {
     if (ablyInstance) { try { ablyInstance.close(); } catch(_){} ablyInstance = null; }
     ablyRolls = null; ablyCards = null; ablyDamage = null;
     players.clear();
+    rollFilter.clear(); playerFilter.clear();
     currentCampaignId = null;
     showSelectionScreen();
 }
@@ -1134,28 +1137,113 @@ function classify(roll, threshold, success) {
 }
 function renderRollFeed() {
     const feed = document.getElementById('rolls-feed');
-    if (!rollFeed.length) { feed.innerHTML = '<div class="rolls-empty">En attente de jets…</div>'; return; }
+
+    // Rebuild player name pills
+    const pillGroup = document.getElementById('gm-player-pills');
+    if (pillGroup) {
+        const names = [...new Set(rollFeed.map(d => d.char || d.playerId || '?'))].filter(Boolean);
+        playerFilter = new Set([...playerFilter].filter(n => names.includes(n)));
+        pillGroup.innerHTML = names.map(name => {
+            const safe = name.replace(/'/g, "\\'");
+            const active = playerFilter.has(name) ? ' active' : '';
+            return `<button class="rf-pill rf-player${active}" onclick="togglePlayerFilter('${safe}')">${name}</button>`;
+        }).join('');
+    }
+
+    // Apply filters
+    let filtered = rollFeed;
+    if (rollFilter.size > 0 || playerFilter.size > 0) {
+        filtered = rollFeed.filter(d => {
+            if (playerFilter.size > 0) {
+                const name = d.char || d.playerId || '?';
+                if (!playerFilter.has(name)) return false;
+            }
+            if (rollFilter.size > 0) {
+                const isDie = d.threshold === null;
+                if (isDie) return rollFilter.has('die');
+                const type = classify(d.roll, d.threshold, d.success);
+                if (rollFilter.has('crit') && (type === 'crit-success' || type === 'crit-fail')) return true;
+                return rollFilter.has(type);
+            }
+            return true;
+        });
+    }
+
+    if (!filtered.length) { feed.innerHTML = '<div class="rolls-empty">En attente de jets…</div>'; return; }
+
+    // Group by day
+    const days = new Map();
+    filtered.forEach(d => {
+        const ts = d.ts ?? d.receivedAt;
+        const label = ts
+            ? new Date(ts).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+            : 'Session en cours';
+        if (!days.has(label)) days.set(label, []);
+        days.get(label).push(d);
+    });
+
     feed.innerHTML = '';
-    rollFeed.forEach(d => {
-        const isDie = d.threshold === null;
-        const type = isDie ? 'die' : classify(d.roll, d.threshold, d.success);
-        const verdicts = { success: 'SUCCÈS', fail: 'ÉCHEC', 'crit-success': 'SUCCÈS CRITIQUE', 'crit-fail': 'ÉCHEC CRITIQUE' };
-        const vcls = { success: 's', fail: 'f', 'crit-success': 'cs', 'crit-fail': 'cf' };
-        const row = document.createElement('div'); row.className = `roll-entry ${type}`;
-        row.innerHTML = `
-          <div class="re-char">${d.char || d.playerId || '?'}</div>
-          <div class="re-context">
-            <div class="re-skill">${d.skillName}</div>
-            ${isDie ? '' : `<div class="re-threshold">Seuil : ${d.threshold}%${d.bonusMalus ? ` · BM : ${d.bonusMalus > 0 ? '+' : ''}${d.bonusMalus}` : ''}</div>`}
-          </div>
-          <div class="re-result">
-            <div class="re-roll">${d.roll}</div>
-            ${isDie ? '' : `<div class="re-verdict ${vcls[type]}">${verdicts[type]}</div>`}
-          </div>`;
-        feed.appendChild(row);
+    let firstDay = true;
+    const verdicts = { success: 'SUCCÈS', fail: 'ÉCHEC', 'crit-success': 'SUCCÈS CRITIQUE', 'crit-fail': 'ÉCHEC CRITIQUE' };
+    const vcls     = { success: 's', fail: 'f', 'crit-success': 'cs', 'crit-fail': 'cf' };
+
+    days.forEach((entries, label) => {
+        const hdr = document.createElement('div');
+        hdr.className = 'rh-day-header' + (firstDay ? ' rh-day-header-first' : '');
+        hdr.textContent = label;
+        feed.appendChild(hdr);
+        firstDay = false;
+        entries.forEach(d => {
+            const isDie = d.threshold === null;
+            const type = isDie ? 'die' : classify(d.roll, d.threshold, d.success);
+            const row = document.createElement('div'); row.className = `roll-entry ${type}`;
+            row.innerHTML = `
+              <div class="re-char">${d.char || d.playerId || '?'}</div>
+              <div class="re-context">
+                <div class="re-skill">${d.skillName}</div>
+                ${isDie ? '' : `<div class="re-threshold">Seuil : ${d.threshold}%${d.bonusMalus ? ` · BM : ${d.bonusMalus > 0 ? '+' : ''}${d.bonusMalus}` : ''}</div>`}
+              </div>
+              <div class="re-result">
+                <div class="re-roll">${d.roll}</div>
+                ${isDie ? '' : `<div class="re-verdict ${vcls[type]}">${verdicts[type]}</div>`}
+              </div>`;
+            feed.appendChild(row);
+        });
     });
 }
-function clearRolls() { rollFeed = []; localStorage.removeItem(rollsKey()); renderRollFeed(); }
+function clearRolls() {
+    rollFeed = [];
+    rollFilter.clear();
+    playerFilter.clear();
+    localStorage.removeItem(rollsKey());
+    document.querySelectorAll('#gm-roll-filter-bar .rf-pill:not(.rf-player)').forEach(btn => btn.classList.remove('active'));
+    const allBtn = document.getElementById('gm-rfp-all');
+    if (allBtn) allBtn.classList.add('active');
+    renderRollFeed();
+}
+
+function toggleGMRollFilter(key) {
+    if (key === 'all') {
+        rollFilter.clear();
+    } else {
+        if (rollFilter.has(key)) rollFilter.delete(key);
+        else rollFilter.add(key);
+    }
+    document.querySelectorAll('#gm-roll-filter-bar .rf-pill:not(.rf-player)').forEach(btn => btn.classList.remove('active'));
+    if (rollFilter.size === 0) {
+        const allBtn = document.getElementById('gm-rfp-all');
+        if (allBtn) allBtn.classList.add('active');
+    } else {
+        rollFilter.forEach(k => { const el = document.getElementById('gm-rfp-' + k); if (el) el.classList.add('active'); });
+    }
+    renderRollFeed();
+}
+
+function togglePlayerFilter(name) {
+    if (playerFilter.has(name)) playerFilter.delete(name);
+    else playerFilter.add(name);
+    renderRollFeed();
+}
 
 // ═══════════════════════════════════════════
 //  GM ROLLS

@@ -157,6 +157,14 @@
                     <div class="section-title" style="margin-bottom:0;">Fil des jets</div>
                     <button class="clear-btn" onclick="clearRolls()">Effacer</button>
                 </div>
+                <div class="rh-filter-bar" id="gm-roll-filter-bar">
+                    <button class="rf-pill active" id="gm-rfp-all"     onclick="toggleGMRollFilter('all')">Tous</button>
+                    <button class="rf-pill"        id="gm-rfp-success" onclick="toggleGMRollFilter('success')">Succès</button>
+                    <button class="rf-pill"        id="gm-rfp-fail"    onclick="toggleGMRollFilter('fail')">Échec</button>
+                    <button class="rf-pill"        id="gm-rfp-crit"    onclick="toggleGMRollFilter('crit')">Critique</button>
+                    <button class="rf-pill"        id="gm-rfp-die"     onclick="toggleGMRollFilter('die')">Dés</button>
+                    <div class="rf-player-group" id="gm-player-pills"></div>
+                </div>
                 <div class="rolls-feed" id="rolls-feed">
                     <div class="rolls-empty">En attente de jets…</div>
                 </div>
@@ -198,7 +206,7 @@
                             <div class="gm-combat-sep"></div>
                             <div class="gm-combat-row">
                                 <input class="gm-input" id="gm-monster-dmg-input" type="text" inputmode="numeric" placeholder="Dégâts" oninput="this.value=this.value.replace(/[^0-9]/g,'')" onkeydown="if(event.key==='Enter')doGMMonsterDamage()" />
-                                <button class="gm-action-btn gm-action-dmg" onclick="doGMMonsterDamage()">⚔ Appliquer</button>
+                                <button class="gm-action-btn gm-action-dmg" onclick="doGMMonsterDamage()">⚔ Attaquer</button>
                             </div>
                             <div class="gm-combat-row">
                                 <input class="gm-input" id="gm-monster-heal-input" type="text" inputmode="numeric" placeholder="Soins" oninput="this.value=this.value.replace(/[^0-9]/g,'')" onkeydown="if(event.key==='Enter')doGMMonsterHeal()" />

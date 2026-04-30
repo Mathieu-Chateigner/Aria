@@ -2363,6 +2363,58 @@ body {
     border-color: var(--gold-dim);
 }
 
+/* ── ROLL HISTORY FILTER BAR ─────────────────── */
+.rh-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 6px 0 8px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 6px;
+}
+
+.rf-pill {
+    font-family: 'Cinzel', serif;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: transparent;
+    color: var(--parchment-dim);
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.rf-pill:hover {
+    border-color: var(--gold-dim);
+    color: var(--parchment);
+}
+
+.rf-pill.active {
+    background: var(--gold-dim);
+    border-color: var(--gold);
+    color: var(--gold-light);
+}
+
+.rh-day-header {
+    font-family: 'Cinzel', serif;
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--gold-dim);
+    padding: 10px 0 4px;
+    border-top: 1px solid var(--border);
+    margin-top: 2px;
+}
+
+.rh-day-header-first {
+    border-top: none;
+    margin-top: 0;
+    padding-top: 2px;
+}
+
 /* ═══════════════════════════════════════════
    LIGHT MODE
 ═══════════════════════════════════════════ */

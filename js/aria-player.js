@@ -65,6 +65,7 @@ if (!playerId) { playerId = crypto.randomUUID ? crypto.randomUUID() : Date.now()
 let config = JSON.parse(localStorage.getItem('aria-config') || '{}');
 if (config.lightMode) document.body.classList.add('light-mode');
 let bonusMalus = 0;
+let rollFilter = new Set();
 let multiplier = 1;
 let isRolling = false;
 let dddiceAPI = null;
@@ -375,6 +376,7 @@ function loadCharacterState(id) {
     cardDrawn = new Set(saved?.drawn || []);
     cardExcluded = new Set(saved?.excluded || []);
     lastCardId = saved?.lastCardId || null;
+    playerRollHistory = JSON.parse(localStorage.getItem('aria-player-rolls-' + id) || '[]');
     return true;
 }
 
@@ -409,10 +411,28 @@ function showApp() {
     document.getElementById('app-wrapper').style.display = 'flex';
 }
 
-function selectCharacter(id) {
+async function selectCharacter(id) {
     if (!loadCharacterState(id)) return;
     showApp();
     initApp();
+    if (!localStorage.getItem('aria-player-rolls-' + id)) {
+        const rows = await loadCharacterRolls(id);
+        if (rows.length) {
+            playerRollHistory = rows.map(r => ({
+                skillName:  r.skill_name,
+                threshold:  r.threshold,
+                roll:       r.roll,
+                success:    r.success,
+                char:       character.name,
+                bonusMalus: r.bonus_malus,
+                playerId,
+                ts:         r.ts,
+            }));
+            if (playerRollHistory.length > PLAYER_ROLL_HISTORY_MAX) playerRollHistory.length = PLAYER_ROLL_HISTORY_MAX;
+            localStorage.setItem('aria-player-rolls-' + id, JSON.stringify(playerRollHistory));
+            renderRollHistory();
+        }
+    }
 }
 
 function deleteCharacter(id) {
@@ -457,7 +477,7 @@ function switchCharacter() {
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch(_){} dddiceSDK = null; }
     clearTimeout(dddiceRollSafetyTimer);
     pendingDddiceRoll = null; pendingSecondaryRoll = null; dddiceAPI = null;
-    currentHP = null; bonusMalus = 0;
+    currentHP = null; bonusMalus = 0; rollFilter.clear();
     const doCloseAbly = () => {
         if (ablyInstance) { try { ablyInstance.close(); } catch(_){} ablyInstance = null; }
         ablyRolls = null; ablyCards = null; ablyDamage = null;
@@ -797,9 +817,9 @@ function showOtherRollToast(d) {
     const toast = document.getElementById('other-roll-toast');
     document.getElementById('ort-char').textContent = d.char || '?';
     document.getElementById('ort-skill').textContent = d.skillName;
-    document.getElementById('ort-roll').textContent = d.roll;
+    document.getElementById('ort-roll').textContent = d.roll != null ? d.roll : '';
     const vEl = document.getElementById('ort-verdict');
-    if (isDie) { vEl.textContent = ''; vEl.className = 'ort-verdict'; }
+    if (isDie || d.roll == null) { vEl.textContent = ''; vEl.className = 'ort-verdict'; }
     else { vEl.textContent = vlbl[type]; vEl.className = `ort-verdict ${vcls[type]}`; }
     toast.classList.add('show');
     clearTimeout(otherRollToastTimer);
@@ -836,6 +856,7 @@ function updateBMDisplay() {
         const r = (character.potionRecipes || [])[i];
         if (r) div.querySelector('.recipe-chance').textContent = Math.max(0, Math.min(100, (r.successChance || 0) + bonusMalus + (character?.karma ?? 0))) + '%';
     });
+    renderCombatSidebar();
 }
 
 // ═══════════════════════════════════════════
@@ -1158,36 +1179,105 @@ function rollStat(key, val) {
     doRoll(`${multiplier > 1 ? multiplier + '× ' : ''}${key}`, val * multiplier);
 }
 // ── ROLL HISTORY ─────────────────────────────
-const playerRollHistory = [];
-const PLAYER_ROLL_HISTORY_MAX = 30;
+let playerRollHistory = [];
+const PLAYER_ROLL_HISTORY_MAX = 100;
 
 function pushRollHistory(entry) {
-    playerRollHistory.unshift(entry);
+    const stamped = { ...entry, ts: Date.now() };
+    playerRollHistory.unshift(stamped);
     if (playerRollHistory.length > PLAYER_ROLL_HISTORY_MAX) playerRollHistory.pop();
+    localStorage.setItem('aria-player-rolls-' + currentCharId, JSON.stringify(playerRollHistory));
+    if (_supabaseReady()) sbInsert('character_rolls', {
+        character_id: currentCharId,
+        skill_name:   stamped.skillName  || '',
+        threshold:    stamped.threshold  ?? null,
+        roll:         stamped.roll,
+        success:      stamped.success    ?? null,
+        bonus_malus:  stamped.bonusMalus || 0,
+        ts:           stamped.ts,
+    });
     renderRollHistory();
 }
 
 function renderRollHistory() {
     const list = document.getElementById('roll-history-list');
     if (!list) return;
-    if (!playerRollHistory.length) {
+
+    let filtered = playerRollHistory;
+    if (rollFilter.size > 0) {
+        filtered = playerRollHistory.filter(r => {
+            const isDie = r.threshold === null;
+            if (isDie) return rollFilter.has('die');
+            const type = classify(r.roll, r.threshold, r.success);
+            if (rollFilter.has('crit') && (type === 'crit-success' || type === 'crit-fail')) return true;
+            return rollFilter.has(type);
+        });
+    }
+
+    if (!filtered.length) {
         list.innerHTML = '<div class="roll-history-empty">Aucun jet pour l\'instant.</div>';
         return;
     }
-    list.innerHTML = playerRollHistory.map(r => {
-        const isDie = r.threshold === null;
-        if (isDie) {
-            return `<div class="rh-row rh-die"><span class="rh-skill">${r.skillName}</span><span class="rh-roll">${r.roll}</span></div>`;
-        }
-        const type = classify(r.roll, r.threshold, r.success);
-        const cls = { success: 'rh-success', fail: 'rh-fail', 'crit-success': 'rh-crit-success', 'crit-fail': 'rh-crit-fail' }[type] || '';
-        const lbl = { success: 'SUCCÈS', fail: 'ÉCHEC', 'crit-success': 'SUCCÈS CRIT.', 'crit-fail': 'ÉCHEC CRIT.' }[type] || '';
-        return `<div class="rh-row ${cls}"><span class="rh-skill">${r.skillName}</span><span class="rh-roll">${r.roll}</span><span class="rh-verdict">${lbl}</span></div>`;
-    }).join('');
+
+    const days = new Map();
+    filtered.forEach(r => {
+        const label = r.ts
+            ? new Date(r.ts).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+            : 'Session en cours';
+        if (!days.has(label)) days.set(label, []);
+        days.get(label).push(r);
+    });
+
+    list.innerHTML = '';
+    let firstDay = true;
+    days.forEach((entries, label) => {
+        const hdr = document.createElement('div');
+        hdr.className = 'rh-day-header' + (firstDay ? ' rh-day-header-first' : '');
+        hdr.textContent = label;
+        list.appendChild(hdr);
+        firstDay = false;
+        entries.forEach(r => {
+            const isDie = r.threshold === null;
+            const row = document.createElement('div');
+            if (isDie) {
+                row.className = 'rh-row rh-die';
+                row.innerHTML = `<span class="rh-skill">${r.skillName}</span><span class="rh-roll">${r.roll}</span>`;
+            } else {
+                const type = classify(r.roll, r.threshold, r.success);
+                const cls = { success: 'rh-success', fail: 'rh-fail', 'crit-success': 'rh-crit-success', 'crit-fail': 'rh-crit-fail' }[type] || '';
+                const lbl = { success: 'SUCCÈS', fail: 'ÉCHEC', 'crit-success': 'SUCCÈS CRIT.', 'crit-fail': 'ÉCHEC CRIT.' }[type] || '';
+                row.className = `rh-row ${cls}`;
+                row.innerHTML = `<span class="rh-skill">${r.skillName}</span><span class="rh-roll">${r.roll}</span><span class="rh-verdict">${lbl}</span>`;
+            }
+            list.appendChild(row);
+        });
+    });
 }
 
 function clearRollHistory() {
-    playerRollHistory.length = 0;
+    playerRollHistory = [];
+    rollFilter.clear();
+    localStorage.removeItem('aria-player-rolls-' + currentCharId);
+    document.querySelectorAll('#rh-filter-bar .rf-pill').forEach(btn => btn.classList.remove('active'));
+    const allBtn = document.getElementById('rfp-all');
+    if (allBtn) allBtn.classList.add('active');
+    renderRollHistory();
+}
+
+function toggleRollFilter(key) {
+    if (key === 'all') {
+        rollFilter.clear();
+    } else {
+        if (rollFilter.has(key)) rollFilter.delete(key);
+        else rollFilter.add(key);
+    }
+    document.querySelectorAll('#rh-filter-bar .rf-pill').forEach(btn => btn.classList.remove('active'));
+    if (rollFilter.size === 0) {
+        const allBtn = document.getElementById('rfp-all');
+        if (allBtn) allBtn.classList.add('active');
+    } else {
+        rollFilter.forEach(k => { const el = document.getElementById('rfp-' + k); if (el) el.classList.add('active'); });
+    }
     renderRollHistory();
 }
 
@@ -1584,6 +1674,16 @@ function initAbly() {
             const d = msg.data;
             if (!d || d.playerId === myId) return; // skip own rolls
             showOtherRollToast(d);
+        });
+        // Listen for other players' card draws
+        ablyCards.subscribe('draw', msg => {
+            const d = msg.data;
+            if (!d || !d.playerName || d.playerName === character.name) return;
+            const card = cardById(d.cardId);
+            const label = card
+                ? (card.isJoker ? card.label : `${card.rank} de ${SUIT_FR[card.suit.name] || card.suit.name}`)
+                : d.cardId;
+            showOtherRollToast({ char: d.playerName, skillName: '🃏 ' + label, roll: null, threshold: null, success: null });
         });
     } catch (e) { console.error('Ably:', e); setAblyStatus(false); }
 }

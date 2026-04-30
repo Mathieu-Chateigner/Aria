@@ -206,3 +206,9 @@ async function runMigration(saveKey, type) {
         console.warn('[ARIA] Migration failed:', e);
     }
 }
+
+async function loadCharacterRolls(charId) {
+    return await sbSelect('character_rolls',
+        'character_id=eq.' + encodeURIComponent(charId) + '&order=ts.desc&limit=100'
+    );
+}

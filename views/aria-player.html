@@ -193,6 +193,13 @@
                         <span class="field-label" style="margin:0;">Historique</span>
                         <button class="clear-btn" onclick="clearRollHistory()">Effacer</button>
                     </div>
+                    <div class="rh-filter-bar" id="rh-filter-bar">
+                        <button class="rf-pill active" id="rfp-all"     onclick="toggleRollFilter('all')">Tous</button>
+                        <button class="rf-pill"        id="rfp-success" onclick="toggleRollFilter('success')">Succès</button>
+                        <button class="rf-pill"        id="rfp-fail"    onclick="toggleRollFilter('fail')">Échec</button>
+                        <button class="rf-pill"        id="rfp-crit"    onclick="toggleRollFilter('crit')">Critique</button>
+                        <button class="rf-pill"        id="rfp-die"     onclick="toggleRollFilter('die')">Dés</button>
+                    </div>
                     <div class="roll-history-list" id="roll-history-list">
                         <div class="roll-history-empty">Aucun jet pour l'instant.</div>
                     </div>
