@@ -2395,6 +2395,217 @@ body {
 .notes-area::placeholder { color: var(--parchment-dim); opacity: .45; font-style: italic; }
 .notes-area:focus { border-color: var(--gold-dim); }
 
+/* ─── MUSIC TAB ──────────────────────────────── */
+.music-now-playing {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 14px;
+}
+
+.music-np-title {
+    font-family: 'EB Garamond', serif;
+    font-size: 15px;
+    color: var(--gold-light);
+    margin-bottom: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.music-progress-wrap { margin-bottom: 10px; }
+
+.music-progress-bg {
+    background: rgba(201,168,76,0.12);
+    border-radius: 2px;
+    height: 3px;
+    overflow: hidden;
+}
+
+.music-progress-fill {
+    background: var(--gold);
+    height: 3px;
+    width: 0%;
+    border-radius: 2px;
+    transition: width 0.5s linear;
+}
+
+.music-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.music-ctrl-btn {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--gold);
+    font-size: 13px;
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: background .15s, border-color .15s;
+    line-height: 1.4;
+}
+.music-ctrl-btn:hover { background: var(--bg3); border-color: var(--gold-dim); }
+.music-ctrl-btn.active { background: var(--gold-dim); border-color: var(--gold); color: var(--bg); }
+
+.music-ctrl-play {
+    background: var(--gold-dim);
+    color: var(--bg);
+    border-color: var(--gold-dim);
+    font-weight: 700;
+    padding: 4px 14px;
+}
+.music-ctrl-play:hover { background: var(--gold); border-color: var(--gold); }
+
+.music-fade-label {
+    font-family: 'EB Garamond', serif;
+    font-size: 13px;
+    color: var(--parchment-dim);
+}
+
+.music-fade-input {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--parchment);
+    font-family: 'EB Garamond', serif;
+    font-size: 13px;
+    padding: 3px 6px;
+    width: 38px;
+    text-align: center;
+}
+.music-fade-input:focus { outline: none; border-color: var(--gold-dim); }
+
+.music-section-title {
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--parchment-dim);
+    margin-bottom: 6px;
+}
+
+.music-playlist {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 4px;
+}
+
+.music-track-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: var(--radius);
+    border: 1px solid transparent;
+    cursor: default;
+    transition: background .12s;
+}
+.music-track-row:hover { background: var(--bg3); }
+.music-track-row.active {
+    background: rgba(201,168,76,0.08);
+    border-color: rgba(201,168,76,0.25);
+}
+
+.music-track-indicator {
+    color: var(--gold);
+    font-size: 11px;
+    width: 12px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.music-track-name {
+    flex: 1;
+    font-family: 'EB Garamond', serif;
+    font-size: 14px;
+    color: var(--parchment);
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.music-track-row.active .music-track-name { color: var(--gold-light); }
+.music-track-name:hover { color: var(--gold-light); }
+
+.music-track-badge {
+    font-family: 'Cinzel', serif;
+    font-size: 9px;
+    letter-spacing: .08em;
+    color: var(--parchment-dim);
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 5px;
+    flex-shrink: 0;
+}
+
+.music-track-delete {
+    background: none;
+    border: none;
+    color: var(--parchment-dim);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 2px 4px;
+    opacity: .5;
+    flex-shrink: 0;
+    line-height: 1;
+}
+.music-track-delete:hover { color: #c0392b; opacity: 1; }
+
+.music-empty {
+    font-family: 'EB Garamond', serif;
+    font-size: 13px;
+    color: var(--parchment-dim);
+    padding: 10px 8px;
+    font-style: italic;
+}
+
+.music-add-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.music-file-hint {
+    font-family: 'EB Garamond', serif;
+    font-size: 12px;
+    color: var(--parchment-dim);
+    font-style: italic;
+}
+
+.music-add-status {
+    font-family: 'EB Garamond', serif;
+    font-size: 13px;
+    color: var(--gold-light);
+    margin-top: 8px;
+    min-height: 18px;
+}
+
+.music-unlock-prompt {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg3);
+    border: 1px solid var(--gold-dim);
+    border-radius: var(--radius);
+    color: var(--gold);
+    font-family: 'Cinzel', serif;
+    font-size: 12px;
+    letter-spacing: .1em;
+    padding: 10px 24px;
+    cursor: pointer;
+    z-index: 9000;
+    display: none;
+}
+.music-unlock-prompt:hover { background: var(--gold-dim); color: var(--bg); }
+
 /* ═══════════════════════════════════════════
    LIGHT MODE
 ═══════════════════════════════════════════ */
@@ -2516,6 +2727,11 @@ body.light-mode .re-verdict.cs { color: var(--success); }
 body.light-mode .re-verdict.cf { color: var(--fail); }
 body.light-mode .roll-entry.crit-success { border-left-color: var(--success); border-color: rgba(42,110,68,.2); background: rgba(42,110,68,.04); }
 body.light-mode .roll-entry.crit-fail { border-left-color: var(--fail); border-color: rgba(148,36,24,.2); background: rgba(148,36,24,.04); }
+body.light-mode .music-now-playing { background: #f5ede0; border-color: rgba(201,168,76,0.3); }
+body.light-mode .music-ctrl-btn { background: #fff; border-color: rgba(0,0,0,0.12); color: var(--gold-dim); }
+body.light-mode .music-track-row:hover { background: rgba(201,168,76,0.06); }
+body.light-mode .music-track-badge { background: #f5ede0; }
+body.light-mode .music-fade-input { background: #fff; border-color: rgba(0,0,0,0.12); color: #333; }
 
 /* ═══════════════════════════════════════════
    SELECTION SCREEN — CONFIG SECTION
