@@ -3375,9 +3375,71 @@ body.light-mode .hp-number.low { color: #8c4a08; }
     display: inline-block;
 }
 .fv-download-link:hover { background: rgba(201,168,76,.08); border-color: var(--gold-dim); }
+
+/* ─── MUSIC BAR ──────────────────────────────── */
+.music-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 14px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    min-height: 30px;
+}
+
+.music-bar-note {
+    color: var(--gold);
+    font-size: 13px;
+    flex-shrink: 0;
+}
+
+.music-bar-title {
+    flex: 1;
+    font-family: 'EB Garamond', serif;
+    font-size: 13px;
+    color: var(--parchment-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.music-bar-vol-icon {
+    font-size: 12px;
+    flex-shrink: 0;
+    opacity: .7;
+}
+
+.music-bar-slider {
+    width: 80px;
+    accent-color: var(--gold);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.music-unlock-prompt {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg3);
+    border: 1px solid var(--gold-dim);
+    border-radius: var(--radius);
+    color: var(--gold);
+    font-family: 'Cinzel', serif;
+    font-size: 12px;
+    letter-spacing: .1em;
+    padding: 10px 24px;
+    cursor: pointer;
+    z-index: 9000;
+    display: none;
+}
+.music-unlock-prompt:hover { background: var(--gold-dim); color: var(--bg); }
+
 body.light-mode .player-file-row { background: rgba(255,255,255,.6); border-color: rgba(100,70,10,.2); }
 body.light-mode .player-file-row:hover { border-color: rgba(100,70,10,.4); }
 body.light-mode .pf-open-btn { background: rgba(240,230,200,.6); border-color: rgba(100,70,10,.2); }
 body.light-mode .pf-open-btn:hover { border-color: rgba(100,70,10,.5); }
 body.light-mode .file-viewer-modal { background: rgba(250,245,235,.97); border-color: rgba(100,70,10,.2); }
 body.light-mode .fv-text { color: var(--parchment); }
+body.light-mode .music-bar { background: #f0e6c8; border-bottom-color: rgba(201,168,76,0.3); }
+body.light-mode .music-bar-title { color: #6b5020; }
