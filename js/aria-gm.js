@@ -47,6 +47,8 @@ let renderPlayerCardsTimer = null;
 let renderMonstersTimer = null;
 let gmPotions = [];
 let gmFiles = [];
+let gmMusic = [];
+let ablyMusic = null;
 const filesGrantedSessions = new Set();
 let saveKey        = localStorage.getItem('aria-save-key') || null;
 let _pendingNewKey = null;
@@ -266,6 +268,7 @@ function potionsKey()       { return 'aria-gm-potions-'        + currentCampaign
 function knownPlayersKey()  { return 'aria-gm-known-players-'  + currentCampaignId; }
 function filesKey()         { return 'aria-gm-files-'          + currentCampaignId; }
 function gmNotesKey()       { return 'aria-gm-notes-'          + currentCampaignId; }
+function musicKey()         { return 'aria-gm-music-'          + currentCampaignId; }
 
 function saveKnownPlayers() {
     const obj = {};
@@ -301,6 +304,7 @@ function loadCampaignState(id) {
     cardHistory = JSON.parse(localStorage.getItem(cardHistKey()) || '[]');
     gmPotions   = JSON.parse(localStorage.getItem(potionsKey())  || '[]');
     gmFiles     = JSON.parse(localStorage.getItem(filesKey())    || '[]');
+    gmMusic     = JSON.parse(localStorage.getItem(musicKey())    || '[]');
     players.clear();
     const knownRaw = JSON.parse(localStorage.getItem(knownPlayersKey()) || '{}');
     Object.entries(knownRaw).forEach(([, p]) => {
@@ -366,6 +370,7 @@ function deleteCampaign(id) {
     localStorage.removeItem('aria-gm-known-players-' + id);
     localStorage.removeItem('aria-gm-files-' + id);
     localStorage.removeItem('aria-gm-notes-' + id);
+    localStorage.removeItem('aria-gm-music-' + id);
     renderCampaignScreen();
 }
 
@@ -408,6 +413,9 @@ function switchCampaign() {
     }
     gmPotions = [];
     gmFiles = [];
+    gmMusic = [];
+    ablyMusic = null;
+    musicStop();
     filesGrantedSessions.clear();
     if (sweepIntervalId) { clearInterval(sweepIntervalId); sweepIntervalId = null; }
     if (renderPlayerCardsTimer) { clearTimeout(renderPlayerCardsTimer); renderPlayerCardsTimer = null; }
@@ -1847,6 +1855,12 @@ function _fileIcon(type) {
 }
 
 function saveGmFiles() { localStorage.setItem(filesKey(), JSON.stringify(gmFiles)); debouncedSyncFiles(); }
+
+function saveGMMusic() {
+    if (!currentCampaignId) return;
+    localStorage.setItem(musicKey(), JSON.stringify(gmMusic));
+    debouncedSyncMusic();
+}
 
 // ═══════════════════════════════════════════
 //  NOTES MJ
