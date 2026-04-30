@@ -73,7 +73,7 @@ let dddiceSDK = null;            // ThreeDDice SDK instance
 let pendingDddiceRoll = null;    // { skillName, threshold } waiting for RollFinished event
 let pendingSecondaryRoll = null; // { callback, mapFn } for non-d100 dice (d6, d3, weapon formula…)
 let dddiceRollSafetyTimer = null; // fallback timer in case RollFinished never fires
-let ablyRolls = null, ablyCards = null, ablyDamage = null;
+let ablyRolls = null, ablyCards = null, ablyDamage = null, ablyMusic = null;
 let ablyInstance = null;
 let currentHP = null;
 let presenceIntervalId = null;
@@ -480,7 +480,7 @@ function switchCharacter() {
     currentHP = null; bonusMalus = 0; rollFilter.clear();
     const doCloseAbly = () => {
         if (ablyInstance) { try { ablyInstance.close(); } catch(_){} ablyInstance = null; }
-        ablyRolls = null; ablyCards = null; ablyDamage = null;
+        ablyRolls = null; ablyCards = null; ablyDamage = null; ablyMusic = null;
     };
     if (ablyDamage) {
         try { ablyDamage.publish('leave', { playerId }, () => doCloseAbly()); } catch(_){ doCloseAbly(); }
@@ -519,6 +519,8 @@ function initApp() {
     presenceIntervalId = setInterval(sendPresence, 5000);
     document.title = character.name ? `ARIA – ${character.name}` : 'ARIA – Joueur';
     updateOverlayEditorBtn();
+    const volSlider = document.getElementById('music-bar-volume');
+    if (volSlider) volSlider.value = String(musicMasterVolume);
 }
 
 function updateOverlayEditorBtn() {
@@ -1556,6 +1558,183 @@ function setDddiceStatus(ok, detail) {
 }
 
 // ═══════════════════════════════════════════
+//  MUSIC ENGINE (PLAYER)
+// ═══════════════════════════════════════════
+let _playerMusicList  = [];
+let musicMasterVolume = parseInt(localStorage.getItem('aria-music-volume') || '80');
+let musicFadeDuration = 3000;
+let musicCurrentIndex = -1;
+let musicIsPlaying    = false;
+let _musicCurrentSlot = 'A';
+let _musicFadeRaf     = null;
+
+const _musicSlots = {
+    A: { audio: null, ytEndedCb: null },
+    B: { audio: null, ytEndedCb: null },
+};
+let _ytAPIReady   = false;
+let _ytPendingCbs = [];
+let _ytSlotA      = null;
+let _ytSlotB      = null;
+
+function _getAudio(slot) {
+    if (!_musicSlots[slot].audio) _musicSlots[slot].audio = new Audio();
+    return _musicSlots[slot].audio;
+}
+
+function _setSlotVol(slot, vol) {
+    const v = Math.max(0, Math.min(100, vol));
+    const audio = _musicSlots[slot].audio;
+    if (audio) audio.volume = v / 100;
+    const yt = slot === 'A' ? _ytSlotA : _ytSlotB;
+    if (yt) { try { yt.setVolume(v); } catch(_) {} }
+}
+
+function _stopSlot(slot) {
+    const audio = _musicSlots[slot].audio;
+    if (audio) { audio.pause(); audio.onended = null; audio.src = ''; }
+    const yt = slot === 'A' ? _ytSlotA : _ytSlotB;
+    if (yt) { try { yt.stopVideo(); } catch(_) {} }
+    _musicSlots[slot].ytEndedCb = null;
+}
+
+function _ensureYTAPI(cb) {
+    if (_ytAPIReady) { cb(); return; }
+    _ytPendingCbs.push(cb);
+    if (document.getElementById('yt-iframe-api')) return;
+    window.onYouTubeIframeAPIReady = () => {
+        _ytAPIReady = true;
+        _ytPendingCbs.splice(0).forEach(fn => fn());
+    };
+    const s = document.createElement('script');
+    s.id = 'yt-iframe-api';
+    s.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(s);
+}
+
+function _ensureYTSlots(cb) {
+    _ensureYTAPI(() => {
+        if (_ytSlotA && _ytSlotB) { cb(); return; }
+        let readyCount = 0;
+        const onSlotReady = () => { readyCount++; if (readyCount === 2) cb(); };
+        _ytSlotA = new YT.Player('yt-player-a', {
+            width: '1', height: '1',
+            playerVars: { autoplay: 0, controls: 0, disablekb: 1, fs: 0 },
+            events: {
+                onReady: onSlotReady,
+                onStateChange: e => { if (e.data === YT.PlayerState.ENDED && _musicSlots.A.ytEndedCb) _musicSlots.A.ytEndedCb(); },
+            },
+        });
+        _ytSlotB = new YT.Player('yt-player-b', {
+            width: '1', height: '1',
+            playerVars: { autoplay: 0, controls: 0, disablekb: 1, fs: 0 },
+            events: {
+                onReady: onSlotReady,
+                onStateChange: e => { if (e.data === YT.PlayerState.ENDED && _musicSlots.B.ytEndedCb) _musicSlots.B.ytEndedCb(); },
+            },
+        });
+    });
+}
+
+function _loadSlotAtZeroVol(track, slot, onStarted) {
+    _setSlotVol(slot, 0);
+    if (track.type === 'file') {
+        const audio = _getAudio(slot);
+        audio.onended = null;
+        audio.src = track.url;
+        audio.volume = 0;
+        const p = audio.play();
+        if (p) p.then(onStarted).catch(() => _showMusicUnlockPrompt(() => audio.play().then(onStarted)));
+        else onStarted();
+    } else {
+        _ensureYTSlots(() => {
+            const yt = slot === 'A' ? _ytSlotA : _ytSlotB;
+            _musicSlots[slot].ytEndedCb = null;
+            yt.loadVideoById(track.youtubeId);
+            yt.setVolume(0);
+            setTimeout(() => { try { yt.playVideo(); } catch(_) {} onStarted(); }, 800);
+        });
+    }
+}
+
+function _runCrossfade(fromSlot, toSlot, onDone) {
+    if (_musicFadeRaf) { cancelAnimationFrame(_musicFadeRaf); _musicFadeRaf = null; }
+    const start = performance.now();
+    const fromStart = musicMasterVolume;
+    function tick(now) {
+        const t = Math.min(1, (now - start) / musicFadeDuration);
+        _setSlotVol(fromSlot, (1 - t) * fromStart);
+        _setSlotVol(toSlot, t * musicMasterVolume);
+        if (t < 1) { _musicFadeRaf = requestAnimationFrame(tick); }
+        else { _musicFadeRaf = null; _stopSlot(fromSlot); onDone(); }
+    }
+    _musicFadeRaf = requestAnimationFrame(tick);
+}
+
+function _setSlotEndedCallback(slot, track, cb) {
+    if (track.type === 'file') {
+        const audio = _musicSlots[slot].audio;
+        if (audio) audio.onended = cb;
+    } else {
+        _musicSlots[slot].ytEndedCb = cb;
+    }
+}
+
+function _showMusicUnlockPrompt(onUnlock) {
+    let el = document.getElementById('music-unlock-prompt');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'music-unlock-prompt';
+        el.className = 'music-unlock-prompt';
+        el.textContent = '▶ Cliquer pour activer le son';
+        document.body.appendChild(el);
+    }
+    el.style.display = 'flex';
+    const handler = () => { el.style.display = 'none'; el.removeEventListener('click', handler); onUnlock(); };
+    el.addEventListener('click', handler);
+}
+
+function _musicAutoAdvance() {
+    if (!_playerMusicList.length) return;
+    const nextIdx = musicCurrentIndex + 1 < _playerMusicList.length ? musicCurrentIndex + 1 : -1;
+    if (nextIdx === -1) { musicIsPlaying = false; return; }
+    _musicTriggerPlay(_playerMusicList[nextIdx], nextIdx);
+}
+
+function _musicTriggerPlay(track, index) {
+    if (_musicFadeRaf) { cancelAnimationFrame(_musicFadeRaf); _musicFadeRaf = null; }
+    const currentSlot = _musicCurrentSlot;
+    const nextSlot    = currentSlot === 'A' ? 'B' : 'A';
+    _musicSlots[currentSlot].ytEndedCb = null;
+    if (_musicSlots[currentSlot].audio) _musicSlots[currentSlot].audio.onended = null;
+    musicCurrentIndex = index;
+    musicIsPlaying    = true;
+    _updatePlayerMusicBar(track);
+    _loadSlotAtZeroVol(track, nextSlot, () => {
+        _runCrossfade(currentSlot, nextSlot, () => {
+            _musicCurrentSlot = nextSlot;
+            _setSlotEndedCallback(nextSlot, track, _musicAutoAdvance);
+        });
+    });
+}
+
+function _updatePlayerMusicBar(track) {
+    const bar   = document.getElementById('music-bar');
+    const title = document.getElementById('music-bar-title');
+    if (!bar || !title) return;
+    if (track) {
+        title.textContent = track.name;
+        bar.style.visibility = 'visible';
+    }
+}
+
+function onMusicVolumeChange(val) {
+    musicMasterVolume = parseInt(val);
+    localStorage.setItem('aria-music-volume', String(musicMasterVolume));
+    _setSlotVol(_musicCurrentSlot, musicMasterVolume);
+}
+
+// ═══════════════════════════════════════════
 //  ABLY
 // ═══════════════════════════════════════════
 function initAbly() {
@@ -1564,6 +1743,26 @@ function initAbly() {
         ablyRolls = ablyInstance.channels.get('aria-rolls');
         ablyCards = ablyInstance.channels.get('aria-cards');
         ablyDamage = ablyInstance.channels.get('aria-damage');
+        ablyMusic = ablyInstance.channels.get('aria-music');
+        ablyMusic.subscribe('music', msg => {
+            const d = msg.data;
+            if (!d) return;
+            if (d.type === 'play' && d.track) {
+                if (d.fadeDuration) musicFadeDuration = d.fadeDuration;
+                const existingIdx = _playerMusicList.findIndex(t => t.id === d.track.id);
+                if (existingIdx >= 0) {
+                    _musicTriggerPlay(_playerMusicList[existingIdx], existingIdx);
+                } else {
+                    _playerMusicList.push(d.track);
+                    _musicTriggerPlay(d.track, _playerMusicList.length - 1);
+                }
+            } else if (d.type === 'stop') {
+                if (_musicFadeRaf) { cancelAnimationFrame(_musicFadeRaf); _musicFadeRaf = null; }
+                _stopSlot('A');
+                _stopSlot('B');
+                musicIsPlaying = false;
+            }
+        });
         ablyInstance.connection.on('connected', () => { setAblyStatus(true); sendPresence(); });
         ablyInstance.connection.on('failed', () => setAblyStatus(false));
         // Listen for GM damage/heal targeted at this player
@@ -1752,7 +1951,7 @@ function saveConfig() {
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch (_) {} dddiceSDK = null; }
     clearTimeout(dddiceRollSafetyTimer);
     pendingDddiceRoll = null;
-    dddiceAPI = null; ablyRolls = null; ablyCards = null; ablyDamage = null; ablyInstance = null;
+    dddiceAPI = null; ablyRolls = null; ablyCards = null; ablyDamage = null; ablyMusic = null; ablyInstance = null;
     if (config.dddiceKey && config.dddiceRoom) initDddice();
     if (config.ablyKey) initAbly();
 }
