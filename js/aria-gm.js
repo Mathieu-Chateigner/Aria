@@ -1891,6 +1891,201 @@ function saveGMMusic() {
 }
 
 // ═══════════════════════════════════════════
+//  MUSIC AUDIO ENGINE
+// ═══════════════════════════════════════════
+let musicMasterVolume = parseInt(localStorage.getItem('aria-music-volume') || '80');
+let musicFadeDuration = 3000;
+let musicLoop         = false;
+let musicCurrentIndex = -1;
+let musicIsPlaying    = false;
+let _musicCurrentSlot = 'A'; // 'A' or 'B'
+let _musicFadeRaf     = null;
+let _musicProgressRaf = null;
+
+// Slot descriptors
+const _musicSlots = {
+    A: { audio: null, ytEndedCb: null },
+    B: { audio: null, ytEndedCb: null },
+};
+
+// YouTube IFrame API state
+let _ytAPIReady       = false;
+let _ytPendingCbs     = [];
+let _ytSlotA          = null; // YT.Player instance
+let _ytSlotB          = null;
+
+function _getAudio(slot) {
+    if (!_musicSlots[slot].audio) _musicSlots[slot].audio = new Audio();
+    return _musicSlots[slot].audio;
+}
+
+function _setSlotVol(slot, vol) {
+    const v = Math.max(0, Math.min(100, vol));
+    const audio = _musicSlots[slot].audio;
+    if (audio) audio.volume = v / 100;
+    const yt = slot === 'A' ? _ytSlotA : _ytSlotB;
+    if (yt) { try { yt.setVolume(v); } catch(_) {} }
+}
+
+function _stopSlot(slot) {
+    const audio = _musicSlots[slot].audio;
+    if (audio) { audio.pause(); audio.onended = null; audio.src = ''; }
+    const yt = slot === 'A' ? _ytSlotA : _ytSlotB;
+    if (yt) { try { yt.stopVideo(); } catch(_) {} }
+    _musicSlots[slot].ytEndedCb = null;
+}
+
+function _ensureYTAPI(cb) {
+    if (_ytAPIReady) { cb(); return; }
+    _ytPendingCbs.push(cb);
+    if (document.getElementById('yt-iframe-api')) return;
+    window.onYouTubeIframeAPIReady = () => {
+        _ytAPIReady = true;
+        _ytPendingCbs.splice(0).forEach(fn => fn());
+    };
+    const s = document.createElement('script');
+    s.id = 'yt-iframe-api';
+    s.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(s);
+}
+
+function _ensureYTSlots(cb) {
+    _ensureYTAPI(() => {
+        if (_ytSlotA && _ytSlotB) { cb(); return; }
+        let readyCount = 0;
+        const onSlotReady = () => { readyCount++; if (readyCount === 2) cb(); };
+        _ytSlotA = new YT.Player('yt-player-a', {
+            width: '1', height: '1',
+            playerVars: { autoplay: 0, controls: 0, disablekb: 1, fs: 0 },
+            events: {
+                onReady: onSlotReady,
+                onStateChange: e => { if (e.data === YT.PlayerState.ENDED && _musicSlots.A.ytEndedCb) _musicSlots.A.ytEndedCb(); },
+            },
+        });
+        _ytSlotB = new YT.Player('yt-player-b', {
+            width: '1', height: '1',
+            playerVars: { autoplay: 0, controls: 0, disablekb: 1, fs: 0 },
+            events: {
+                onReady: onSlotReady,
+                onStateChange: e => { if (e.data === YT.PlayerState.ENDED && _musicSlots.B.ytEndedCb) _musicSlots.B.ytEndedCb(); },
+            },
+        });
+    });
+}
+
+function _loadSlotAtZeroVol(track, slot, onStarted) {
+    _setSlotVol(slot, 0);
+    if (track.type === 'file') {
+        const audio = _getAudio(slot);
+        audio.onended = null;
+        audio.src = track.url;
+        audio.volume = 0;
+        const p = audio.play();
+        if (p) p.then(onStarted).catch(() => _showMusicUnlockPrompt(() => audio.play().then(onStarted)));
+        else onStarted();
+    } else {
+        _ensureYTSlots(() => {
+            const yt = slot === 'A' ? _ytSlotA : _ytSlotB;
+            _musicSlots[slot].ytEndedCb = null;
+            yt.loadVideoById(track.youtubeId);
+            yt.setVolume(0);
+            setTimeout(() => { try { yt.playVideo(); } catch(_) {} onStarted(); }, 800);
+        });
+    }
+}
+
+function _runCrossfade(fromSlot, toSlot, onDone) {
+    if (_musicFadeRaf) { cancelAnimationFrame(_musicFadeRaf); _musicFadeRaf = null; }
+    const start = performance.now();
+    const fromStart = musicMasterVolume;
+    function tick(now) {
+        const t = Math.min(1, (now - start) / musicFadeDuration);
+        _setSlotVol(fromSlot, (1 - t) * fromStart);
+        _setSlotVol(toSlot, t * musicMasterVolume);
+        if (t < 1) { _musicFadeRaf = requestAnimationFrame(tick); }
+        else { _musicFadeRaf = null; _stopSlot(fromSlot); onDone(); }
+    }
+    _musicFadeRaf = requestAnimationFrame(tick);
+}
+
+function _setSlotEndedCallback(slot, track, cb) {
+    if (track.type === 'file') {
+        const audio = _musicSlots[slot].audio;
+        if (audio) audio.onended = cb;
+    } else {
+        _musicSlots[slot].ytEndedCb = cb;
+    }
+}
+
+function _showMusicUnlockPrompt(onUnlock) {
+    let el = document.getElementById('music-unlock-prompt');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'music-unlock-prompt';
+        el.className = 'music-unlock-prompt';
+        el.textContent = '▶ Cliquer pour activer le son';
+        document.body.appendChild(el);
+    }
+    el.style.display = 'flex';
+    const handler = () => { el.style.display = 'none'; el.removeEventListener('click', handler); onUnlock(); };
+    el.addEventListener('click', handler);
+}
+
+function _musicAutoAdvance() {
+    if (!gmMusic.length) return;
+    const nextIdx = (musicCurrentIndex + 1 < gmMusic.length)
+        ? musicCurrentIndex + 1
+        : (musicLoop ? 0 : -1);
+    if (nextIdx === -1) {
+        musicIsPlaying = false;
+        if (_musicProgressRaf) { cancelAnimationFrame(_musicProgressRaf); _musicProgressRaf = null; }
+        renderMusicTab();
+        return;
+    }
+    _musicTriggerPlay(gmMusic[nextIdx], nextIdx);
+}
+
+function _musicTriggerPlay(track, index) {
+    if (_musicFadeRaf) { cancelAnimationFrame(_musicFadeRaf); _musicFadeRaf = null; }
+    // Disable auto-advance on current slot before transition
+    const currentSlot = _musicCurrentSlot;
+    const nextSlot = currentSlot === 'A' ? 'B' : 'A';
+    _musicSlots[currentSlot].ytEndedCb = null;
+    if (_musicSlots[currentSlot].audio) _musicSlots[currentSlot].audio.onended = null;
+
+    musicCurrentIndex = index;
+    musicIsPlaying    = true;
+    renderMusicTab();
+
+    _loadSlotAtZeroVol(track, nextSlot, () => {
+        _runCrossfade(currentSlot, nextSlot, () => {
+            _musicCurrentSlot = nextSlot;
+            _setSlotEndedCallback(nextSlot, track, _musicAutoAdvance);
+            renderMusicTab();
+            _startMusicProgress();
+        });
+    });
+}
+
+function _startMusicProgress() {
+    if (_musicProgressRaf) cancelAnimationFrame(_musicProgressRaf);
+    function tick() {
+        const track = gmMusic[musicCurrentIndex];
+        const progressFill = document.getElementById('music-progress-fill');
+        const progressWrap = document.getElementById('music-progress-wrap');
+        if (track?.type === 'file') {
+            const audio = _musicSlots[_musicCurrentSlot].audio;
+            if (progressWrap) progressWrap.style.visibility = 'visible';
+            if (progressFill && audio?.duration) progressFill.style.width = (audio.currentTime / audio.duration * 100) + '%';
+        } else {
+            if (progressWrap) progressWrap.style.visibility = 'hidden';
+        }
+        if (musicIsPlaying) _musicProgressRaf = requestAnimationFrame(tick);
+    }
+    _musicProgressRaf = requestAnimationFrame(tick);
+}
+
+// ═══════════════════════════════════════════
 //  NOTES MJ
 // ═══════════════════════════════════════════
 let gmNotesList = [];
