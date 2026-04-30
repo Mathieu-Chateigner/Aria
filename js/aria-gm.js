@@ -472,6 +472,7 @@ function initApp() {
     renderCardHistory();
     renderGMPotions();
     renderGmFiles();
+    renderMusicTab();
     loadGMNotes();
     initGmDeck();
     loadConfigInputs();
@@ -2083,6 +2084,240 @@ function _startMusicProgress() {
         if (musicIsPlaying) _musicProgressRaf = requestAnimationFrame(tick);
     }
     _musicProgressRaf = requestAnimationFrame(tick);
+}
+
+function renderMusicTab() {
+    const track = gmMusic[musicCurrentIndex] || null;
+
+    const titleEl = document.getElementById('music-np-title');
+    if (titleEl) titleEl.textContent = track ? track.name : 'Aucune piste';
+
+    const playBtn = document.getElementById('music-play-btn');
+    if (playBtn) playBtn.textContent = musicIsPlaying ? '⏸' : '▶';
+
+    const loopBtn = document.getElementById('music-loop-btn');
+    if (loopBtn) loopBtn.classList.toggle('active', musicLoop);
+
+    const playlist = document.getElementById('music-playlist');
+    if (!playlist) return;
+
+    if (!gmMusic.length) {
+        playlist.innerHTML = '<div class="music-empty">Aucune piste. Ajoutez des fichiers ou des URLs YouTube.</div>';
+        return;
+    }
+
+    playlist.innerHTML = '';
+    gmMusic.forEach((t, i) => {
+        const row = document.createElement('div');
+        row.className = 'music-track-row' + (i === musicCurrentIndex ? ' active' : '');
+        const indicator = (i === musicCurrentIndex && musicIsPlaying) ? '▶' : '○';
+        const badge = t.type === 'youtube' ? 'youtube' : 'fichier';
+        row.innerHTML =
+            `<span class="music-track-indicator">${indicator}</span>` +
+            `<span class="music-track-name" onclick="musicSelectTrack(${i})">${t.name}</span>` +
+            `<span class="music-track-badge">${badge}</span>` +
+            `<button class="music-track-delete" onclick="musicDeleteTrack(${i})">✕</button>`;
+        playlist.appendChild(row);
+    });
+}
+
+function musicSelectTrack(index) {
+    const track = gmMusic[index];
+    if (!track) return;
+    _musicTriggerPlay(track, index);  // immediate local playback
+    publishMusicPlay(track);          // broadcast to players via Ably
+}
+
+function musicTogglePlay() {
+    if (!musicIsPlaying) {
+        const track = gmMusic[musicCurrentIndex];
+        if (!track) { if (gmMusic.length) musicSelectTrack(0); return; }
+        const slot = _musicCurrentSlot;
+        if (_musicSlots[slot].audio) _musicSlots[slot].audio.play().catch(() => {});
+        const yt = slot === 'A' ? _ytSlotA : _ytSlotB;
+        if (yt) { try { yt.playVideo(); } catch(_) {} }
+        musicIsPlaying = true;
+        _startMusicProgress();
+    } else {
+        const slot = _musicCurrentSlot;
+        if (_musicSlots[slot].audio) _musicSlots[slot].audio.pause();
+        const yt = slot === 'A' ? _ytSlotA : _ytSlotB;
+        if (yt) { try { yt.pauseVideo(); } catch(_) {} }
+        musicIsPlaying = false;
+        if (_musicProgressRaf) { cancelAnimationFrame(_musicProgressRaf); _musicProgressRaf = null; }
+    }
+    renderMusicTab();
+}
+
+function musicStop() {
+    if (_musicFadeRaf) { cancelAnimationFrame(_musicFadeRaf); _musicFadeRaf = null; }
+    if (_musicProgressRaf) { cancelAnimationFrame(_musicProgressRaf); _musicProgressRaf = null; }
+    _stopSlot('A');
+    _stopSlot('B');
+    musicIsPlaying = false;
+    renderMusicTab();
+    publishMusicStop();
+}
+
+function musicNext() {
+    if (!gmMusic.length) return;
+    const next = musicCurrentIndex + 1 < gmMusic.length
+        ? musicCurrentIndex + 1
+        : (musicLoop ? 0 : musicCurrentIndex);
+    if (next === musicCurrentIndex && !musicLoop && musicCurrentIndex === gmMusic.length - 1) return;
+    musicSelectTrack(next);
+}
+
+function musicPrev() {
+    if (!gmMusic.length) return;
+    const prev = musicCurrentIndex > 0
+        ? musicCurrentIndex - 1
+        : (musicLoop ? gmMusic.length - 1 : 0);
+    musicSelectTrack(prev);
+}
+
+function musicToggleLoop() {
+    musicLoop = !musicLoop;
+    renderMusicTab();
+}
+
+function musicSetFade(val) {
+    const n = parseInt(val);
+    if (!isNaN(n) && n >= 1 && n <= 10) musicFadeDuration = n * 1000;
+}
+
+function musicDeleteTrack(index) {
+    const track = gmMusic[index];
+    if (!track) return;
+    if (index === musicCurrentIndex) { musicStop(); musicCurrentIndex = -1; }
+    else if (index < musicCurrentIndex) musicCurrentIndex--;
+    deleteMusicTrackFromDB(track.id);
+    if (track.type === 'file' && track.path) deleteMusicFileFromStorage(track.path);
+    gmMusic.splice(index, 1);
+    saveGMMusic();
+    renderMusicTab();
+}
+
+async function deleteMusicFileFromStorage(path) {
+    try {
+        await fetch(`${SUPABASE_URL}/storage/v1/object/campaign-music/${path}`, {
+            method: 'DELETE',
+            headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+        });
+    } catch(e) { console.warn('[ARIA] Music storage delete failed:', e); }
+}
+
+function _parseYTVideoId(input) {
+    const m = input.match(/(?:youtu\.be\/|[?&]v=|\/embed\/)([a-zA-Z0-9_-]{11})/);
+    if (m) return m[1];
+    if (/^[a-zA-Z0-9_-]{11}$/.test(input.trim())) return input.trim();
+    return null;
+}
+
+function _parseYTPlaylistId(input) {
+    const m = input.match(/[?&]list=([a-zA-Z0-9_-]+)/);
+    return m ? m[1] : null;
+}
+
+async function _fetchYTTitle(videoId, apiKey) {
+    if (!apiKey) return videoId;
+    try {
+        const res = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${encodeURIComponent(videoId)}&key=${encodeURIComponent(apiKey)}`);
+        const data = await res.json();
+        return data.items?.[0]?.snippet?.title || videoId;
+    } catch(_) { return videoId; }
+}
+
+async function _fetchYTPlaylist(playlistId, apiKey) {
+    const tracks = [];
+    let pageToken = '';
+    try {
+        do {
+            const url = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${encodeURIComponent(playlistId)}&maxResults=50&key=${encodeURIComponent(apiKey)}${pageToken ? '&pageToken=' + pageToken : ''}`;
+            const res = await fetch(url);
+            const data = await res.json();
+            if (!data.items) break;
+            for (const item of data.items) {
+                const videoId = item.snippet?.resourceId?.videoId;
+                const title   = item.snippet?.title;
+                if (videoId && title !== 'Private video' && title !== 'Deleted video') {
+                    tracks.push({ id: crypto.randomUUID(), name: title || videoId, type: 'youtube', url: null, youtubeId: videoId, path: null });
+                }
+            }
+            pageToken = data.nextPageToken || '';
+        } while (pageToken);
+    } catch(e) { console.warn('[ARIA] YT playlist fetch failed:', e); }
+    return tracks;
+}
+
+async function musicAddYoutube() {
+    const input    = document.getElementById('music-yt-input');
+    const statusEl = document.getElementById('music-add-status');
+    const raw      = (input?.value || '').trim();
+    if (!raw) return;
+
+    statusEl.textContent = 'Chargement…';
+
+    const playlistId = _parseYTPlaylistId(raw);
+    if (playlistId) {
+        const apiKey = config.youtubeApiKey;
+        if (!apiKey) {
+            statusEl.textContent = '⚠ Clé API YouTube manquante — ajoutez-la dans ⚙ Configuration.';
+            return;
+        }
+        const tracks = await _fetchYTPlaylist(playlistId, apiKey);
+        if (!tracks.length) { statusEl.textContent = '⚠ Playlist introuvable ou vide.'; return; }
+        tracks.forEach(t => gmMusic.push(t));
+        statusEl.textContent = `✓ ${tracks.length} piste(s) ajoutée(s).`;
+    } else {
+        const videoId = _parseYTVideoId(raw);
+        if (!videoId) { statusEl.textContent = '⚠ URL ou ID invalide.'; return; }
+        const name = await _fetchYTTitle(videoId, config.youtubeApiKey);
+        gmMusic.push({ id: crypto.randomUUID(), name, type: 'youtube', url: null, youtubeId: videoId, path: null });
+        statusEl.textContent = '✓ Piste ajoutée.';
+    }
+
+    saveGMMusic();
+    renderMusicTab();
+    if (input) input.value = '';
+    setTimeout(() => { statusEl.textContent = ''; }, 3000);
+}
+
+async function musicUploadFile(input) {
+    const file     = input.files[0];
+    input.value    = '';
+    if (!file) return;
+    const statusEl = document.getElementById('music-add-status');
+    if (file.size > 50 * 1024 * 1024) { statusEl.textContent = '⚠ Fichier trop volumineux (max 50 Mo).'; return; }
+
+    statusEl.textContent = 'Téléchargement…';
+
+    try {
+        const ext  = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : '';
+        const id   = crypto.randomUUID();
+        const name = file.name.replace(/\.[^.]+$/, '');
+        const path = `${currentCampaignId}/${id}${ext ? '.' + ext : ''}`;
+        const res  = await fetch(`${SUPABASE_URL}/storage/v1/object/campaign-music/${path}`, {
+            method: 'POST',
+            headers: {
+                'apikey': SUPABASE_ANON_KEY,
+                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                'Content-Type': file.type || 'audio/mpeg',
+                'x-upsert': 'false',
+            },
+            body: file,
+        });
+        if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.message || `Erreur ${res.status}`); }
+        const url = `${SUPABASE_URL}/storage/v1/object/public/campaign-music/${path}`;
+        gmMusic.push({ id, name, type: 'file', url, youtubeId: null, path });
+        saveGMMusic();
+        renderMusicTab();
+        statusEl.textContent = '✓ Fichier ajouté.';
+        setTimeout(() => { statusEl.textContent = ''; }, 3000);
+    } catch(e) {
+        statusEl.textContent = `⚠ Erreur : ${e.message}`;
+        console.warn('[ARIA] Music upload failed:', e);
+    }
 }
 
 // ═══════════════════════════════════════════
