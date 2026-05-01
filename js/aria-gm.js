@@ -2064,6 +2064,7 @@ function _musicAutoAdvance() {
         return;
     }
     _musicTriggerPlay(gmMusic[nextIdx], nextIdx);
+    publishMusicPlay(gmMusic[nextIdx]);
 }
 
 function _musicTriggerPlay(track, index) {
