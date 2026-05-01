@@ -478,6 +478,8 @@ function switchCharacter() {
     clearTimeout(dddiceRollSafetyTimer);
     pendingDddiceRoll = null; pendingSecondaryRoll = null; dddiceAPI = null;
     currentHP = null; bonusMalus = 0; rollFilter.clear();
+    if (_musicFadeRaf) { cancelAnimationFrame(_musicFadeRaf); _musicFadeRaf = null; }
+    _stopSlot('A'); _stopSlot('B'); musicIsPlaying = false;
     const doCloseAbly = () => {
         if (ablyInstance) { try { ablyInstance.close(); } catch(_){} ablyInstance = null; }
         ablyRolls = null; ablyCards = null; ablyDamage = null; ablyMusic = null;

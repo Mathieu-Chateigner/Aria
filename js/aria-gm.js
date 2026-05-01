@@ -441,9 +441,9 @@ function switchCampaign() {
     }
     gmPotions = [];
     gmFiles = [];
+    musicStop();
     gmMusic = [];
     ablyMusic = null;
-    musicStop();
     filesGrantedSessions.clear();
     if (sweepIntervalId) { clearInterval(sweepIntervalId); sweepIntervalId = null; }
     if (renderPlayerCardsTimer) { clearTimeout(renderPlayerCardsTimer); renderPlayerCardsTimer = null; }
@@ -2126,7 +2126,7 @@ function renderMusicTab() {
         const badge = t.type === 'youtube' ? 'youtube' : 'fichier';
         row.innerHTML =
             `<span class="music-track-indicator">${indicator}</span>` +
-            `<span class="music-track-name" onclick="musicSelectTrack(${i})">${t.name}</span>` +
+            `<span class="music-track-name" onclick="musicSelectTrack(${i})">${_escHtml(t.name)}</span>` +
             `<span class="music-track-badge">${badge}</span>` +
             `<button class="music-track-delete" onclick="musicDeleteTrack(${i})">✕</button>`;
         playlist.appendChild(row);
