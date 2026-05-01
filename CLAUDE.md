@@ -71,17 +71,18 @@ js/
 
 ### Communication — Ably (free tier)
 
-All three apps share **one Ably key** (entered on `index.html`) and use three channels:
+All three apps share **one Ably key** (entered on `index.html`) and use four channels:
 
 | Channel | Published by | Consumed by |
 |---|---|---|
 | `aria-rolls` | `aria-player` (per roll) | `aria-gm` (roll feed) + other `aria-player` instances (toast) + `aria-overlay` |
 | `aria-cards` | `aria-player` or `aria-gm` | `aria-overlay` |
 | `aria-damage` | `aria-gm` (damage/heal events) + `aria-player` (presence heartbeat every 5s) | `aria-player` (receives GM damage) + `aria-gm` (receives presence) |
+| `aria-music` | `aria-gm` (play/stop commands) | `aria-player` (subscribe only) — GM does **not** subscribe to its own commands |
 
 ### Supabase credentials
 
-`SUPABASE_URL` and `SUPABASE_ANON_KEY` are hardcoded at the top of `js/aria-supabase.js`. Change only that file when switching Supabase projects. The GM also uses Supabase Storage (bucket `campaign-files`) for file sharing.
+`SUPABASE_URL` and `SUPABASE_ANON_KEY` are hardcoded at the top of `js/aria-supabase.js`. Change only that file when switching Supabase projects. The GM uses two Supabase Storage buckets: `campaign-files` (GM file sharing with players) and `campaign-music` (uploaded audio tracks).
 
 ### Save key / Supabase sync
 
@@ -96,7 +97,7 @@ Both player and GM use a **save key** (UUID) to sync localStorage to Supabase, e
 **Sync architecture** — `js/aria-supabase.js` exposes shared helpers (`sbUpsert`, `sbDelete`, `sbSelect`, `sbInsert`, `runMigration`). Both panels use **per-entity granular sync** — separate debounced functions per data type — rather than one monolithic blob. `localStorage` is always the runtime source of truth; Supabase is only the persistence layer.
 
 - Player: `debouncedSync()` for character data, `debouncedSyncState()` for HP/cards/tabs, `syncCharacterNote` / `deleteCharacterNote` for notes, `syncCharacterFile` / `deleteCharacterFile` for files.
-- GM: `syncCampaign`, `debouncedSyncMonsters`, `insertRoll` / `insertCardHistory` (append-only — `clearRolls()` / `clearCardHistory()` never touch the DB), `debouncedSyncPotions`, `debouncedSyncFiles`, `syncGMNote` / `deleteGMNoteFromDB`, `syncKnownPlayer` (called on every presence heartbeat).
+- GM: `syncCampaign`, `debouncedSyncMonsters`, `insertRoll` / `insertCardHistory` (append-only — `clearRolls()` / `clearCardHistory()` never touch the DB), `debouncedSyncPotions`, `debouncedSyncFiles`, `syncGMNote` / `deleteGMNoteFromDB`, `syncKnownPlayer` (called on every presence heartbeat), `syncMusicTrack` / `debouncedSyncMusic` / `deleteMusicTrackFromDB` (Supabase table `campaign_music`; field `youtube_id` maps to `youtubeId` in JS).
 - `runMigration` is a one-time runner that reads the old JSON blob from `saves` and populates the relational tables. It checks `player_migrated_at` / `gm_migrated_at` flags to skip if already done.
 
 ### No server, no build
@@ -110,8 +111,9 @@ Both apps read from the **same** key:
 
 ```js
 // localStorage: aria-config
-{ ablyKey, dddiceKey, dddiceRoom, dddiceTheme, lightMode: bool }
+{ ablyKey, dddiceKey, dddiceRoom, dddiceTheme, lightMode: bool, youtubeApiKey }
 ```
+`youtubeApiKey` is optional — used only for YouTube Data API v3 playlist import in the GM Musique tab.
 
 Keys are entered once on `index.html`. The in-app ⚙ modal in each panel can also update this key (for theme and reconnecting), but uses the same `aria-config` storage. **Never use `aria-gm-config`** — it is obsolete.
 
@@ -129,8 +131,9 @@ All campaign-scoped data uses keys suffixed with `currentCampaignId`:
 | `aria-gm-card-history-{id}` | card draw log |
 | `aria-gm-potions-{id}` | alchemy recipes |
 | `aria-gm-files-{id}` | files uploaded by GM for this campaign |
+| `aria-gm-music-{id}` | music playlist for this campaign (`[{ id, name, type, url, youtubeId, path }]`) |
 
-Helper functions `monstersKey()`, `rollsKey()`, `cardHistKey()`, `potionsKey()`, `filesKey()` return the scoped key for the active campaign. Always use these — never hardcode the bare key.
+Helper functions `monstersKey()`, `rollsKey()`, `cardHistKey()`, `potionsKey()`, `filesKey()`, `musicKey()` return the scoped key for the active campaign. Always use these — never hardcode the bare key.
 
 `generateJoinCode()` produces the join code. If a campaign loaded from storage lacks one, it is generated and saved on `loadCampaignState()`.
 
@@ -265,6 +268,13 @@ The GM filters incoming presence by `campaignKey === currentJoinCode` — messag
 ```
 Player stores granted files in `localStorage: aria-player-files-{charId}`. The Fichiers tab auto-hides when `playerFiles` is empty.
 
+### `aria-music` / `play` | `stop`
+```js
+{ type: 'play', track: { id, name, type, url, youtubeId }, fadeDuration: number }  // seconds
+{ type: 'stop' }
+```
+GM plays locally via `_musicTriggerPlay()` AND broadcasts — it does not subscribe. Player stores volume in `localStorage('aria-music-volume')` (0–100 integer, default 80); the music bar (`#music-bar`) uses `visibility:hidden` until the first track plays.
+
 ### `aria-cards` / `draw` | `reshuffle`
 ```js
 { cardId, excluded: [...], drawn: [...], deckIds: [...], lastCardId }
@@ -290,7 +300,7 @@ Lists all campaigns, each showing its join code (click to copy). `selectCampaign
 `Cartes` and `⚗ Alchimie` are hidden by default — shown only when GM enables them via `tab-config`. `Fichiers` auto-shows when the GM grants at least one file (`playerFiles.length > 0`).
 
 ### GM panel tabs
-`Joueurs` | `Monstres` | `Jets` | `Jet MJ` | `Cartes` | `⚗ Alchimie` | `Fichiers`
+`Joueurs` | `Monstres` | `Jets` | `Jet MJ` | `Cartes` | `⚗ Alchimie` | `Fichiers` | `♪ Musique`
 
 The GM Fichiers tab lets the GM upload files to Supabase Storage (`campaign-files` bucket) and grant/revoke access per player. `gmFiles` entries: `{ id, name, type, url, path, grantedTo: [] | 'all' }`. Upload via `uploadFileToSupabase()`, grant via `file-grant` message on `aria-damage`.
 
@@ -368,6 +378,12 @@ Must call `.start()` before `.connect()`. The safety timer must be cleared insid
 
 ### Campaign join code filtering
 `handlePresence()` in `aria-gm.js` early-returns if `data.campaignKey !== currentJoinCode`. When `currentJoinCode` is `null` (e.g. during init), no filtering is applied — all presence messages are accepted.
+
+### Music engine teardown order
+In `switchCampaign()`, `musicStop()` must be called **before** `ablyMusic = null` and `gmMusic = []`. `musicStop()` calls `publishMusicStop()` which reads `ablyMusic` — nulling it first makes the publish a no-op and leaves players with orphaned audio.
+
+### innerHTML and user-supplied strings
+Always escape track names (and any other user-supplied content) before injecting into `innerHTML`. Use `_escHtml(str)` — defined in `aria-gm.js`. Failure to escape is an XSS vector since track names come from YouTube API responses or user input.
 
 ---
 

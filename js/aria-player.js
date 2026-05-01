@@ -1763,6 +1763,19 @@ function initAbly() {
                 _stopSlot('A');
                 _stopSlot('B');
                 musicIsPlaying = false;
+            } else if (d.type === 'pause') {
+                const slot = _musicCurrentSlot;
+                if (_musicSlots[slot].audio) _musicSlots[slot].audio.pause();
+                const yt = slot === 'A' ? _ytSlotA : _ytSlotB;
+                if (yt) { try { yt.pauseVideo(); } catch(_) {} }
+                musicIsPlaying = false;
+                if (_musicProgressRaf) { cancelAnimationFrame(_musicProgressRaf); _musicProgressRaf = null; }
+            } else if (d.type === 'resume') {
+                const slot = _musicCurrentSlot;
+                if (_musicSlots[slot].audio) _musicSlots[slot].audio.play().catch(() => _showMusicUnlockPrompt(() => _musicSlots[slot].audio?.play()));
+                const yt = slot === 'A' ? _ytSlotA : _ytSlotB;
+                if (yt) { try { yt.playVideo(); } catch(_) {} }
+                musicIsPlaying = true;
             }
         });
         ablyInstance.connection.on('connected', () => { setAblyStatus(true); sendPresence(); });

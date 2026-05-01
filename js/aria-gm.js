@@ -667,6 +667,14 @@ function publishMusicStop() {
     if (!ablyMusic) return;
     ablyMusic.publish('music', { type: 'stop' });
 }
+function publishMusicPause() {
+    if (!ablyMusic) return;
+    ablyMusic.publish('music', { type: 'pause' });
+}
+function publishMusicResume() {
+    if (!ablyMusic) return;
+    ablyMusic.publish('music', { type: 'resume' });
+}
 
 // ═══════════════════════════════════════════
 //  PLAYER PRESENCE
@@ -2110,6 +2118,11 @@ function renderMusicTab() {
     const loopBtn = document.getElementById('music-loop-btn');
     if (loopBtn) loopBtn.classList.toggle('active', musicLoop);
 
+    const volSlider = document.getElementById('music-gm-volume');
+    if (volSlider) volSlider.value = String(musicMasterVolume);
+    const volVal = document.getElementById('music-gm-vol-val');
+    if (volVal) volVal.textContent = String(musicMasterVolume);
+
     const playlist = document.getElementById('music-playlist');
     if (!playlist) return;
 
@@ -2150,6 +2163,7 @@ function musicTogglePlay() {
         if (yt) { try { yt.playVideo(); } catch(_) {} }
         musicIsPlaying = true;
         _startMusicProgress();
+        publishMusicResume();
     } else {
         const slot = _musicCurrentSlot;
         if (_musicSlots[slot].audio) _musicSlots[slot].audio.pause();
@@ -2157,6 +2171,7 @@ function musicTogglePlay() {
         if (yt) { try { yt.pauseVideo(); } catch(_) {} }
         musicIsPlaying = false;
         if (_musicProgressRaf) { cancelAnimationFrame(_musicProgressRaf); _musicProgressRaf = null; }
+        publishMusicPause();
     }
     renderMusicTab();
 }
@@ -2198,6 +2213,14 @@ function musicSetFade(val) {
     if (!isNaN(n) && n >= 1 && n <= 10) musicFadeDuration = n * 1000;
 }
 
+function onGMMusicVolumeChange(val) {
+    musicMasterVolume = Math.max(0, Math.min(100, parseInt(val) || 0));
+    localStorage.setItem('aria-music-volume', String(musicMasterVolume));
+    if (musicIsPlaying && !_musicFadeRaf) _setSlotVol(_musicCurrentSlot, musicMasterVolume);
+    const volVal = document.getElementById('music-gm-vol-val');
+    if (volVal) volVal.textContent = String(musicMasterVolume);
+}
+
 function musicDeleteTrack(index) {
     const track = gmMusic[index];
     if (!track) return;
@@ -2232,11 +2255,18 @@ function _parseYTPlaylistId(input) {
 }
 
 async function _fetchYTTitle(videoId, apiKey) {
-    if (!apiKey) return videoId;
+    if (apiKey) {
+        try {
+            const res = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${encodeURIComponent(videoId)}&key=${encodeURIComponent(apiKey)}`);
+            const data = await res.json();
+            const title = data.items?.[0]?.snippet?.title;
+            if (title) return title;
+        } catch(_) {}
+    }
     try {
-        const res = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${encodeURIComponent(videoId)}&key=${encodeURIComponent(apiKey)}`);
+        const res = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&format=json`);
         const data = await res.json();
-        return data.items?.[0]?.snippet?.title || videoId;
+        return data.title || videoId;
     } catch(_) { return videoId; }
 }
 
@@ -2271,7 +2301,13 @@ async function musicAddYoutube() {
     statusEl.textContent = 'Chargement…';
 
     const playlistId = _parseYTPlaylistId(raw);
-    if (playlistId) {
+    if (playlistId && playlistId.startsWith('RD')) {
+        const videoId = _parseYTVideoId(raw);
+        if (!videoId) { statusEl.textContent = '⚠ URL invalide.'; return; }
+        const name = await _fetchYTTitle(videoId, config.youtubeApiKey);
+        gmMusic.push({ id: crypto.randomUUID(), name, type: 'youtube', url: null, youtubeId: videoId, path: null });
+        statusEl.textContent = '✓ Piste ajoutée. (Les Mix YouTube ne peuvent pas être importés en entier — seule cette vidéo a été ajoutée.)';
+    } else if (playlistId) {
         const apiKey = config.youtubeApiKey;
         if (!apiKey) {
             statusEl.textContent = '⚠ Clé API YouTube manquante — ajoutez-la dans ⚙ Configuration.';

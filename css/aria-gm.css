@@ -2587,6 +2587,27 @@ body {
     min-height: 18px;
 }
 
+.music-vol-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+}
+.music-vol-icon { font-size: 14px; flex-shrink: 0; }
+.music-vol-slider {
+    flex: 1;
+    height: 4px;
+    accent-color: var(--gold);
+    cursor: pointer;
+}
+.music-vol-val {
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    color: var(--parchment-dim);
+    min-width: 26px;
+    text-align: right;
+}
+
 .music-unlock-prompt {
     position: fixed;
     bottom: 20px;

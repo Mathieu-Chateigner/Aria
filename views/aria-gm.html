@@ -356,6 +356,12 @@
                             oninput="this.value=this.value.replace(/[^0-9]/g,'');musicSetFade(this.value)" />
                         <span class="music-fade-label">s</span>
                     </div>
+                    <div class="music-vol-row">
+                        <span class="music-vol-icon">🔊</span>
+                        <input type="range" class="music-vol-slider" id="music-gm-volume" min="0" max="100" value="80"
+                            oninput="onGMMusicVolumeChange(this.value)" />
+                        <span class="music-vol-val" id="music-gm-vol-val">80</span>
+                    </div>
                 </div>
 
                 <!-- Playlist -->
