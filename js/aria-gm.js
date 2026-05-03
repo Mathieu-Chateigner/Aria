@@ -688,10 +688,13 @@ function handlePresence(data) {
     syncKnownPlayer(data.charId, playerData);
     clearTimeout(renderPlayerCardsTimer);
     renderPlayerCardsTimer = setTimeout(renderPlayerCards, 150);
-    // Auto-send file grants to newly connected sessions
+    // Auto-send file grants and music state to newly connected sessions
     if (!filesGrantedSessions.has(data.playerId)) {
         filesGrantedSessions.add(data.playerId);
         sendFileGrantsToPlayer(data);
+        if (musicIsPlaying && gmMusic[musicCurrentIndex]) {
+            publishMusicPlay(gmMusic[musicCurrentIndex]);
+        }
     }
 }
 function sweepOfflinePlayers() {

@@ -1654,7 +1654,19 @@ function _loadSlotAtZeroVol(track, slot, onStarted) {
             _musicSlots[slot].ytEndedCb = null;
             yt.loadVideoById(track.youtubeId);
             yt.setVolume(0);
-            setTimeout(() => { try { yt.playVideo(); } catch(_) {} onStarted(); }, 800);
+            setTimeout(() => {
+                try { yt.playVideo(); } catch(_) {}
+                onStarted();
+                // Detect autoplay block: state stays unstarted/cued if browser blocked it
+                setTimeout(() => {
+                    try {
+                        const state = yt.getPlayerState();
+                        if (state !== 1 && state !== 3) { // not playing or buffering
+                            _showMusicUnlockPrompt(() => { try { yt.playVideo(); } catch(_) {} });
+                        }
+                    } catch(_) {}
+                }, 1500);
+            }, 800);
         });
     }
 }
@@ -1753,7 +1765,9 @@ function initAbly() {
                 if (d.fadeDuration) musicFadeDuration = d.fadeDuration;
                 const existingIdx = _playerMusicList.findIndex(t => t.id === d.track.id);
                 if (existingIdx >= 0) {
-                    _musicTriggerPlay(_playerMusicList[existingIdx], existingIdx);
+                    if (musicCurrentIndex !== existingIdx || !musicIsPlaying) {
+                        _musicTriggerPlay(_playerMusicList[existingIdx], existingIdx);
+                    }
                 } else {
                     _playerMusicList.push(d.track);
                     _musicTriggerPlay(d.track, _playerMusicList.length - 1);
