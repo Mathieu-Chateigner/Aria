@@ -1202,6 +1202,14 @@ body {
     overflow: hidden;
     position: relative;
 }
+.cs-block::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gold-dim), transparent);
+    pointer-events: none;
+}
 .cs-block-title {
     font-family: 'Cinzel', serif;
     font-size: 12px;
