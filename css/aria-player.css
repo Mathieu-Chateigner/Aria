@@ -13,8 +13,12 @@
     --parchment-dim: #9e8e6a;
     --success: #4caf77;
     --fail: #c0392b;
+    --hp-low: #e8a020;
     --border: rgba(201,168,76,0.18);
     --border-strong: rgba(201,168,76,0.35);
+    --gold-wash-sm: rgba(201,168,76,0.05);
+    --gold-wash-md: rgba(201,168,76,0.07);
+    --gold-wash-lg: rgba(201,168,76,0.3);
     --radius: 2px;
     --card-red: #c0392b;
     --card-black: #1a1a1a;
@@ -339,7 +343,7 @@ body {
     line-height: 1;
     text-shadow: 0 0 18px rgba(76,175,119,0.25);
 }
-.hp-number.low { color: #e8a020; text-shadow: 0 0 18px rgba(232,160,32,0.25); }
+.hp-number.low { color: var(--hp-low); text-shadow: 0 0 18px rgba(232,160,32,0.25); }
 .hp-number.critical { color: var(--fail); text-shadow: 0 0 18px rgba(192,57,43,0.3); }
 .hp-fraction {
     font-family: 'Cinzel', serif;
@@ -409,7 +413,7 @@ body {
 }
 .weap-row.weap-rollable:hover {
     border-left-color: var(--gold);
-    background: rgba(201,168,76,0.05);
+    background: var(--gold-wash-sm);
 }
 .weap-roll-hint {
     font-family: 'Cinzel', serif;
@@ -447,7 +451,7 @@ body {
 }
 .react-btn:hover {
     border-color: var(--gold);
-    background: rgba(201,168,76,0.07);
+    background: var(--gold-wash-md);
     color: var(--gold-light);
 }
 .react-pct {
@@ -588,7 +592,7 @@ body {
 .skill-item::before {
     content: '';
     position: absolute; inset: 0;
-    background: linear-gradient(90deg, rgba(201,168,76,0.07) 0%, transparent 60%);
+    background: linear-gradient(90deg, var(--gold-wash-md) 0%, transparent 60%);
     opacity: 0;
     transition: opacity 0.18s;
     pointer-events: none;
@@ -667,7 +671,7 @@ body {
     gap: 10px;
     background: var(--bg2);
     border: 1px solid var(--border);
-    border-left: 2px solid rgba(201,168,76,0.3);
+    border-left: 2px solid var(--gold-wash-lg);
     border-radius: var(--radius);
     padding: 11px 14px;
     cursor: pointer;
@@ -678,7 +682,7 @@ body {
 .special-row::before {
     content: '';
     position: absolute; inset: 0;
-    background: linear-gradient(90deg, rgba(201,168,76,0.05) 0%, transparent 60%);
+    background: linear-gradient(90deg, var(--gold-wash-sm) 0%, transparent 60%);
     opacity: 0;
     transition: opacity 0.18s;
     pointer-events: none;
