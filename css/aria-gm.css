@@ -83,16 +83,6 @@ body {
     cursor: pointer;
     white-space: nowrap;
 }
-.topbar-badge {
-    font-family: 'Cinzel', serif;
-    font-size: 11px;
-    letter-spacing: 2px;
-    color: var(--gm-accent-light);
-    text-transform: uppercase;
-    border: 1px solid var(--border-strong);
-    padding: 4px 12px;
-    border-radius: var(--radius);
-}
 .topbar-joincode {
     font-family: 'Cinzel', serif;
     font-size: 10px;
@@ -1635,18 +1625,7 @@ body {
 /* ════════════════════════════════════════════
    FLOAT ROLL CARD + DDDICE CANVAS
    ════════════════════════════════════════════ */
-.gm-float-result {
-    position: fixed; bottom: 24px; right: 24px; z-index: 900;
-    background: var(--bg2); border: 1px solid var(--border-strong); border-radius: var(--radius);
-    padding: 16px 20px; min-width: 220px;
-    opacity: 0; transform: translateY(12px); pointer-events: none; transition: all .3s;
-}
-.gm-float-result.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
 
-/* Karma display (player-side) */
-.karma-display { font-family: 'Cinzel', serif; font-size: 14px; font-weight: 700; color: var(--parchment-dim); min-width: 36px; text-align: center; }
-.karma-display.positive { color: var(--success); }
-.karma-display.negative { color: var(--fail); }
 
 /* ════════════════════════════════════════════
    LIGHT MODE
