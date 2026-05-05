@@ -97,7 +97,9 @@ body {
     color: var(--gold);
     letter-spacing: 1px;
     animation: pulse 1s ease-in-out infinite;
+    visibility: hidden;
 }
+.rolling-ind.active { visibility: visible; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 .status-row {
     display: flex;
