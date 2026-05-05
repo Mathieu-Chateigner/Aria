@@ -38,7 +38,7 @@ html, body { height: 100%; }
 body {
     background: var(--bg);
     font-family: 'EB Garamond', serif;
-    font-size: 15px;
+    font-size: 19px;
     color: var(--parchment);
     display: flex;
     flex-direction: column;
@@ -76,7 +76,7 @@ body {
 }
 .topbar-title {
     font-family: 'Cinzel Decorative', serif;
-    font-size: 19px;
+    font-size: 22px;
     color: var(--gm-accent-light);
     letter-spacing: 2px;
     text-shadow: 0 0 18px rgba(123,63,160,0.45);
@@ -185,25 +185,31 @@ body {
 /* ════════════════════════════════════════════
    SECTION HEADERS + ORNAMENTAL DIVIDERS
    ════════════════════════════════════════════ */
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    margin-top: 2px;
+}
+.section-icon {
+    color: var(--gm-accent-dim);
+    font-size: 16px;
+    flex-shrink: 0;
+}
 .section-title {
     font-family: 'Cinzel', serif;
-    font-size: 11px;
-    letter-spacing: .2em;
-    color: var(--gm-accent-dim);
+    font-size: 13px;
+    letter-spacing: 3px;
     text-transform: uppercase;
-    margin-bottom: 10px;
-    padding-bottom: 6px;
-    border-bottom: 1px solid var(--border);
-    position: relative;
+    color: var(--gm-accent);
+    white-space: nowrap;
 }
-.section-title::after {
-    content: '';
-    position: absolute;
-    bottom: -1px; left: 0;
-    width: 40px;
+.section-rule {
+    flex: 1;
     height: 1px;
-    background: var(--gm-accent);
-    opacity: 0.6;
+    background: linear-gradient(90deg, var(--gm-accent-dim), transparent);
+    opacity: 0.5;
 }
 
 .panel {
