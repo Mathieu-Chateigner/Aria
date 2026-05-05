@@ -1242,11 +1242,14 @@ body {
 .cs-attr + .cs-attr { border-left: 1px solid rgba(201,168,76,0.1); }
 .cs-attr-pv { border-left: 1px solid var(--border) !important; }
 .cs-attr-label { font-family: 'Cinzel', serif; font-size: 12px; letter-spacing: 0.15em; color: var(--gold-dim); text-transform: uppercase; }
-.cs-attr-input { text-align: center !important; font-family: 'Cinzel', serif !important; font-size: 20px !important; font-weight: 700 !important; padding: 6px 4px !important; width: 100%; color: var(--parchment) !important; }
-/* Weapon rows in char sheet (JS renders .weap-row with different grid) */
-.cs-weapons-hdr { grid-template-columns: 1fr 80px 28px 24px; }
-.cs-inv-hdr     { grid-template-columns: 1fr 52px 28px; }
-.cs-specials-hdr { grid-template-columns: 1.2fr 52px 2fr auto; }
+.editor-input.cs-attr-input {
+    text-align: center;
+    font-family: 'Cinzel', serif;
+    font-size: 16px;
+    font-weight: 600;
+    padding: 4px 2px;
+    color: var(--gold-light);
+}
 .weap-fav-btn {
     background: none; border: none; color: var(--parchment-dim);
     font-size: 15px; cursor: pointer; padding: 2px;
@@ -2209,3 +2212,12 @@ body.light-mode .file-viewer-modal { background: rgba(250,245,235,0.97); border-
 body.light-mode .fv-text { color: var(--parchment); }
 body.light-mode .music-bar { background: #f0e6c8; border-bottom-color: rgba(201,168,76,0.3); }
 body.light-mode .music-bar-title { color: #6b5020; }
+body.light-mode .roll-btn {
+    background: linear-gradient(180deg, #e8d8a0, #d4c070);
+    border-color: var(--gold-dim);
+    color: #3a2a08;
+}
+body.light-mode .roll-btn:hover {
+    background: linear-gradient(180deg, #f0e0b0, #dcc880);
+    box-shadow: 0 0 12px rgba(160,120,20,0.2);
+}
