@@ -160,12 +160,32 @@
 
             <!-- COMPETENCES -->
             <div class="tab-content active" id="tab-skills">
+                <div class="section-header">
+                    <span class="section-icon">⚔</span>
+                    <span class="section-title">Compétences</span>
+                    <div class="section-rule"></div>
+                </div>
                 <div class="skill-list" id="skill-list"></div>
-                <div class="skill-list" id="special-list" style="margin-top:12px;"></div>
+                <div class="ornamental-divider">
+                    <div class="line"></div>
+                    <div class="gem"></div>
+                    <div class="line rev"></div>
+                </div>
+                <div class="section-header">
+                    <span class="section-icon">✦</span>
+                    <span class="section-title">Spéciaux</span>
+                    <div class="section-rule"></div>
+                </div>
+                <div class="skill-list" id="special-list"></div>
             </div>
 
             <!-- STATS -->
             <div class="tab-content" id="tab-stats">
+                <div class="section-header">
+                    <span class="section-icon">✦</span>
+                    <span class="section-title">Caractéristiques</span>
+                    <div class="section-rule"></div>
+                </div>
                 <div class="mult-bar">
                     <span class="mult-bar-label">Multiplicateur</span>
                     <div id="mult-bar-btns" style="display:flex;gap:6px;"></div>
@@ -175,6 +195,11 @@
 
             <!-- JET LIBRE -->
             <div class="tab-content" id="tab-free">
+                <div class="section-header">
+                    <span class="section-icon">⚄</span>
+                    <span class="section-title">Jet libre</span>
+                    <div class="section-rule"></div>
+                </div>
                 <div class="free-roll-form" style="max-width:360px;">
                     <div>
                         <div class="field-label">Nom du jet</div>
@@ -275,7 +300,11 @@
             <!-- ALCHIMIE -->
             <div class="tab-content" id="tab-alchemy">
                 <div class="alchemy-header">
-                    <div class="section-title" style="margin-bottom:0;">Potions</div>
+                    <div class="section-header" style="margin-bottom:0;flex:1;">
+                        <span class="section-icon">⚗</span>
+                        <span class="section-title">Potions</span>
+                        <div class="section-rule"></div>
+                    </div>
                     <button class="add-skill-btn" onclick="toggleCustomPotionForm()">+ Potion personnalisée</button>
                 </div>
                 <div class="custom-potion-form" id="custom-potion-form" style="display:none;">
