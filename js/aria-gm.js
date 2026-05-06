@@ -733,20 +733,11 @@ function renderPlayerCards() {
         return;
     }
     noP.style.display = 'none';
-    const savedDmg = {}, savedHeal = {};
     const focusedId = document.activeElement?.id;
-    const cameraIframes = new Map();
-    grid.querySelectorAll('[data-char-id]').forEach(el => {
-        const iframe = el.querySelector('.pc-camera-frame');
-        if (iframe) cameraIframes.set(el.dataset.charId, iframe);
+    // Remove cards for players no longer in the Map
+    [...grid.querySelectorAll('[data-char-id]')].forEach(el => {
+        if (!players.has(el.dataset.charId)) el.remove();
     });
-    players.forEach((_, playerId) => {
-        const d = document.getElementById(`dmg-${playerId}`);
-        const h = document.getElementById(`heal-${playerId}`);
-        if (d) savedDmg[playerId] = d.value;
-        if (h) savedHeal[playerId] = h.value;
-    });
-    grid.innerHTML = '';
     players.forEach((p, playerId) => {
         const isOnline = p.online !== false && Date.now() - p.ts < PRESENCE_TIMEOUT;
         const hp = p.hp ?? p.maxHP ?? '?', maxHP = p.maxHP ?? '?';
@@ -754,69 +745,122 @@ function renderPlayerCards() {
         const hpColor = pct > 0.5 ? 'var(--success)' : pct > 0.25 ? '#e8a020' : 'var(--fail)';
         const hpClass = pct <= 0.25 ? 'critical' : pct <= 0.5 ? 'low' : '';
         const stats = p.stats || {};
-        const card = document.createElement('div');
-        card.dataset.charId = playerId;
-        card.className = `player-card ${isOnline ? 'online' : 'offline'}`;
-        card.innerHTML = `
-          <div class="pc-header">
-            <div class="pc-online-dot ${isOnline ? 'online' : ''}"></div>
-            <div style="flex:1;min-width:0;">
-              <div class="pc-name">${p.name || playerId}</div>
-              <div class="pc-class">${p.charClass || ''}</div>
-            </div>
-            <button class="pc-btn details" onclick="openPlayerDetails('${playerId}')" title="Voir la fiche">📋</button>
-          </div>
-          <div class="pc-body">
-            <div class="pc-hp-row">
-              <div>
-                <div class="pc-hp-num ${hpClass}">${hp}</div>
-                <div style="font-family:'Cinzel',serif;font-size:9px;color:var(--parchment-dim);">/ ${maxHP} PV</div>
+        const k = gmKarma[playerId] ?? 0;
+        let card = grid.querySelector(`[data-char-id="${playerId}"]`);
+        if (!card) {
+            // First render: build full card structure
+            card = document.createElement('div');
+            card.dataset.charId = playerId;
+            card.className = `player-card ${isOnline ? 'online' : 'offline'}`;
+            card.innerHTML = `
+              <div class="pc-header">
+                <div class="pc-online-dot ${isOnline ? 'online' : ''}"></div>
+                <div style="flex:1;min-width:0;">
+                  <div class="pc-name">${p.name || playerId}</div>
+                  <div class="pc-class">${p.charClass || ''}</div>
+                </div>
+                <button class="pc-btn details" onclick="openPlayerDetails('${playerId}')" title="Voir la fiche">📋</button>
               </div>
-              <div class="pc-hp-bar-wrap"><div class="pc-hp-bar" style="width:${Math.round(pct * 100)}%;background:${hpColor};"></div></div>
-            </div>
-            ${p.protection ? `<div class="pc-prot" title="Protection">🛡 <span style="color:var(--parchment-dim)">${p.protection.nom || ''}</span>${p.protection.valeur ? ` <span style="color:var(--gold);font-weight:600;">${p.protection.valeur}</span>` : ''}</div>` : ''}
-            <div class="pc-stats">
-              ${Object.entries(stats).filter(([k]) => k !== 'PV').map(([k, v]) => `<span class="pc-stat">${k} <span>${v}</span></span>`).join('')}
-            </div>
-            <div class="pc-actions">
-              <input class="pc-dmg-input" id="dmg-${playerId}" type="text" inputmode="numeric"
-                placeholder="Dégâts" oninput="this.value=this.value.replace(/[^0-9]/g,'')"
-                onkeydown="if(event.key==='Enter')applyPlayerDamage('${playerId}')" />
-              <button class="pc-btn dmg" onclick="applyPlayerDamage('${playerId}')">⚔</button>
-              <input class="pc-heal-input" id="heal-${playerId}" type="text" inputmode="numeric"
-                placeholder="Soins" oninput="this.value=this.value.replace(/[^0-9]/g,'')"
-                onkeydown="if(event.key==='Enter')applyPlayerHeal('${playerId}')" />
-              <button class="pc-btn heal" onclick="applyPlayerHeal('${playerId}')">♥</button>
-            </div>
-            <div class="pc-karma-row">
-              <span class="pc-karma-label">Karma</span>
-              <button class="pc-karma-btn minus" onclick="setPlayerKarma('${playerId}',-1)">−</button>
-              <span class="pc-karma-val ${(gmKarma[playerId]??0)>0?'positive':(gmKarma[playerId]??0)<0?'negative':''}">${(gmKarma[playerId]??0)>0?'+':''}${gmKarma[playerId]??0}</span>
-              <button class="pc-karma-btn plus" onclick="setPlayerKarma('${playerId}',1)">+</button>
-            </div>
-          </div>`;
-        grid.appendChild(card);
-        if (p.streamId) {
-            const expectedSrc = `https://vdo.ninja/?view=${encodeURIComponent(p.streamId)}&autoplay&cleanoutput`;
-            const pcBody = card.querySelector('.pc-body');
-            const hpRow = card.querySelector('.pc-hp-row');
-            const saved = cameraIframes.get(playerId);
-            if (saved && saved.src === expectedSrc) {
-                pcBody.insertBefore(saved, hpRow);
-            } else {
+              <div class="pc-body">
+                <div class="pc-hp-row">
+                  <div>
+                    <div class="pc-hp-num ${hpClass}">${hp}</div>
+                    <div style="font-family:'Cinzel',serif;font-size:9px;color:var(--parchment-dim);">/ ${maxHP} PV</div>
+                  </div>
+                  <div class="pc-hp-bar-wrap"><div class="pc-hp-bar" style="width:${Math.round(pct * 100)}%;background:${hpColor};"></div></div>
+                </div>
+                ${p.protection ? `<div class="pc-prot" title="Protection">🛡 <span style="color:var(--parchment-dim)">${p.protection.nom || ''}</span>${p.protection.valeur ? ` <span style="color:var(--gold);font-weight:600;">${p.protection.valeur}</span>` : ''}</div>` : ''}
+                <div class="pc-stats">
+                  ${Object.entries(stats).filter(([k]) => k !== 'PV').map(([k, v]) => `<span class="pc-stat">${k} <span>${v}</span></span>`).join('')}
+                </div>
+                <div class="pc-actions">
+                  <input class="pc-dmg-input" id="dmg-${playerId}" type="text" inputmode="numeric"
+                    placeholder="Dégâts" oninput="this.value=this.value.replace(/[^0-9]/g,'')"
+                    onkeydown="if(event.key==='Enter')applyPlayerDamage('${playerId}')" />
+                  <button class="pc-btn dmg" onclick="applyPlayerDamage('${playerId}')">⚔</button>
+                  <input class="pc-heal-input" id="heal-${playerId}" type="text" inputmode="numeric"
+                    placeholder="Soins" oninput="this.value=this.value.replace(/[^0-9]/g,'')"
+                    onkeydown="if(event.key==='Enter')applyPlayerHeal('${playerId}')" />
+                  <button class="pc-btn heal" onclick="applyPlayerHeal('${playerId}')">♥</button>
+                </div>
+                <div class="pc-karma-row">
+                  <span class="pc-karma-label">Karma</span>
+                  <button class="pc-karma-btn minus" onclick="setPlayerKarma('${playerId}',-1)">−</button>
+                  <span class="pc-karma-val ${k>0?'positive':k<0?'negative':''}">${k>0?'+':''}${k}</span>
+                  <button class="pc-karma-btn plus" onclick="setPlayerKarma('${playerId}',1)">+</button>
+                </div>
+              </div>`;
+            grid.appendChild(card);
+            // Camera iframe for new card (wrapped for resize)
+            if (p.streamId) {
+                const wrap = document.createElement('div');
+                wrap.className = 'pc-camera-wrap';
                 const iframe = document.createElement('iframe');
-                iframe.src = expectedSrc;
+                iframe.src = `https://vdo.ninja/?view=${encodeURIComponent(p.streamId)}&autoplay&cleanoutput`;
                 iframe.allow = 'camera; autoplay; fullscreen; display-capture';
                 iframe.className = 'pc-camera-frame';
-                pcBody.insertBefore(iframe, hpRow);
+                wrap.appendChild(iframe);
+                const pcBody = card.querySelector('.pc-body');
+                pcBody.insertBefore(wrap, pcBody.firstElementChild);
+            }
+        } else {
+            // In-place update: only touch what changed, never rebuild the whole card
+            card.className = `player-card ${isOnline ? 'online' : 'offline'}`;
+            const dot = card.querySelector('.pc-online-dot');
+            if (dot) dot.className = `pc-online-dot${isOnline ? ' online' : ''}`;
+            const nameEl = card.querySelector('.pc-name');
+            if (nameEl) nameEl.textContent = p.name || playerId;
+            const classEl = card.querySelector('.pc-class');
+            if (classEl) classEl.textContent = p.charClass || '';
+            const hpNum = card.querySelector('.pc-hp-num');
+            if (hpNum) { hpNum.textContent = hp; hpNum.className = `pc-hp-num${hpClass ? ' ' + hpClass : ''}`; }
+            const hpRowFirstDiv = card.querySelector('.pc-hp-row > div');
+            if (hpRowFirstDiv?.lastElementChild) hpRowFirstDiv.lastElementChild.textContent = `/ ${maxHP} PV`;
+            const hpBar = card.querySelector('.pc-hp-bar');
+            if (hpBar) { hpBar.style.width = `${Math.round(pct * 100)}%`; hpBar.style.background = hpColor; }
+            const statsEl = card.querySelector('.pc-stats');
+            if (statsEl) statsEl.innerHTML = Object.entries(stats).filter(([sk]) => sk !== 'PV').map(([sk, v]) => `<span class="pc-stat">${sk} <span>${v}</span></span>`).join('');
+            let protEl = card.querySelector('.pc-prot');
+            if (p.protection) {
+                const protHtml = `🛡 <span style="color:var(--parchment-dim)">${p.protection.nom || ''}</span>${p.protection.valeur ? ` <span style="color:var(--gold);font-weight:600;">${p.protection.valeur}</span>` : ''}`;
+                if (!protEl) {
+                    protEl = document.createElement('div');
+                    protEl.className = 'pc-prot';
+                    protEl.title = 'Protection';
+                    card.querySelector('.pc-hp-row')?.insertAdjacentElement('afterend', protEl);
+                }
+                protEl.innerHTML = protHtml;
+            } else if (protEl) {
+                protEl.remove();
+            }
+            const karmaVal = card.querySelector('.pc-karma-val');
+            if (karmaVal) {
+                karmaVal.textContent = `${k > 0 ? '+' : ''}${k}`;
+                karmaVal.className = `pc-karma-val${k > 0 ? ' positive' : k < 0 ? ' negative' : ''}`;
+            }
+            // Camera: only create/update when streamId changes, never destroy existing iframe
+            const existingWrap = card.querySelector('.pc-camera-wrap');
+            const existingIframe = existingWrap?.querySelector('.pc-camera-frame');
+            if (p.streamId) {
+                const expectedSrc = `https://vdo.ninja/?view=${encodeURIComponent(p.streamId)}&autoplay&cleanoutput`;
+                if (!existingWrap) {
+                    const wrap = document.createElement('div');
+                    wrap.className = 'pc-camera-wrap';
+                    const iframe = document.createElement('iframe');
+                    iframe.src = expectedSrc;
+                    iframe.allow = 'camera; autoplay; fullscreen; display-capture';
+                    iframe.className = 'pc-camera-frame';
+                    wrap.appendChild(iframe);
+                    const pcBody = card.querySelector('.pc-body');
+                    pcBody.insertBefore(wrap, pcBody.firstElementChild);
+                } else if (existingIframe && existingIframe.src !== expectedSrc) {
+                    existingIframe.src = expectedSrc;
+                }
+                // src unchanged → iframe stays alive, no reload
+            } else if (existingWrap) {
+                existingWrap.remove();
             }
         }
-    });
-    players.forEach((_, playerId) => {
-        const d = document.getElementById(`dmg-${playerId}`);
-        const h = document.getElementById(`heal-${playerId}`);
-        if (d && savedDmg[playerId]) d.value = savedDmg[playerId];
-        if (h && savedHeal[playerId]) h.value = savedHeal[playerId];
     });
     if (focusedId) document.getElementById(focusedId)?.focus();
 }

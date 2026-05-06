@@ -713,26 +713,52 @@ function updateCamerasTabVisibility() {
 function renderCamerasTab() {
     const grid = document.getElementById('cameras-grid');
     if (!grid) return;
-    // Build the expected set of stream IDs
-    const expected = [];
-    if (gmStreamId) expected.push({ id: gmStreamId, label: 'MJ' });
+    // Build expected map: streamId → display label
+    const expected = new Map();
+    if (gmStreamId) expected.set(gmStreamId, 'MJ');
     peerCameras.forEach((p, charId) => {
-        if (p.streamId && charId !== currentCharId) expected.push({ id: p.streamId, label: p.name.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') });
+        if (p.streamId && charId !== currentCharId) expected.set(p.streamId, p.name);
     });
-    // Skip full rebuild if rendered stream IDs are identical
-    const renderedIds = [...grid.querySelectorAll('.camera-iframe')].map(f => {
-        try { return new URL(f.src).searchParams.get('view') || ''; } catch { return ''; }
+    // Remove cells whose stream ID is no longer needed
+    [...grid.querySelectorAll('.camera-cell')].forEach(cell => {
+        const iframe = cell.querySelector('.camera-iframe');
+        try {
+            const sid = iframe ? new URL(iframe.src).searchParams.get('view') || '' : '';
+            if (!expected.has(sid)) cell.remove();
+        } catch { cell.remove(); }
     });
-    const expectedIds = expected.map(e => e.id);
-    if (renderedIds.length === expectedIds.length && expectedIds.every((id, i) => renderedIds[i] === id)) return;
-    // Rebuild
-    grid.innerHTML = '';
-    for (const { id, label } of expected) {
-        const wrap = document.createElement('div');
-        wrap.className = 'camera-cell';
-        wrap.innerHTML = `<iframe src="https://vdo.ninja/?view=${encodeURIComponent(id)}&autoplay&cleanoutput" allow="camera; autoplay; fullscreen; display-capture" class="camera-iframe"></iframe><div class="camera-label">${label}</div>`;
-        grid.appendChild(wrap);
-    }
+    // Build set of currently rendered stream IDs
+    const rendered = new Map();
+    grid.querySelectorAll('.camera-cell').forEach(cell => {
+        const iframe = cell.querySelector('.camera-iframe');
+        try {
+            const sid = iframe ? new URL(iframe.src).searchParams.get('view') || '' : '';
+            if (sid) rendered.set(sid, cell);
+        } catch {}
+    });
+    // Update labels for existing cells; add cells for new stream IDs
+    expected.forEach((label, sid) => {
+        if (rendered.has(sid)) {
+            const labelEl = rendered.get(sid).querySelector('.camera-label');
+            if (labelEl) labelEl.textContent = label;
+        } else {
+            const cell = document.createElement('div');
+            cell.className = 'camera-cell';
+            const wrap = document.createElement('div');
+            wrap.className = 'camera-iframe-wrap';
+            const iframe = document.createElement('iframe');
+            iframe.src = `https://vdo.ninja/?view=${encodeURIComponent(sid)}&autoplay&cleanoutput`;
+            iframe.allow = 'camera; autoplay; fullscreen; display-capture';
+            iframe.className = 'camera-iframe';
+            wrap.appendChild(iframe);
+            const labelEl = document.createElement('div');
+            labelEl.className = 'camera-label';
+            labelEl.textContent = label;
+            cell.appendChild(wrap);
+            cell.appendChild(labelEl);
+            grid.appendChild(cell);
+        }
+    });
 }
 
 // ═══════════════════════════════════════════
