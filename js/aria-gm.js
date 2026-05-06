@@ -761,6 +761,7 @@ function renderPlayerCards() {
             <button class="pc-btn details" onclick="openPlayerDetails('${playerId}')" title="Voir la fiche">📋</button>
           </div>
           <div class="pc-body">
+            ${p.streamId ? `<iframe src="https://vdo.ninja/?view=${encodeURIComponent(p.streamId)}&autoplay&cleanoutput" allow="camera; autoplay; fullscreen; display-capture" class="pc-camera-frame"></iframe>` : ''}
             <div class="pc-hp-row">
               <div>
                 <div class="pc-hp-num ${hpClass}">${hp}</div>

@@ -1725,4 +1725,16 @@ body.light-mode .notes-name-input { color: var(--parchment); }
 body.light-mode .file-viewer-modal { background: rgba(250,245,240,0.97); border-color: rgba(98,40,160,0.25); }
 body.light-mode .fv-text { color: var(--parchment); }
 body.light-mode .sel-container { background: var(--bg2); }
+
+/* ── PLAYER CARD CAMERA ──────────────────── */
+.pc-camera-frame {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border: none;
+    border-radius: var(--radius);
+    background: var(--bg2);
+    display: block;
+    margin-bottom: 8px;
+    max-height: 120px;
+}
 body.light-mode .mc-inline-input { background: rgba(255,255,255,0.5); border-color: rgba(98,40,160,0.2); color: var(--parchment); }
