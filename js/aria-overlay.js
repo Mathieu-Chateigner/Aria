@@ -624,6 +624,11 @@ function renderWidgetContent(widget) {
             const shown = rollHistory.slice(-(cfg.maxItems || 8)).reverse();
             return `<div class="ow-list">${shown.map(r => `<div class="ow-roll-row"><span class="ow-roll-char">${r.char || ''}</span><span class="ow-roll-skill">${r.skillName}</span><span class="ow-roll-result ${r.success ? 'success' : 'fail'}">${r.roll}</span></div>`).join('')}</div>`;
         }
+        case 'camera': {
+            const sid = cfg.streamId || '';
+            if (!sid) return '<div class="ow-camera-empty">—</div>';
+            return `<iframe src="https://vdo.ninja/?view=${encodeURIComponent(sid)}&autoplay&cleanoutput&transparent" allow="camera; autoplay; fullscreen; display-capture" style="width:100%;height:100%;border:none;"></iframe>`;
+        }
         default: return '';
     }
 }
@@ -658,6 +663,7 @@ function updateWidgetData() {
     document.querySelectorAll('.overlay-widget').forEach(el => {
         const widget = overlayConfig.widgets.find(w => w.id === el.dataset.widgetId);
         if (!widget) return;
+        if (widget.type === 'camera') return;
         el.innerHTML = renderWidgetContent(widget);
     });
 }
