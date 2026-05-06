@@ -114,7 +114,7 @@ function _charToRow(char) {
         skills: char.skills || null, specials: char.specials || null,
         weapons: char.weapons || null, protection: char.protection || null,
         inventory: char.inventory || null, potion_recipes: char.potionRecipes || null,
-        vials: char.vials || 0, updated_at: _nowISO(),
+        vials: char.vials || 0, stream_id: char.streamId || null, updated_at: _nowISO(),
     };
 }
 
