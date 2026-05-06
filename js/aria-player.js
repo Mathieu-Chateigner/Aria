@@ -713,20 +713,26 @@ function updateCamerasTabVisibility() {
 function renderCamerasTab() {
     const grid = document.getElementById('cameras-grid');
     if (!grid) return;
+    // Build the expected set of stream IDs
+    const expected = [];
+    if (gmStreamId) expected.push({ id: gmStreamId, label: 'MJ' });
+    peerCameras.forEach((p, charId) => {
+        if (p.streamId && charId !== currentCharId) expected.push({ id: p.streamId, label: p.name.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') });
+    });
+    // Skip full rebuild if rendered stream IDs are identical
+    const renderedIds = [...grid.querySelectorAll('.camera-iframe')].map(f => {
+        try { return new URL(f.src).searchParams.get('view') || ''; } catch { return ''; }
+    });
+    const expectedIds = expected.map(e => e.id);
+    if (renderedIds.length === expectedIds.length && expectedIds.every((id, i) => renderedIds[i] === id)) return;
+    // Rebuild
     grid.innerHTML = '';
-    if (gmStreamId) {
+    for (const { id, label } of expected) {
         const wrap = document.createElement('div');
         wrap.className = 'camera-cell';
-        wrap.innerHTML = `<iframe src="https://vdo.ninja/?view=${encodeURIComponent(gmStreamId)}&autoplay&cleanoutput" allow="camera; autoplay; fullscreen; display-capture" class="camera-iframe"></iframe><div class="camera-label">MJ</div>`;
+        wrap.innerHTML = `<iframe src="https://vdo.ninja/?view=${encodeURIComponent(id)}&autoplay&cleanoutput" allow="camera; autoplay; fullscreen; display-capture" class="camera-iframe"></iframe><div class="camera-label">${label}</div>`;
         grid.appendChild(wrap);
     }
-    peerCameras.forEach((p, charId) => {
-        if (!p.streamId || charId === currentCharId) return;
-        const wrap = document.createElement('div');
-        wrap.className = 'camera-cell';
-        wrap.innerHTML = `<iframe src="https://vdo.ninja/?view=${encodeURIComponent(p.streamId)}&autoplay&cleanoutput" allow="camera; autoplay; fullscreen; display-capture" class="camera-iframe"></iframe><div class="camera-label">${p.name}</div>`;
-        grid.appendChild(wrap);
-    });
 }
 
 // ═══════════════════════════════════════════
