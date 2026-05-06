@@ -1965,11 +1965,13 @@ function loadConfigInputs() {
     const idEl = document.getElementById('cfg-identity-display');
     if (idEl) idEl.textContent = character.name || '—';
     document.getElementById('cfg-campaign-key').value = character.campaignKey || '';
+    document.getElementById('cfg-vdo-stream-id').value = character.streamId || '';
     document.getElementById('cfg-dddice-theme').value = config.dddiceTheme || '';
     document.getElementById('cfg-light-mode').checked = !!config.lightMode;
 }
 function saveConfig() {
     character.campaignKey = document.getElementById('cfg-campaign-key').value.trim().toUpperCase();
+    character.streamId = document.getElementById('cfg-vdo-stream-id').value.trim();
     saveCurrentCharacter();
     config = {
         ...config,
