@@ -735,6 +735,11 @@ function renderPlayerCards() {
     noP.style.display = 'none';
     const savedDmg = {}, savedHeal = {};
     const focusedId = document.activeElement?.id;
+    const cameraIframes = new Map();
+    grid.querySelectorAll('[data-char-id]').forEach(el => {
+        const iframe = el.querySelector('.pc-camera-frame');
+        if (iframe) cameraIframes.set(el.dataset.charId, iframe);
+    });
     players.forEach((_, playerId) => {
         const d = document.getElementById(`dmg-${playerId}`);
         const h = document.getElementById(`heal-${playerId}`);
@@ -750,6 +755,7 @@ function renderPlayerCards() {
         const hpClass = pct <= 0.25 ? 'critical' : pct <= 0.5 ? 'low' : '';
         const stats = p.stats || {};
         const card = document.createElement('div');
+        card.dataset.charId = playerId;
         card.className = `player-card ${isOnline ? 'online' : 'offline'}`;
         card.innerHTML = `
           <div class="pc-header">
@@ -761,7 +767,6 @@ function renderPlayerCards() {
             <button class="pc-btn details" onclick="openPlayerDetails('${playerId}')" title="Voir la fiche">📋</button>
           </div>
           <div class="pc-body">
-            ${p.streamId ? `<iframe src="https://vdo.ninja/?view=${encodeURIComponent(p.streamId)}&autoplay&cleanoutput" allow="camera; autoplay; fullscreen; display-capture" class="pc-camera-frame"></iframe>` : ''}
             <div class="pc-hp-row">
               <div>
                 <div class="pc-hp-num ${hpClass}">${hp}</div>
@@ -791,6 +796,21 @@ function renderPlayerCards() {
             </div>
           </div>`;
         grid.appendChild(card);
+        if (p.streamId) {
+            const expectedSrc = `https://vdo.ninja/?view=${encodeURIComponent(p.streamId)}&autoplay&cleanoutput`;
+            const pcBody = card.querySelector('.pc-body');
+            const hpRow = card.querySelector('.pc-hp-row');
+            const saved = cameraIframes.get(playerId);
+            if (saved && saved.src === expectedSrc) {
+                pcBody.insertBefore(saved, hpRow);
+            } else {
+                const iframe = document.createElement('iframe');
+                iframe.src = expectedSrc;
+                iframe.allow = 'camera; autoplay; fullscreen; display-capture';
+                iframe.className = 'pc-camera-frame';
+                pcBody.insertBefore(iframe, hpRow);
+            }
+        }
     });
     players.forEach((_, playerId) => {
         const d = document.getElementById(`dmg-${playerId}`);
