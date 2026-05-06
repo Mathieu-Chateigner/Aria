@@ -33,6 +33,7 @@ const WIDGET_DEFS = {
         { type: 'player_skills',     label: 'Compétences joueurs',   defaultW: 30, defaultH: 30, gmOnly: true },
         { type: 'monster_list',      label: 'Monstres',              defaultW: 30, defaultH: 30, gmOnly: true },
         { type: 'roll_history',      label: 'Historique jets',       defaultW: 35, defaultH: 25, gmOnly: true },
+        { type: 'camera',            label: 'Caméra joueur',         defaultW: 25, defaultH: 20, gmOnly: true },
     ],
     event: [
         { type: 'roll_card',         label: 'Carte de jet',         defaultW: 35, defaultH: 40 },
@@ -146,6 +147,7 @@ function addWidget(type, x, y) {
     if (type === 'custom_text' || type === 'campaign_name') widget.config.content = '';
     if (['skills','inventory','potions','roll_history','player_hp_summary','player_stats',
          'player_inventory','player_skills','monster_list'].includes(type)) widget.config.maxItems = 8;
+    if (type === 'camera') widget.config.streamId = '';
     widgets.push(widget);
     renderCanvas();
     selectWidget(widget.id);
@@ -260,6 +262,9 @@ function syncPropsPanel() {
     document.getElementById('prop-maxitems-wrap').style.display = hasMaxItems ? '' : 'none';
     if (hasContent)  document.getElementById('prop-content').value  = widget.config?.content  || '';
     if (hasMaxItems) document.getElementById('prop-maxitems').value = widget.config?.maxItems || 8;
+    const hasStreamId = widget.type === 'camera';
+    document.getElementById('prop-stream-id-wrap').style.display = hasStreamId ? '' : 'none';
+    if (hasStreamId) document.getElementById('prop-stream-id').value = widget.config?.streamId || '';
 }
 
 function bindPropsPanel() {
@@ -285,6 +290,13 @@ function bindPropsPanel() {
         widget.config.content = document.getElementById('prop-content').value;
         scheduleAutoSave();
         if (ablyChannel) ablyChannel.publish('content-update', { overlayId: OVERLAY_ID, widgetId: widget.id, content: widget.config.content });
+    });
+
+    document.getElementById('prop-stream-id').addEventListener('input', () => {
+        const widget = widgets.find(w => w.id === selectedId);
+        if (!widget) return;
+        widget.config.streamId = document.getElementById('prop-stream-id').value.trim();
+        scheduleAutoSave();
     });
 
     document.getElementById('btn-delete-widget').addEventListener('click', () => {
