@@ -42,6 +42,7 @@ let rollFilter   = new Set();
 let playerFilter = new Set();
 let cardHistory = [];
 let sweepIntervalId = null;
+let gmPresenceIntervalId = null;
 let gmClickHandlerRegistered = false;
 let renderPlayerCardsTimer = null;
 let renderMonstersTimer = null;
@@ -446,6 +447,7 @@ function switchCampaign() {
     ablyMusic = null;
     filesGrantedSessions.clear();
     if (sweepIntervalId) { clearInterval(sweepIntervalId); sweepIntervalId = null; }
+    if (gmPresenceIntervalId) { clearInterval(gmPresenceIntervalId); gmPresenceIntervalId = null; }
     if (renderPlayerCardsTimer) { clearTimeout(renderPlayerCardsTimer); renderPlayerCardsTimer = null; }
     if (renderMonstersTimer) { clearTimeout(renderMonstersTimer); renderMonstersTimer = null; }
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch(_){} dddiceSDK = null; }
@@ -478,6 +480,7 @@ function initApp() {
     loadConfigInputs();
     if (config.dddiceKey && config.dddiceRoom) initDddice();
     if (config.ablyKey) initAbly();
+    startGMPresenceBroadcast();
     if (sweepIntervalId) clearInterval(sweepIntervalId);
     sweepIntervalId = setInterval(sweepOfflinePlayers, 10000);
     if (!gmClickHandlerRegistered) {
@@ -648,6 +651,13 @@ function initAbly() {
 function setAblyStatus(ok) {
     ['ably-dot', 'cfg-ably-dot'].forEach(id => { const el = document.getElementById(id); if (el) el.className = 'status-dot ' + (ok ? 'connected' : 'error'); });
     ['ably-status', 'cfg-ably-status'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = ok ? 'Ably connecté' : 'Ably erreur'; });
+}
+function startGMPresenceBroadcast() {
+    if (gmPresenceIntervalId) { clearInterval(gmPresenceIntervalId); gmPresenceIntervalId = null; }
+    if (!config.vdoStreamId || !ablyDamage) return;
+    const publish = () => ablyDamage.publish('gm-presence', { streamId: config.vdoStreamId });
+    publish();
+    gmPresenceIntervalId = setInterval(publish, 30000);
 }
 function publishDamage(targetId, damage, hpBefore, hpAfter, maxHP, charName) {
     if (!ablyDamage) return;
@@ -1469,12 +1479,14 @@ function applyTheme(light) {
 }
 function loadConfigInputs() {
     document.getElementById('cfg-light-mode').checked = !!config.lightMode;
+    document.getElementById('cfg-vdo-stream-id').value = config.vdoStreamId || '';
 }
 function saveConfig() {
     config = {
         ...config,
         dddiceTheme: document.getElementById('cfg-dddice-theme').value || '',
         lightMode: document.getElementById('cfg-light-mode').checked,
+        vdoStreamId: document.getElementById('cfg-vdo-stream-id').value.trim(),
     };
     localStorage.setItem('aria-config', JSON.stringify(config));
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch (_) {} dddiceSDK = null; }
@@ -1483,6 +1495,7 @@ function saveConfig() {
     ablyInstance = null; ablyRolls = null; ablyCards = null; ablyDamage = null; ablyMusic = null;
     if (config.dddiceKey && config.dddiceRoom) initDddice();
     if (config.ablyKey) initAbly();
+    startGMPresenceBroadcast();
     toggleConfig();
 }
 function toggleConfig() {
