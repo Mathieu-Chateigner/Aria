@@ -489,6 +489,8 @@ function switchCharacter() {
     } else {
         doCloseAbly();
     }
+    const pushFrame = document.getElementById('vdo-push-frame');
+    if (pushFrame) pushFrame.src = '';
     showSelectionScreen();
 }
 
@@ -523,6 +525,12 @@ function initApp() {
     updateOverlayEditorBtn();
     const volSlider = document.getElementById('music-bar-volume');
     if (volSlider) volSlider.value = String(musicMasterVolume);
+    const pushFrame = document.getElementById('vdo-push-frame');
+    if (pushFrame) {
+        pushFrame.src = character.streamId
+            ? `https://vdo.ninja/?push=${encodeURIComponent(character.streamId)}&autostart&webcam&noaudio&cleanoutput`
+            : '';
+    }
 }
 
 function updateOverlayEditorBtn() {
