@@ -52,6 +52,7 @@ const DEFAULT_CHAR = {
     ],
     specials: [],
     campaignKey: '',
+    streamId: '',
 };
 
 // Character will be loaded after selection
@@ -74,6 +75,8 @@ let pendingDddiceRoll = null;    // { skillName, threshold } waiting for RollFin
 let pendingSecondaryRoll = null; // { callback, mapFn } for non-d100 dice (d6, d3, weapon formula…)
 let dddiceRollSafetyTimer = null; // fallback timer in case RollFinished never fires
 let ablyRolls = null, ablyCards = null, ablyDamage = null, ablyMusic = null;
+let peerCameras = new Map(); // charId → { name, streamId }
+let gmStreamId = '';
 let ablyInstance = null;
 let currentHP = null;
 let presenceIntervalId = null;
@@ -491,6 +494,8 @@ function switchCharacter() {
     }
     const pushFrame = document.getElementById('vdo-push-frame');
     if (pushFrame) pushFrame.src = '';
+    peerCameras.clear();
+    gmStreamId = '';
     showSelectionScreen();
 }
 
@@ -689,6 +694,39 @@ function applyTabVisibility() {
         switchTab('tab-skills', document.querySelector('.tab-btn'));
     }
     renderInventoryEditor();
+    updateCamerasTabVisibility();
+}
+
+function updateCamerasTabVisibility() {
+    const hasAny = !!gmStreamId || [...peerCameras.values()].some(p => p.streamId);
+    const btn = document.getElementById('tab-btn-cameras');
+    if (!btn) return;
+    btn.style.display = hasAny ? '' : 'none';
+    if (!hasAny && document.getElementById('tab-cameras')?.classList.contains('active')) {
+        switchTab('tab-skills', document.querySelector('.tab-btn'));
+    }
+    if (document.getElementById('tab-cameras')?.classList.contains('active')) {
+        renderCamerasTab();
+    }
+}
+
+function renderCamerasTab() {
+    const grid = document.getElementById('cameras-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    if (gmStreamId) {
+        const wrap = document.createElement('div');
+        wrap.className = 'camera-cell';
+        wrap.innerHTML = `<iframe src="https://vdo.ninja/?view=${encodeURIComponent(gmStreamId)}&autoplay&cleanoutput" allow="camera; autoplay; fullscreen; display-capture" class="camera-iframe"></iframe><div class="camera-label">MJ</div>`;
+        grid.appendChild(wrap);
+    }
+    peerCameras.forEach((p, charId) => {
+        if (!p.streamId || charId === currentCharId) return;
+        const wrap = document.createElement('div');
+        wrap.className = 'camera-cell';
+        wrap.innerHTML = `<iframe src="https://vdo.ninja/?view=${encodeURIComponent(p.streamId)}&autoplay&cleanoutput" allow="camera; autoplay; fullscreen; display-capture" class="camera-iframe"></iframe><div class="camera-label">${p.name}</div>`;
+        grid.appendChild(wrap);
+    });
 }
 
 // ═══════════════════════════════════════════
@@ -1810,6 +1848,14 @@ function initAbly() {
             // Track other players' presence for Soigner targeting
             if (msg.name === 'presence' && d.playerId && d.playerId !== myId) {
                 knownPlayers[d.playerId] = { name: d.name, ts: Date.now() };
+                if (d.charId) {
+                    if (d.streamId) {
+                        peerCameras.set(d.charId, { name: d.name || d.charId, streamId: d.streamId });
+                    } else {
+                        peerCameras.delete(d.charId);
+                    }
+                    updateCamerasTabVisibility();
+                }
                 return;
             }
             // Handle player-to-player heal/damage (from another player's Soigner)
@@ -1901,6 +1947,11 @@ function initAbly() {
                 renderCombatSidebar();
                 return;
             }
+            if (msg.name === 'gm-presence') {
+                gmStreamId = d.streamId || '';
+                updateCamerasTabVisibility();
+                return;
+            }
             if (d.targetId && d.targetId !== myId) return;
             if (msg.name === 'damage') handleGMDamage(d);
             if (msg.name === 'heal') handleGMHeal(d);
@@ -1956,6 +2007,7 @@ function sendPresence() {
         tabs: playerTabs,
         money: character.money || { couronne: 0, orbe: 0, sceptre: 0, sou: 0 },
         campaignKey: character.campaignKey || '',
+        streamId: character.streamId || '',
     }, err => { if (err) console.error('[ARIA] publish error:', err); });
 }
 function setAblyStatus(ok) {

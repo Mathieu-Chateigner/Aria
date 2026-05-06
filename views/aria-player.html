@@ -155,6 +155,7 @@
                 <button class="tab-btn" id="tab-btn-cards" onclick="switchTab('tab-cards',this)">♠ Cartes</button>
                 <button class="tab-btn" id="tab-btn-alchemy" onclick="switchTab('tab-alchemy',this)">⚗ Alchimie</button>
                 <button class="tab-btn" id="tab-btn-files" style="display:none;" onclick="switchTab('tab-files',this)">✉ Documents</button>
+                <button class="tab-btn" id="tab-btn-cameras" style="display:none;" onclick="switchTab('tab-cameras',this)">📹 Caméras</button>
                 <button class="tab-btn" onclick="switchTab('tab-char',this)">◉ Personnage</button>
             </div>
 
@@ -320,6 +321,11 @@
             <div class="tab-content" id="tab-files">
                 <div class="player-files-list" id="player-files-list"></div>
                 <div class="alchemy-empty" id="player-files-empty">Aucun document disponible.</div>
+            </div>
+
+            <!-- CAMERAS -->
+            <div class="tab-content" id="tab-cameras">
+                <div class="cameras-grid" id="cameras-grid"></div>
             </div>
 
             <!-- PERSONNAGE -->

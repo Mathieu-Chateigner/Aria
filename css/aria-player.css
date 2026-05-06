@@ -2233,3 +2233,29 @@ body.light-mode .roll-btn:hover {
     background: linear-gradient(180deg, #f0e0b0, #dcc880);
     box-shadow: 0 0 12px rgba(160,120,20,0.2);
 }
+
+/* ── CAMERAS TAB ─────────────────────────── */
+.cameras-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+    padding: 8px 0;
+}
+.camera-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.camera-iframe {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg2);
+}
+.camera-label {
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    color: var(--parchment-dim);
+    text-align: center;
+}
