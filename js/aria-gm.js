@@ -813,7 +813,8 @@ function renderPlayerCards() {
                 wrap.className = 'pc-camera-wrap';
                 const iframe = document.createElement('iframe');
                 iframe.src = `https://vdo.ninja/?view=${encodeURIComponent(p.streamId)}&autoplay&cleanoutput`;
-                iframe.allow = 'camera; autoplay; fullscreen; display-capture';
+                iframe.allow = 'autoplay; fullscreen; display-capture; picture-in-picture; screen-wake-lock';
+                iframe.allowFullscreen = true;
                 iframe.className = 'pc-camera-frame';
                 wrap.appendChild(iframe);
                 const pcBody = card.querySelector('.pc-body');
@@ -864,7 +865,8 @@ function renderPlayerCards() {
                     wrap.className = 'pc-camera-wrap';
                     const iframe = document.createElement('iframe');
                     iframe.src = expectedSrc;
-                    iframe.allow = 'camera; autoplay; fullscreen; display-capture';
+                    iframe.allow = 'autoplay; fullscreen; display-capture; picture-in-picture; screen-wake-lock';
+                    iframe.allowFullscreen = true;
                     iframe.className = 'pc-camera-frame';
                     wrap.appendChild(iframe);
                     const pcBody = card.querySelector('.pc-body');

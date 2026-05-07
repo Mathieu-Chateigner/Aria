@@ -752,7 +752,8 @@ function renderCamerasTab() {
             wrap.className = 'camera-iframe-wrap';
             const iframe = document.createElement('iframe');
             iframe.src = `https://vdo.ninja/?view=${encodeURIComponent(sid)}&autoplay&cleanoutput`;
-            iframe.allow = 'camera; autoplay; fullscreen; display-capture';
+            iframe.allow = 'autoplay; fullscreen; display-capture; picture-in-picture; screen-wake-lock';
+            iframe.allowFullscreen = true;
             iframe.className = 'camera-iframe';
             wrap.appendChild(iframe);
             const handle = document.createElement('div');

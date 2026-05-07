@@ -627,7 +627,7 @@ function renderWidgetContent(widget) {
         case 'camera': {
             const sid = cfg.streamId || '';
             if (!sid) return '<div class="ow-camera-empty">—</div>';
-            return `<iframe src="https://vdo.ninja/?view=${encodeURIComponent(sid)}&autoplay&cleanoutput&transparent" allow="camera; autoplay; fullscreen; display-capture" style="width:100%;height:100%;border:none;"></iframe>`;
+            return `<iframe src="https://vdo.ninja/?view=${encodeURIComponent(sid)}&autoplay&cleanoutput&transparent" allow="autoplay; fullscreen; display-capture; picture-in-picture; screen-wake-lock" allowfullscreen style="width:100%;height:100%;border:none;"></iframe>`;
         }
         default: return '';
     }
