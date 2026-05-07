@@ -486,6 +486,7 @@ function initApp() {
     if (config.dddiceKey && config.dddiceRoom) initDddice();
     if (config.ablyKey) initAbly();
     startGMPresenceBroadcast();
+    updateGMPushIframe();
     if (sweepIntervalId) clearInterval(sweepIntervalId);
     sweepIntervalId = setInterval(sweepOfflinePlayers, 10000);
     if (!gmClickHandlerRegistered) {
@@ -659,10 +660,18 @@ function setAblyStatus(ok) {
 }
 function startGMPresenceBroadcast() {
     if (gmPresenceIntervalId) { clearInterval(gmPresenceIntervalId); gmPresenceIntervalId = null; }
-    if (!config.vdoStreamId || !ablyDamage) return;
-    const publish = () => ablyDamage.publish('gm-presence', { streamId: config.vdoStreamId });
+    if (!currentVdoRoom || !ablyDamage) return;
+    const gmStreamId = 'aria-gm-' + currentCampaignId.slice(0, 8);
+    const publish = () => ablyDamage.publish('gm-presence', { streamId: gmStreamId, vdoRoom: currentVdoRoom });
     publish();
     gmPresenceIntervalId = setInterval(publish, 30000);
+}
+function updateGMPushIframe() {
+    const pushFrame = document.getElementById('vdo-gm-push-frame');
+    if (!pushFrame) return;
+    pushFrame.src = (currentVdoRoom && currentCampaignId)
+        ? `https://vdo.ninja/?room=${encodeURIComponent(currentVdoRoom)}&push=aria-gm-${currentCampaignId.slice(0, 8)}&autostart&webcam&noaudio&cleanoutput`
+        : '';
 }
 function publishDamage(targetId, damage, hpBefore, hpAfter, maxHP, charName) {
     if (!ablyDamage) return;
