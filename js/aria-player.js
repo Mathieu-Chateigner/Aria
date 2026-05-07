@@ -756,6 +756,21 @@ function renderCamerasTab() {
             iframe.allow = 'camera; autoplay; fullscreen; display-capture';
             iframe.className = 'camera-iframe';
             wrap.appendChild(iframe);
+            const handle = document.createElement('div');
+            handle.className = 'camera-resize-handle';
+            handle.addEventListener('mousedown', e => {
+                const startX = e.clientX;
+                const startW = wrap.offsetWidth;
+                const shield = document.createElement('div');
+                shield.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:9999;cursor:nwse-resize;';
+                document.body.appendChild(shield);
+                const onMove = ev => { wrap.style.width = Math.max(140, startW + ev.clientX - startX) + 'px'; };
+                const onUp = () => { shield.remove(); document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+                e.preventDefault();
+            });
+            wrap.appendChild(handle);
             const labelEl = document.createElement('div');
             labelEl.className = 'camera-label';
             labelEl.textContent = label;
