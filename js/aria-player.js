@@ -52,7 +52,6 @@ const DEFAULT_CHAR = {
     ],
     specials: [],
     campaignKey: '',
-    streamId: '',
 };
 
 // Character will be loaded after selection
@@ -77,6 +76,15 @@ let dddiceRollSafetyTimer = null; // fallback timer in case RollFinished never f
 let ablyRolls = null, ablyCards = null, ablyDamage = null, ablyMusic = null;
 let peerCameras = new Map(); // charId → { name, streamId }
 let gmStreamId = '';
+let vdoRoom = '';
+function derivedStreamId() { return 'aria-' + currentCharId.slice(0, 8); }
+function updatePushIframe() {
+    const pushFrame = document.getElementById('vdo-push-frame');
+    if (!pushFrame) return;
+    pushFrame.src = vdoRoom
+        ? `https://vdo.ninja/?room=${encodeURIComponent(vdoRoom)}&push=${derivedStreamId()}&autostart&webcam&noaudio&cleanoutput`
+        : '';
+}
 let ablyInstance = null;
 let currentHP = null;
 let presenceIntervalId = null;
@@ -117,7 +125,7 @@ function _charToRow(char) {
         skills: char.skills || null, specials: char.specials || null,
         weapons: char.weapons || null, protection: char.protection || null,
         inventory: char.inventory || null, potion_recipes: char.potionRecipes || null,
-        vials: char.vials || 0, stream_id: char.streamId || null, updated_at: _nowISO(),
+        vials: char.vials || 0, updated_at: _nowISO(),
     };
 }
 
@@ -492,8 +500,8 @@ function switchCharacter() {
     } else {
         doCloseAbly();
     }
-    const pushFrame = document.getElementById('vdo-push-frame');
-    if (pushFrame) pushFrame.src = '';
+    vdoRoom = '';
+    updatePushIframe();
     peerCameras.clear();
     gmStreamId = '';
     showSelectionScreen();
@@ -530,12 +538,7 @@ function initApp() {
     updateOverlayEditorBtn();
     const volSlider = document.getElementById('music-bar-volume');
     if (volSlider) volSlider.value = String(musicMasterVolume);
-    const pushFrame = document.getElementById('vdo-push-frame');
-    if (pushFrame) {
-        pushFrame.src = character.streamId
-            ? `https://vdo.ninja/?push=${encodeURIComponent(character.streamId)}&autostart&webcam&noaudio&cleanoutput`
-            : '';
-    }
+    updatePushIframe();
 }
 
 function updateOverlayEditorBtn() {
@@ -1981,6 +1984,7 @@ function initAbly() {
             }
             if (msg.name === 'gm-presence') {
                 gmStreamId = d.streamId || '';
+                if (d.vdoRoom !== undefined) { vdoRoom = d.vdoRoom || ''; updatePushIframe(); }
                 updateCamerasTabVisibility();
                 return;
             }
@@ -2039,7 +2043,7 @@ function sendPresence() {
         tabs: playerTabs,
         money: character.money || { couronne: 0, orbe: 0, sceptre: 0, sou: 0 },
         campaignKey: character.campaignKey || '',
-        streamId: character.streamId || '',
+        streamId: derivedStreamId(),
     }, err => { if (err) console.error('[ARIA] publish error:', err); });
 }
 function setAblyStatus(ok) {
@@ -2057,13 +2061,11 @@ function loadConfigInputs() {
     const idEl = document.getElementById('cfg-identity-display');
     if (idEl) idEl.textContent = character.name || '—';
     document.getElementById('cfg-campaign-key').value = character.campaignKey || '';
-    document.getElementById('cfg-vdo-stream-id').value = character.streamId || '';
     document.getElementById('cfg-dddice-theme').value = config.dddiceTheme || '';
     document.getElementById('cfg-light-mode').checked = !!config.lightMode;
 }
 function saveConfig() {
     character.campaignKey = document.getElementById('cfg-campaign-key').value.trim().toUpperCase();
-    character.streamId = document.getElementById('cfg-vdo-stream-id').value.trim();
     saveCurrentCharacter();
     config = {
         ...config,
