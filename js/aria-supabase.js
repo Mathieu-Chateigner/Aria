@@ -54,6 +54,16 @@ async function sbInsert(table, row) {
     } catch(e) { console.warn('[ARIA] sbInsert error:', table, e); }
 }
 
+async function sbPatch(table, row, filterStr) {
+    try {
+        const res = await _sbFetch('/rest/v1/' + table + '?' + filterStr, {
+            method: 'PATCH',
+            body: JSON.stringify(row),
+        });
+        if (!res.ok) console.warn('[ARIA] sbPatch failed:', table, await res.text());
+    } catch(e) { console.warn('[ARIA] sbPatch error:', table, e); }
+}
+
 // ═══════════════════════════════════════════
 //  MIGRATION — one-time blob → relational
 // ═══════════════════════════════════════════
@@ -72,8 +82,6 @@ async function runMigration(saveKey, type) {
             const chars   = pd.characters || [];
             const perChar = pd.perChar    || {};
             const now     = new Date().toISOString();
-
-            await sbUpsert('saves', { save_key: saveKey, type: 'player' });
 
             await Promise.all(chars.map(c => sbUpsert('characters', {
                 id: c.id, save_key: saveKey, name: c.name, class: c.class,
@@ -112,7 +120,7 @@ async function runMigration(saveKey, type) {
                 })));
             }
 
-            await sbUpsert('saves', { save_key: saveKey, player_migrated_at: now });
+            await sbPatch('saves', { player_migrated_at: now }, 'save_key=eq.' + encodeURIComponent(saveKey));
 
         } else if (type === 'gm') {
             const flagRows = await sbSelect('saves', 'save_key=eq.' + encodeURIComponent(saveKey) + '&select=gm_migrated_at');
@@ -127,8 +135,6 @@ async function runMigration(saveKey, type) {
             const campaigns   = gd.campaigns   || [];
             const perCampaign = gd.perCampaign || {};
             const now         = new Date().toISOString();
-
-            await sbUpsert('saves', { save_key: saveKey, type: 'gm' });
 
             await Promise.all(campaigns.map(c => sbUpsert('campaigns', {
                 id: c.id, save_key: saveKey, name: c.name,
@@ -200,7 +206,7 @@ async function runMigration(saveKey, type) {
                 }
             }
 
-            await sbUpsert('saves', { save_key: saveKey, gm_migrated_at: now });
+            await sbPatch('saves', { gm_migrated_at: now }, 'save_key=eq.' + encodeURIComponent(saveKey));
         }
     } catch(e) {
         console.warn('[ARIA] Migration failed:', e);
