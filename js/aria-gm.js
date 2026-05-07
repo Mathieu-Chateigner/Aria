@@ -45,6 +45,7 @@ let sweepIntervalId = null;
 let gmPresenceIntervalId = null;
 let currentVdoRoom = '';
 let currentVdoRoomPassword = '';
+let gmSelfViewStream = null;
 let gmClickHandlerRegistered = false;
 let renderPlayerCardsTimer = null;
 let renderMonstersTimer = null;
@@ -456,6 +457,7 @@ function switchCampaign() {
     currentVdoRoomPassword = '';
     const gmPushFrame = document.getElementById('vdo-gm-push-frame');
     if (gmPushFrame) gmPushFrame.src = '';
+    stopGMSelfView();
     if (renderPlayerCardsTimer) { clearTimeout(renderPlayerCardsTimer); renderPlayerCardsTimer = null; }
     if (renderMonstersTimer) { clearTimeout(renderMonstersTimer); renderMonstersTimer = null; }
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch(_){} dddiceSDK = null; }
@@ -490,6 +492,7 @@ function initApp() {
     if (config.ablyKey) initAbly();
     startGMPresenceBroadcast();
     updateGMPushIframe();
+    startGMSelfView();
     if (sweepIntervalId) clearInterval(sweepIntervalId);
     sweepIntervalId = setInterval(sweepOfflinePlayers, 10000);
     if (!gmClickHandlerRegistered) {
@@ -674,6 +677,34 @@ function updateGMPushIframe() {
     if (!pushFrame) return;
     if (!currentVdoRoom || !currentCampaignId) { pushFrame.src = ''; return; }
     pushFrame.src = `https://vdo.ninja/?push=aria-gm-${currentCampaignId.slice(0, 8)}&autostart&webcam&noaudio&cleanoutput`;
+}
+function startGMSelfView() {
+    if (gmSelfViewStream) return;
+    if (!navigator.mediaDevices?.getUserMedia) return;
+    navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+        .then(stream => {
+            gmSelfViewStream = stream;
+            const wrap = document.getElementById('gm-self-view-wrap');
+            const section = document.getElementById('gm-self-view-section');
+            if (!wrap || !section) return;
+            wrap.innerHTML = '';
+            const vid = document.createElement('video');
+            vid.autoplay = true; vid.muted = true; vid.playsInline = true;
+            vid.srcObject = stream;
+            vid.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
+            wrap.appendChild(vid);
+            section.style.display = '';
+        })
+        .catch(() => {});
+}
+function stopGMSelfView() {
+    if (!gmSelfViewStream) return;
+    gmSelfViewStream.getTracks().forEach(t => t.stop());
+    gmSelfViewStream = null;
+    const section = document.getElementById('gm-self-view-section');
+    if (section) section.style.display = 'none';
+    const wrap = document.getElementById('gm-self-view-wrap');
+    if (wrap) wrap.innerHTML = '';
 }
 function publishDamage(targetId, damage, hpBefore, hpAfter, maxHP, charName) {
     if (!ablyDamage) return;

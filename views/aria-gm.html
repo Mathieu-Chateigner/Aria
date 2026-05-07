@@ -97,6 +97,14 @@
                     <input class="gm-input" id="bulk-heal-input" type="text" inputmode="numeric" placeholder="Soins" style="width:80px;" oninput="this.value=this.value.replace(/[^0-9]/g,'')" onkeydown="if(event.key==='Enter')bulkHealAll()" />
                     <button class="gm-action-btn gm-action-heal" onclick="bulkHealAll()">♥ Tous</button>
                 </div>
+                <div id="gm-self-view-section" style="display:none;margin-top:10px;">
+                    <div class="section-header">
+                        <span class="section-icon">📹</span>
+                        <span class="section-title">Votre caméra (MJ)</span>
+                        <div class="section-rule"></div>
+                    </div>
+                    <div id="gm-self-view-wrap" class="pc-camera-wrap" style="width:280px;"></div>
+                </div>
                 <div class="section-header" style="margin-top:10px;">
                     <span class="section-icon">👥</span>
                     <span class="section-title">Joueurs connectés</span>

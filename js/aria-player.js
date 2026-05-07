@@ -78,6 +78,7 @@ let peerCameras = new Map(); // charId → { name, streamId }
 let gmStreamId = '';
 let vdoRoom = '';
 let vdoRoomPassword = '';
+let selfViewStream = null;
 function derivedStreamId() { return 'aria-' + currentCharId.slice(0, 8); }
 function updatePushIframe() {
     const pushFrame = document.getElementById('vdo-push-frame');
@@ -503,6 +504,7 @@ function switchCharacter() {
     vdoRoom = '';
     vdoRoomPassword = '';
     updatePushIframe();
+    stopSelfView();
     peerCameras.clear();
     gmStreamId = '';
     showSelectionScreen();
@@ -540,6 +542,7 @@ function initApp() {
     const volSlider = document.getElementById('music-bar-volume');
     if (volSlider) volSlider.value = String(musicMasterVolume);
     updatePushIframe();
+    startSelfView();
 }
 
 function updateOverlayEditorBtn() {
@@ -702,7 +705,7 @@ function applyTabVisibility() {
 }
 
 function updateCamerasTabVisibility() {
-    const hasAny = !!gmStreamId || [...peerCameras.values()].some(p => p.streamId);
+    const hasAny = !!gmStreamId || !!selfViewStream || [...peerCameras.values()].some(p => p.streamId);
     const btn = document.getElementById('tab-btn-cameras');
     if (!btn) return;
     btn.style.display = hasAny ? '' : 'none';
@@ -714,17 +717,61 @@ function updateCamerasTabVisibility() {
     }
 }
 
+function startSelfView() {
+    if (selfViewStream) return;
+    if (!navigator.mediaDevices?.getUserMedia) return;
+    navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+        .then(stream => {
+            selfViewStream = stream;
+            updateCamerasTabVisibility(); // show tab button + re-render if tab is open
+        })
+        .catch(() => {});
+}
+function stopSelfView() {
+    if (!selfViewStream) return;
+    selfViewStream.getTracks().forEach(t => t.stop());
+    selfViewStream = null;
+}
+
 function renderCamerasTab() {
+    startSelfView();
     const grid = document.getElementById('cameras-grid');
     if (!grid) return;
+    // Self-view: native camera, no VDO.ninja required
+    let selfCell = grid.querySelector('.camera-cell[data-self]');
+    if (selfViewStream) {
+        if (!selfCell) {
+            selfCell = document.createElement('div');
+            selfCell.className = 'camera-cell';
+            selfCell.dataset.self = '1';
+            const wrap = document.createElement('div');
+            wrap.className = 'camera-iframe-wrap';
+            const vid = document.createElement('video');
+            vid.autoplay = true; vid.muted = true; vid.playsInline = true;
+            vid.srcObject = selfViewStream;
+            vid.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
+            wrap.appendChild(vid);
+            const labelEl = document.createElement('div');
+            labelEl.className = 'camera-label';
+            labelEl.textContent = character.name || 'Vous';
+            selfCell.appendChild(wrap);
+            selfCell.appendChild(labelEl);
+            grid.insertBefore(selfCell, grid.firstChild);
+        } else {
+            const lbl = selfCell.querySelector('.camera-label');
+            if (lbl) lbl.textContent = character.name || 'Vous';
+        }
+    } else if (selfCell) {
+        selfCell.remove();
+    }
     // Build expected map: streamId → display label
     const expected = new Map();
     if (gmStreamId) expected.set(gmStreamId, 'MJ');
     peerCameras.forEach((p, charId) => {
         if (p.streamId && charId !== currentCharId) expected.set(p.streamId, p.name);
     });
-    // Remove cells whose stream ID is no longer needed
-    [...grid.querySelectorAll('.camera-cell')].forEach(cell => {
+    // Remove cells whose stream ID is no longer needed (self-view cell is excluded)
+    [...grid.querySelectorAll('.camera-cell:not([data-self])')].forEach(cell => {
         const iframe = cell.querySelector('.camera-iframe');
         try {
             const sid = iframe ? new URL(iframe.src).searchParams.get('view') || '' : '';
@@ -733,7 +780,7 @@ function renderCamerasTab() {
     });
     // Build set of currently rendered stream IDs
     const rendered = new Map();
-    grid.querySelectorAll('.camera-cell').forEach(cell => {
+    grid.querySelectorAll('.camera-cell:not([data-self])').forEach(cell => {
         const iframe = cell.querySelector('.camera-iframe');
         try {
             const sid = iframe ? new URL(iframe.src).searchParams.get('view') || '' : '';
