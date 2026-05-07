@@ -77,13 +77,14 @@ let ablyRolls = null, ablyCards = null, ablyDamage = null, ablyMusic = null;
 let peerCameras = new Map(); // charId → { name, streamId }
 let gmStreamId = '';
 let vdoRoom = '';
+let vdoRoomPassword = '';
 function derivedStreamId() { return 'aria-' + currentCharId.slice(0, 8); }
 function updatePushIframe() {
     const pushFrame = document.getElementById('vdo-push-frame');
     if (!pushFrame) return;
-    pushFrame.src = vdoRoom
-        ? `https://vdo.ninja/?room=${encodeURIComponent(vdoRoom)}&push=${derivedStreamId()}&autostart&webcam&noaudio&cleanoutput`
-        : '';
+    if (!vdoRoom) { pushFrame.src = ''; return; }
+    const pass = vdoRoomPassword ? `&password=${encodeURIComponent(vdoRoomPassword)}` : '';
+    pushFrame.src = `https://vdo.ninja/?room=${encodeURIComponent(vdoRoom)}&push=${derivedStreamId()}${pass}&autostart&webcam&noaudio&cleanoutput`;
 }
 let ablyInstance = null;
 let currentHP = null;
@@ -501,6 +502,7 @@ function switchCharacter() {
         doCloseAbly();
     }
     vdoRoom = '';
+    vdoRoomPassword = '';
     updatePushIframe();
     peerCameras.clear();
     gmStreamId = '';
@@ -1984,7 +1986,11 @@ function initAbly() {
             }
             if (msg.name === 'gm-presence') {
                 gmStreamId = d.streamId || '';
-                if (d.vdoRoom !== undefined) { vdoRoom = d.vdoRoom || ''; updatePushIframe(); }
+                if (d.vdoRoom !== undefined) {
+                    vdoRoom = d.vdoRoom || '';
+                    vdoRoomPassword = d.vdoRoomPassword || '';
+                    updatePushIframe();
+                }
                 updateCamerasTabVisibility();
                 return;
             }

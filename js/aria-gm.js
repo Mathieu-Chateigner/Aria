@@ -44,6 +44,7 @@ let cardHistory = [];
 let sweepIntervalId = null;
 let gmPresenceIntervalId = null;
 let currentVdoRoom = '';
+let currentVdoRoomPassword = '';
 let gmClickHandlerRegistered = false;
 let renderPlayerCardsTimer = null;
 let renderMonstersTimer = null;
@@ -63,7 +64,7 @@ function _nowISO() { return new Date().toISOString(); }
 
 async function syncCampaign(camp) {
     if (!_supabaseReady()) return;
-    await sbUpsert('campaigns', { id: camp.id, save_key: saveKey, name: camp.name, join_code: camp.joinCode || null, vdo_room: camp.vdoRoom || null, updated_at: _nowISO() });
+    await sbUpsert('campaigns', { id: camp.id, save_key: saveKey, name: camp.name, join_code: camp.joinCode || null, vdo_room: camp.vdoRoom || null, vdo_room_password: camp.vdoRoomPassword || null, updated_at: _nowISO() });
 }
 
 async function syncMonster(m) {
@@ -174,9 +175,9 @@ async function loadFromSupabase() {
     if (!_supabaseReady()) return;
     await runMigration(saveKey, 'gm');
     try {
-        const camps = await sbSelect('campaigns', 'save_key=eq.' + encodeURIComponent(saveKey) + '&select=id,name,join_code,vdo_room');
+        const camps = await sbSelect('campaigns', 'save_key=eq.' + encodeURIComponent(saveKey) + '&select=id,name,join_code,vdo_room,vdo_room_password');
         if (!camps.length) return;
-        const campaigns = camps.map(c => ({ id: c.id, name: c.name, joinCode: c.join_code, vdoRoom: c.vdo_room || '' }));
+        const campaigns = camps.map(c => ({ id: c.id, name: c.name, joinCode: c.join_code, vdoRoom: c.vdo_room || '', vdoRoomPassword: c.vdo_room_password || '' }));
         localStorage.setItem('aria-gm-campaigns', JSON.stringify(campaigns));
         for (const c of campaigns) {
             const [mons, pots, files, kp, notes, music] = await Promise.all([
@@ -330,6 +331,7 @@ function loadCampaignState(id) {
     currentCampaignId = id;
     currentJoinCode = camp.joinCode;
     currentVdoRoom = camp.vdoRoom || '';
+    currentVdoRoomPassword = camp.vdoRoomPassword || '';
     monsters    = JSON.parse(localStorage.getItem(monstersKey())  || '[]');
     rollFeed    = JSON.parse(localStorage.getItem(rollsKey())     || '[]');
     cardHistory = JSON.parse(localStorage.getItem(cardHistKey()) || '[]');
@@ -451,6 +453,7 @@ function switchCampaign() {
     if (sweepIntervalId) { clearInterval(sweepIntervalId); sweepIntervalId = null; }
     if (gmPresenceIntervalId) { clearInterval(gmPresenceIntervalId); gmPresenceIntervalId = null; }
     currentVdoRoom = '';
+    currentVdoRoomPassword = '';
     const gmPushFrame = document.getElementById('vdo-gm-push-frame');
     if (gmPushFrame) gmPushFrame.src = '';
     if (renderPlayerCardsTimer) { clearTimeout(renderPlayerCardsTimer); renderPlayerCardsTimer = null; }
@@ -662,16 +665,16 @@ function startGMPresenceBroadcast() {
     if (gmPresenceIntervalId) { clearInterval(gmPresenceIntervalId); gmPresenceIntervalId = null; }
     if (!currentVdoRoom || !ablyDamage) return;
     const gmStreamId = 'aria-gm-' + currentCampaignId.slice(0, 8);
-    const publish = () => ablyDamage.publish('gm-presence', { streamId: gmStreamId, vdoRoom: currentVdoRoom });
+    const publish = () => ablyDamage.publish('gm-presence', { streamId: gmStreamId, vdoRoom: currentVdoRoom, vdoRoomPassword: currentVdoRoomPassword });
     publish();
     gmPresenceIntervalId = setInterval(publish, 30000);
 }
 function updateGMPushIframe() {
     const pushFrame = document.getElementById('vdo-gm-push-frame');
     if (!pushFrame) return;
-    pushFrame.src = (currentVdoRoom && currentCampaignId)
-        ? `https://vdo.ninja/?room=${encodeURIComponent(currentVdoRoom)}&push=aria-gm-${currentCampaignId.slice(0, 8)}&autostart&webcam&noaudio&cleanoutput`
-        : '';
+    if (!currentVdoRoom || !currentCampaignId) { pushFrame.src = ''; return; }
+    const pass = currentVdoRoomPassword ? `&password=${encodeURIComponent(currentVdoRoomPassword)}` : '';
+    pushFrame.src = `https://vdo.ninja/?room=${encodeURIComponent(currentVdoRoom)}&push=aria-gm-${currentCampaignId.slice(0, 8)}${pass}&autostart&webcam&noaudio&cleanoutput`;
 }
 function publishDamage(targetId, damage, hpBefore, hpAfter, maxHP, charName) {
     if (!ablyDamage) return;
@@ -1559,20 +1562,23 @@ function applyTheme(light) {
 function loadConfigInputs() {
     document.getElementById('cfg-light-mode').checked = !!config.lightMode;
     document.getElementById('cfg-vdo-room').value = currentVdoRoom;
+    document.getElementById('cfg-vdo-room-password').value = currentVdoRoomPassword;
 }
 function saveConfig() {
     const newVdoRoom = document.getElementById('cfg-vdo-room').value.trim();
+    const newVdoRoomPassword = document.getElementById('cfg-vdo-room-password').value.trim();
     config = {
         ...config,
         dddiceTheme: document.getElementById('cfg-dddice-theme').value || '',
         lightMode: document.getElementById('cfg-light-mode').checked,
     };
     localStorage.setItem('aria-config', JSON.stringify(config));
-    if (newVdoRoom !== currentVdoRoom) {
+    if (newVdoRoom !== currentVdoRoom || newVdoRoomPassword !== currentVdoRoomPassword) {
         currentVdoRoom = newVdoRoom;
+        currentVdoRoomPassword = newVdoRoomPassword;
         const campaigns = getCampaigns();
         const camp = campaigns.find(c => c.id === currentCampaignId);
-        if (camp) { camp.vdoRoom = newVdoRoom; saveCampaigns(campaigns); }
+        if (camp) { camp.vdoRoom = newVdoRoom; camp.vdoRoomPassword = newVdoRoomPassword; saveCampaigns(campaigns); }
     }
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch (_) {} dddiceSDK = null; }
     if (dddiceResizeHandler) { window.removeEventListener('resize', dddiceResizeHandler); dddiceResizeHandler = null; }
