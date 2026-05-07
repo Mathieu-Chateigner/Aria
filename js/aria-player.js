@@ -83,8 +83,7 @@ function updatePushIframe() {
     const pushFrame = document.getElementById('vdo-push-frame');
     if (!pushFrame) return;
     if (!vdoRoom) { pushFrame.src = ''; return; }
-    const pass = vdoRoomPassword ? `&password=${encodeURIComponent(vdoRoomPassword)}` : '';
-    pushFrame.src = `https://vdo.ninja/?room=${encodeURIComponent(vdoRoom)}&push=${derivedStreamId()}${pass}&autostart&webcam&noaudio&cleanoutput`;
+    pushFrame.src = `https://vdo.ninja/?push=${derivedStreamId()}&autostart&webcam&noaudio&cleanoutput`;
 }
 let ablyInstance = null;
 let currentHP = null;

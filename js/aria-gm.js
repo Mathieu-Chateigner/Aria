@@ -673,8 +673,7 @@ function updateGMPushIframe() {
     const pushFrame = document.getElementById('vdo-gm-push-frame');
     if (!pushFrame) return;
     if (!currentVdoRoom || !currentCampaignId) { pushFrame.src = ''; return; }
-    const pass = currentVdoRoomPassword ? `&password=${encodeURIComponent(currentVdoRoomPassword)}` : '';
-    pushFrame.src = `https://vdo.ninja/?room=${encodeURIComponent(currentVdoRoom)}&push=aria-gm-${currentCampaignId.slice(0, 8)}${pass}&autostart&webcam&noaudio&cleanoutput`;
+    pushFrame.src = `https://vdo.ninja/?push=aria-gm-${currentCampaignId.slice(0, 8)}&autostart&webcam&noaudio&cleanoutput`;
 }
 function publishDamage(targetId, damage, hpBefore, hpAfter, maxHP, charName) {
     if (!ablyDamage) return;
