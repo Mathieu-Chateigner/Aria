@@ -62,7 +62,7 @@ function _nowISO() { return new Date().toISOString(); }
 
 async function syncCampaign(camp) {
     if (!_supabaseReady()) return;
-    await sbUpsert('campaigns', { id: camp.id, save_key: saveKey, name: camp.name, join_code: camp.joinCode || null, updated_at: _nowISO() });
+    await sbUpsert('campaigns', { id: camp.id, save_key: saveKey, name: camp.name, join_code: camp.joinCode || null, vdo_room: camp.vdoRoom || null, updated_at: _nowISO() });
 }
 
 async function syncMonster(m) {
@@ -173,9 +173,9 @@ async function loadFromSupabase() {
     if (!_supabaseReady()) return;
     await runMigration(saveKey, 'gm');
     try {
-        const camps = await sbSelect('campaigns', 'save_key=eq.' + encodeURIComponent(saveKey) + '&select=id,name,join_code');
+        const camps = await sbSelect('campaigns', 'save_key=eq.' + encodeURIComponent(saveKey) + '&select=id,name,join_code,vdo_room');
         if (!camps.length) return;
-        const campaigns = camps.map(c => ({ id: c.id, name: c.name, joinCode: c.join_code }));
+        const campaigns = camps.map(c => ({ id: c.id, name: c.name, joinCode: c.join_code, vdoRoom: c.vdo_room || '' }));
         localStorage.setItem('aria-gm-campaigns', JSON.stringify(campaigns));
         for (const c of campaigns) {
             const [mons, pots, files, kp, notes, music] = await Promise.all([
