@@ -47,20 +47,23 @@ Always update `commits` as the last step of any task.
 ## Files
 
 ```
-index.html              ← Home/selection screen + shared config panel
+index.html                  ← Home/selection screen + shared config panel
 views/
   aria-player.html
   aria-gm.html
   aria-overlay.html
+  aria-overlay-editor.html  ← drag-and-drop overlay layout editor (opened from player/GM panel)
 css/
   aria-player.css
   aria-gm.css
   aria-overlay.css
+  aria-overlay-editor.css
 js/
-  aria-supabase.js   ← shared Supabase helpers (loaded first, before panel scripts)
+  aria-supabase.js          ← shared Supabase helpers (loaded first, before panel scripts)
   aria-player.js
   aria-gm.js
   aria-overlay.js
+  aria-overlay-editor.js
 ```
 
 `aria-control-panel.html` and `aria-dice-roller.html` are **deprecated**.
@@ -71,14 +74,15 @@ js/
 
 ### Communication — Ably (free tier)
 
-All three apps share **one Ably key** (entered on `index.html`) and use four channels:
+All three apps share **one Ably key** (entered on `index.html`) and use four channels, plus a config channel:
 
 | Channel | Published by | Consumed by |
 |---|---|---|
 | `aria-rolls` | `aria-player` (per roll) | `aria-gm` (roll feed) + other `aria-player` instances (toast) + `aria-overlay` |
 | `aria-cards` | `aria-player` or `aria-gm` | `aria-overlay` |
-| `aria-damage` | `aria-gm` (damage/heal events) + `aria-player` (presence heartbeat every 5s) | `aria-player` (receives GM damage) + `aria-gm` (receives presence) |
+| `aria-damage` | `aria-gm` (damage/heal/gm-presence) + `aria-player` (presence heartbeat every 5s) | `aria-player` (receives GM damage + gm-presence) + `aria-gm` (receives presence) |
 | `aria-music` | `aria-gm` (play/stop commands) | `aria-player` (subscribe only) — GM does **not** subscribe to its own commands |
+| `aria-overlay-config` | overlay editor (layout/content updates) | `aria-overlay` (receives layout changes in real time) |
 
 ### Supabase credentials
 
@@ -117,15 +121,19 @@ Both apps read from the **same** key:
 
 Keys are entered once on `index.html`. The in-app ⚙ modal in each panel can also update this key (for theme and reconnecting), but uses the same `aria-config` storage. **Never use `aria-gm-config`** — it is obsolete.
 
+**VDO.ninja room** (`vdoRoom`, `vdoRoomPassword`) is **campaign-scoped** — stored on the campaign object in `aria-gm-campaigns`, NOT in `aria-config`.
+
 ### Campaign system (GM)
 
 The GM panel supports multiple campaigns. Each campaign has a **join code** (5-char, e.g. `X7K2M`) that players enter to link their character. Only players whose `campaignKey` matches the active campaign's `joinCode` appear in the Joueurs tab.
+
+Campaign object shape: `{ id, name, joinCode, vdoRoom, vdoRoomPassword }`
 
 All campaign-scoped data uses keys suffixed with `currentCampaignId`:
 
 | localStorage key | Content |
 |---|---|
-| `aria-gm-campaigns` | `[{ id, name, joinCode }]` campaign list |
+| `aria-gm-campaigns` | `[{ id, name, joinCode, vdoRoom, vdoRoomPassword }]` campaign list |
 | `aria-gm-monsters-{id}` | monsters for campaign |
 | `aria-gm-rolls-{id}` | roll history |
 | `aria-gm-card-history-{id}` | card draw log |
@@ -140,6 +148,22 @@ Helper functions `monstersKey()`, `rollsKey()`, `cardHistKey()`, `potionsKey()`,
 ### Player identity
 
 Player is identified by `character.name` from their character sheet. This is used as `playerId` in roll and damage payloads.
+
+### VDO.ninja camera integration
+
+Each participant's camera stream is identified by an **auto-derived stream ID** — players never set this manually:
+- Player: `'aria-' + charId.slice(0, 8)` — derived in `derivedStreamId()` in `aria-player.js`
+- GM: `'aria-gm-' + campaignId.slice(0, 8)` — derived inline in `startGMPresenceBroadcast()`
+
+The GM sets a `vdoRoom` (and optional `vdoRoomPassword`) once on the campaign via the `⚙` config modal. This is broadcast to players every 30s via `gm-presence` on `aria-damage`. Players activate their hidden push iframe (`#vdo-push-frame`) when they receive the room from `gm-presence`. Camera push only works on HTTPS (GitHub Pages), not from `file://`.
+
+Viewer iframes (`?view=STREAMID`) do **not** need the room password — only push iframes do.
+
+**Important:** `renderPlayerCards()` in `aria-gm.js` does **in-place DOM updates** (not `grid.innerHTML = ''`) so that camera iframes are never removed from the DOM during routine presence heartbeats. Removing an iframe from the DOM kills its WebRTC stream. The same principle applies to `renderCamerasTab()` in `aria-player.js` — it surgically adds/removes cells rather than clearing the grid.
+
+### Overlay editor (`aria-overlay-editor.js`)
+
+A separate drag-and-drop editor opened in a new tab from the player or GM panel. Widgets are defined in `WIDGET_DEFS` (persistent and event categories). Each widget has `{ id, type, category, x, y, w, h, visible, config }` where all positions are percentages of the 1920×1080 canvas. The editor saves to Supabase `overlay_configs` table (keyed by `{type}_{ownerId}`) and publishes `layout-update` on `aria-overlay-config` for live sync to the running overlay. `camera` widgets (GM-only) render a VDO.ninja viewer iframe and are **skipped in `updateWidgetData()`** to prevent iframe reload on every presence tick.
 
 ### dddice 3D dice (browser SDK)
 
@@ -217,7 +241,7 @@ The **empty vials counter** in the Inventaire tab (`#inv-vials-section`) is only
 }
 ```
 
-> `blessures` was removed. `tabs` was removed from the character object — stored separately as `aria-player-tabs-{id}`.
+> `blessures` was removed. `tabs` was removed from the character object — stored separately as `aria-player-tabs-{id}`. `streamId` was removed — stream IDs are now auto-derived from `charId`.
 
 ### Monsters (`localStorage: aria-gm-monsters-{id}`)
 ```js
@@ -243,12 +267,19 @@ The **empty vials counter** in the Inventaire tab (`#inv-vials-section`) is only
 ### `aria-damage` / `presence` (heartbeat every 5s)
 ```js
 { playerId, charId, name, charClass, hp, maxHP, stats, protection, skills, specials,
-  weapons, inventory, potions, vials, potionRecipeIds, tabs, campaignKey, ts }
+  weapons, inventory, potions, vials, potionRecipeIds, tabs, campaignKey, streamId, ts }
 ```
 - `playerId` — session UUID (sessionStorage, changes per tab/refresh); used only for Ably targeting
 - `charId` — character UUID (stable; never changes even if name changes); used as the key in the GM `players` Map
+- `streamId` — auto-derived as `'aria-' + charId.slice(0, 8)`; used for VDO.ninja viewer iframes
 
 The GM filters incoming presence by `campaignKey === currentJoinCode` — messages with a non-matching key are ignored entirely.
+
+### `aria-damage` / `gm-presence` (every 30s from GM)
+```js
+{ streamId, vdoRoom, vdoRoomPassword }
+```
+`streamId` is `'aria-gm-' + campaignId.slice(0, 8)`. Players cache `vdoRoom` and `vdoRoomPassword` and use them to activate their push iframe.
 
 ### `aria-damage` / `tab-config`
 ```js
@@ -281,6 +312,13 @@ GM plays locally via `_musicTriggerPlay()` AND broadcasts — it does not subscr
 { excluded: [...], drawn: [], deckIds: [...], lastCardId: null }
 ```
 
+### `aria-overlay-config` / `layout-update` | `content-update` | `monster-state`
+```js
+{ overlayId, config }                                         // layout-update: full widget layout
+{ overlayId, widgetId, content }                              // content-update: single widget text
+{ overlayId, monsters }                                       // monster-state: live monster HP list
+```
+
 ---
 
 ## Key UI components
@@ -295,14 +333,16 @@ Lists all saved characters. Creating a character prompts for name, class, and an
 Lists all campaigns, each showing its join code (click to copy). `selectCampaign(id)` → `loadCampaignState(id)` → `initApp()`. After entering a campaign, the join code is shown in the topbar (click to copy) so the GM can share it with players.
 
 ### Player panel tabs
-`Compétences` | `Caractéristiques` | `Jet libre` | `Inventaire` | `Notes` | `Cartes` | `⚗ Alchimie` | `Fichiers` | `Personnage`
+`Compétences` | `Caractéristiques` | `Jet libre` | `Inventaire` | `Notes` | `Cartes` | `⚗ Alchimie` | `Fichiers` | `📹 Caméras` | `Personnage`
 
-`Cartes` and `⚗ Alchimie` are hidden by default — shown only when GM enables them via `tab-config`. `Fichiers` auto-shows when the GM grants at least one file (`playerFiles.length > 0`).
+`Cartes` and `⚗ Alchimie` are hidden by default — shown only when GM enables them via `tab-config`. `Fichiers` auto-shows when the GM grants at least one file (`playerFiles.length > 0`). `Caméras` auto-shows when `gmStreamId` or any `peerCameras` entry has a stream ID (i.e. when cameras are active in the session).
 
 ### GM panel tabs
 `Joueurs` | `Monstres` | `Jets` | `Jet MJ` | `Cartes` | `⚗ Alchimie` | `Fichiers` | `♪ Musique`
 
 The GM Fichiers tab lets the GM upload files to Supabase Storage (`campaign-files` bucket) and grant/revoke access per player. `gmFiles` entries: `{ id, name, type, url, path, grantedTo: [] | 'all' }`. Upload via `uploadFileToSupabase()`, grant via `file-grant` message on `aria-damage`.
+
+The Joueurs tab shows a live player card per connected player. Each card displays a VDO.ninja viewer iframe (`?view=STREAMID`) above the HP bar when the player has an active stream. `renderPlayerCards()` does **in-place DOM updates** — it never clears the grid entirely — to preserve live camera iframes across presence heartbeats.
 
 ### Bonus/Malus bar
 Persistent bar between topbar and content. Buttons: +10/+20/+30/−10/−20/−30 + custom ± + reset. Applied to all rolls.
@@ -370,6 +410,9 @@ Always reset to the base class string, not `''`:
 card.className = 'float-roll-card'; // not ''
 ```
 
+### Removing iframes from the DOM kills WebRTC streams
+Never use `parent.innerHTML = ''` on a container that holds camera iframes. The browser immediately terminates the WebRTC connection when an iframe is detached. Always do in-place DOM updates: find existing elements, update only what changed, append new ones, remove stale ones. See `renderPlayerCards()` and `renderCamerasTab()` for the pattern.
+
 ### dddice resize listener accumulation
 Store the handler reference and call `removeEventListener` before re-registering (done in `saveConfig()`).
 
@@ -383,7 +426,10 @@ Must call `.start()` before `.connect()`. The safety timer must be cleared insid
 In `switchCampaign()`, `musicStop()` must be called **before** `ablyMusic = null` and `gmMusic = []`. `musicStop()` calls `publishMusicStop()` which reads `ablyMusic` — nulling it first makes the publish a no-op and leaves players with orphaned audio.
 
 ### innerHTML and user-supplied strings
-Always escape track names (and any other user-supplied content) before injecting into `innerHTML`. Use `_escHtml(str)` — defined in `aria-gm.js`. Failure to escape is an XSS vector since track names come from YouTube API responses or user input.
+Always escape track names (and any other user-supplied content) before injecting into `innerHTML`. Use `_escHtml(str)` — defined in `aria-gm.js`. In `aria-player.js` use inline `.replace()` chains (no shared helper). Failure to escape is an XSS vector since track names come from YouTube API responses or user input.
+
+### VDO.ninja push iframe only works on HTTPS
+`getUserMedia` (camera capture) requires a secure context. The push iframe (`#vdo-push-frame`, `#vdo-gm-push-frame`) will silently do nothing when the app is served from `file://`. It works from the GitHub Pages URL.
 
 ---
 
