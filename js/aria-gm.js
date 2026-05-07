@@ -43,6 +43,7 @@ let playerFilter = new Set();
 let cardHistory = [];
 let sweepIntervalId = null;
 let gmPresenceIntervalId = null;
+let currentVdoRoom = '';
 let gmClickHandlerRegistered = false;
 let renderPlayerCardsTimer = null;
 let renderMonstersTimer = null;
@@ -328,6 +329,7 @@ function loadCampaignState(id) {
     if (!camp.joinCode) { camp.joinCode = generateJoinCode(); saveCampaigns(campaigns); }
     currentCampaignId = id;
     currentJoinCode = camp.joinCode;
+    currentVdoRoom = camp.vdoRoom || '';
     monsters    = JSON.parse(localStorage.getItem(monstersKey())  || '[]');
     rollFeed    = JSON.parse(localStorage.getItem(rollsKey())     || '[]');
     cardHistory = JSON.parse(localStorage.getItem(cardHistKey()) || '[]');
@@ -448,6 +450,9 @@ function switchCampaign() {
     filesGrantedSessions.clear();
     if (sweepIntervalId) { clearInterval(sweepIntervalId); sweepIntervalId = null; }
     if (gmPresenceIntervalId) { clearInterval(gmPresenceIntervalId); gmPresenceIntervalId = null; }
+    currentVdoRoom = '';
+    const gmPushFrame = document.getElementById('vdo-gm-push-frame');
+    if (gmPushFrame) gmPushFrame.src = '';
     if (renderPlayerCardsTimer) { clearTimeout(renderPlayerCardsTimer); renderPlayerCardsTimer = null; }
     if (renderMonstersTimer) { clearTimeout(renderMonstersTimer); renderMonstersTimer = null; }
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch(_){} dddiceSDK = null; }
@@ -1544,16 +1549,22 @@ function applyTheme(light) {
 }
 function loadConfigInputs() {
     document.getElementById('cfg-light-mode').checked = !!config.lightMode;
-    document.getElementById('cfg-vdo-stream-id').value = config.vdoStreamId || '';
+    document.getElementById('cfg-vdo-room').value = currentVdoRoom;
 }
 function saveConfig() {
+    const newVdoRoom = document.getElementById('cfg-vdo-room').value.trim();
     config = {
         ...config,
         dddiceTheme: document.getElementById('cfg-dddice-theme').value || '',
         lightMode: document.getElementById('cfg-light-mode').checked,
-        vdoStreamId: document.getElementById('cfg-vdo-stream-id').value.trim(),
     };
     localStorage.setItem('aria-config', JSON.stringify(config));
+    if (newVdoRoom !== currentVdoRoom) {
+        currentVdoRoom = newVdoRoom;
+        const campaigns = getCampaigns();
+        const camp = campaigns.find(c => c.id === currentCampaignId);
+        if (camp) { camp.vdoRoom = newVdoRoom; saveCampaigns(campaigns); }
+    }
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch (_) {} dddiceSDK = null; }
     if (dddiceResizeHandler) { window.removeEventListener('resize', dddiceResizeHandler); dddiceResizeHandler = null; }
     pendingGMRoll = null; dddiceAPI = null;
@@ -1561,6 +1572,7 @@ function saveConfig() {
     if (config.dddiceKey && config.dddiceRoom) initDddice();
     if (config.ablyKey) initAbly();
     startGMPresenceBroadcast();
+    updateGMPushIframe();
     toggleConfig();
 }
 function toggleConfig() {
