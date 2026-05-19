@@ -679,28 +679,46 @@ function updateGMPushIframe() {
     pushFrame.src = `https://vdo.ninja/?push=aria-gm-${currentCampaignId.slice(0, 8)}&autostart&webcam&noaudio&cleanoutput`;
 }
 function startGMSelfView() {
+    const section = document.getElementById('gm-self-view-section');
+    const wrap = document.getElementById('gm-self-view-wrap');
+    if (!section || !wrap) return;
+    if (currentVdoRoom && currentCampaignId) {
+        // Push iframe owns the camera — show viewer iframe to avoid getUserMedia conflict
+        const gmStreamId = 'aria-gm-' + currentCampaignId.slice(0, 8);
+        let iframe = wrap.querySelector('iframe');
+        if (!iframe) {
+            iframe = document.createElement('iframe');
+            iframe.allow = 'camera;microphone;autoplay;fullscreen';
+            iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;';
+            wrap.appendChild(iframe);
+        }
+        iframe.src = `https://vdo.ninja/?view=${gmStreamId}&cleanoutput&autoplay&muted`;
+        section.style.display = '';
+        return;
+    }
     if (gmSelfViewStream) return;
     if (!navigator.mediaDevices?.getUserMedia) return;
     navigator.mediaDevices.getUserMedia({ video: true, audio: false })
         .then(stream => {
             gmSelfViewStream = stream;
-            const wrap = document.getElementById('gm-self-view-wrap');
-            const section = document.getElementById('gm-self-view-section');
-            if (!wrap || !section) return;
-            wrap.innerHTML = '';
+            const w = document.getElementById('gm-self-view-wrap');
+            const s = document.getElementById('gm-self-view-section');
+            if (!w || !s) return;
+            w.innerHTML = '';
             const vid = document.createElement('video');
             vid.autoplay = true; vid.muted = true; vid.playsInline = true;
             vid.srcObject = stream;
             vid.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
-            wrap.appendChild(vid);
-            section.style.display = '';
+            w.appendChild(vid);
+            s.style.display = '';
         })
         .catch(() => {});
 }
 function stopGMSelfView() {
-    if (!gmSelfViewStream) return;
-    gmSelfViewStream.getTracks().forEach(t => t.stop());
-    gmSelfViewStream = null;
+    if (gmSelfViewStream) {
+        gmSelfViewStream.getTracks().forEach(t => t.stop());
+        gmSelfViewStream = null;
+    }
     const section = document.getElementById('gm-self-view-section');
     if (section) section.style.display = 'none';
     const wrap = document.getElementById('gm-self-view-wrap');
