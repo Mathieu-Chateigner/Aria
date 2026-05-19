@@ -150,6 +150,8 @@ async function deleteGMNoteFromDB(id) {
 
 async function syncKnownPlayer(charId, data) {
     if (!_supabaseReady() || !currentCampaignId) return;
+    const camp = getCampaigns().find(c => c.id === currentCampaignId);
+    if (camp) await syncCampaign(camp);
     await sbUpsert('campaign_known_players', { id: charId + ':' + currentCampaignId, campaign_id: currentCampaignId, char_id: charId, data, updated_at: _nowISO() }, 'campaign_id,char_id');
 }
 
