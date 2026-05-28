@@ -330,7 +330,7 @@ function migrateGMIfNeeded() {
 function loadCampaignState(id) {
     const campaigns = getCampaigns();
     const camp = campaigns.find(c => c.id === id);
-    if (!camp) return false;
+    if (!camp) { console.warn('[GM] loadCampaignState: campaign not found', id); return false; }
     if (!camp.joinCode) { camp.joinCode = generateJoinCode(); saveCampaigns(campaigns); }
     currentCampaignId = id;
     currentJoinCode = camp.joinCode;
@@ -346,9 +346,10 @@ function loadCampaignState(id) {
     players.clear();
     const knownRaw = JSON.parse(localStorage.getItem(knownPlayersKey()) || '{}');
     Object.entries(knownRaw).forEach(([, p]) => {
-        if (!p.charId) return; // skip legacy entries keyed by session UUID (pre-fix)
+        if (!p.charId) return;
         players.set(p.charId, { ...p, online: false });
     });
+    console.log('[GM] loadCampaignState:', camp.name, '| joinCode:', currentJoinCode, '| type:', currentCampaignType, '| vdoRoom:', currentVdoRoom || '(none)', '| monsters:', monsters.length, '| knownPlayers:', players.size, '| music tracks:', gmMusic.length, '| files:', gmFiles.length);
     return true;
 }
 
@@ -487,6 +488,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 
 function initApp() {
+    console.log('[GM] initApp: campaign:', currentCampaignId, '| joinCode:', currentJoinCode, '| ablyKey:', config.ablyKey ? 'set' : 'MISSING', '| dddice:', config.dddiceKey ? 'set' : 'none');
     renderPlayerCards();
     renderMonsters();
     renderRollFeed();
@@ -644,30 +646,30 @@ function setDddiceStatus(ok, detail) {
 //  ABLY
 // ═══════════════════════════════════════════
 function initAbly() {
+    console.log('[GM] initAbly: connecting with key', config.ablyKey?.slice(0, 8) + '...');
     try {
         ablyInstance = new Ably.Realtime({ key: config.ablyKey, transports: ['web_socket'] });
         ablyRolls = ablyInstance.channels.get('aria-rolls');
         ablyCards = ablyInstance.channels.get('aria-cards');
         ablyDamage = ablyInstance.channels.get('aria-damage');
         ablyMusic = ablyInstance.channels.get('aria-music');
-        // GM does NOT subscribe — playback is driven locally; Ably is outbound-only for the GM
-        ablyInstance.connection.on('connected', () => setAblyStatus(true));
-        ablyInstance.connection.on('failed', () => setAblyStatus(false));
-        // Listen for player rolls
-        ablyRolls.subscribe('roll', msg => handleIncomingRoll(msg.data));
-        // Listen for player card draws
-        ablyCards.subscribe('draw', msg => handlePlayerCard(msg.data));
-        ablyCards.subscribe('reshuffle', () => handlePlayerReshuffle());
-        // Listen for player presence heartbeats (published every 5s)
+        ablyInstance.connection.on('connected', () => { console.log('[GM] Ably connected'); setAblyStatus(true); });
+        ablyInstance.connection.on('failed',    () => { console.error('[GM] Ably connection FAILED'); setAblyStatus(false); });
+        ablyInstance.connection.on('disconnected', () => console.warn('[GM] Ably disconnected'));
+        ablyInstance.connection.on('suspended',    () => console.warn('[GM] Ably suspended'));
+        ablyRolls.subscribe('roll', msg => { console.log('[GM] received roll from', msg.data?.char, '| skill:', msg.data?.skillName, '| roll:', msg.data?.roll, '| threshold:', msg.data?.threshold, '| success:', msg.data?.success); handleIncomingRoll(msg.data); });
+        ablyCards.subscribe('draw',     msg => { console.log('[GM] received card draw:', msg.data?.cardId, 'by player'); handlePlayerCard(msg.data); });
+        ablyCards.subscribe('reshuffle', () => { console.log('[GM] received card reshuffle'); handlePlayerReshuffle(); });
         ablyDamage.subscribe('presence', msg => { handlePresence(msg.data); });
         ablyDamage.subscribe('leave', msg => {
             const sessionId = msg.data?.playerId;
             if (!sessionId) return;
             for (const [key, p] of players) {
-                if (p.playerId === sessionId) { players.delete(key); renderPlayerCards(); break; }
+                if (p.playerId === sessionId) { console.log('[GM] player LEFT (Ably leave):', p.name, '| charId:', key); players.delete(key); renderPlayerCards(); break; }
             }
         });
-    } catch (e) { console.error('Ably:', e); setAblyStatus(false); }
+        console.log('[GM] initAbly: subscribed to all channels');
+    } catch (e) { console.error('[GM] initAbly error:', e); setAblyStatus(false); }
 }
 function setAblyStatus(ok) {
     ['ably-dot', 'cfg-ably-dot'].forEach(id => { const el = document.getElementById(id); if (el) el.className = 'status-dot ' + (ok ? 'connected' : 'error'); });
@@ -675,18 +677,20 @@ function setAblyStatus(ok) {
 }
 function startGMPresenceBroadcast() {
     if (gmPresenceIntervalId) { clearInterval(gmPresenceIntervalId); gmPresenceIntervalId = null; }
-    if (!currentVdoRoom || !ablyDamage) return;
+    if (!currentVdoRoom || !ablyDamage) { console.log('[GM] startGMPresenceBroadcast: skipped (vdoRoom:', currentVdoRoom || 'empty', '| ablyDamage:', !!ablyDamage, ')'); return; }
     const gmStreamId = 'aria-gm-' + currentCampaignId.slice(0, 8);
-    const publish = () => ablyDamage.publish('gm-presence', { streamId: gmStreamId, vdoRoom: currentVdoRoom, vdoRoomPassword: currentVdoRoomPassword });
+    const publish = () => { console.log('[GM] broadcasting gm-presence | streamId:', gmStreamId, '| room:', currentVdoRoom); ablyDamage.publish('gm-presence', { streamId: gmStreamId, vdoRoom: currentVdoRoom, vdoRoomPassword: currentVdoRoomPassword }); };
     publish();
     gmPresenceIntervalId = setInterval(publish, 8000);
+    console.log('[GM] startGMPresenceBroadcast: broadcasting every 8s | streamId:', gmStreamId);
 }
 function updateGMPushIframe() {
     const pushFrame = document.getElementById('vdo-gm-push-frame');
     if (!pushFrame) return;
-    if (!currentVdoRoom || !currentCampaignId) { pushFrame.src = ''; return; }
+    if (!currentVdoRoom || !currentCampaignId) { console.log('[GM] updateGMPushIframe: no vdoRoom, clearing push iframe'); pushFrame.src = ''; return; }
     let src = `https://vdo.ninja/?push=aria-gm-${currentCampaignId.slice(0, 8)}&room=${encodeURIComponent(currentVdoRoom)}&autostart&webcam&noaudio&cleanoutput`;
     if (currentVdoRoomPassword) src += `&password=${encodeURIComponent(currentVdoRoomPassword)}`;
+    console.log('[GM] updateGMPushIframe:', src);
     pushFrame.src = src;
 }
 function startGMSelfView() {
@@ -736,29 +740,34 @@ function stopGMSelfView() {
     if (wrap) wrap.innerHTML = '';
 }
 function publishDamage(targetId, damage, hpBefore, hpAfter, maxHP, charName) {
-    if (!ablyDamage) return;
+    if (!ablyDamage) { console.warn('[GM] publishDamage: ablyDamage not ready'); return; }
+    console.log('[GM] publishDamage → ', charName, '| dmg:', damage, '| HP:', hpBefore, '→', hpAfter, '/', maxHP);
     ablyDamage.publish('damage', { targetId, damage, hpBefore, hpAfter, maxHP, charName, source: 'gm' });
 }
 function publishHeal(targetId, amount, hpBefore, hpAfter, maxHP, charName) {
-    if (!ablyDamage) return;
+    if (!ablyDamage) { console.warn('[GM] publishHeal: ablyDamage not ready'); return; }
+    console.log('[GM] publishHeal → ', charName, '| heal:', amount, '| HP:', hpBefore, '→', hpAfter, '/', maxHP);
     ablyDamage.publish('heal', { targetId, amount, hpBefore, hpAfter, maxHP, charName, source: 'gm' });
 }
 
 function publishMusicPlay(track) {
-    if (!ablyMusic) return;
+    if (!ablyMusic) { console.warn('[GM] publishMusicPlay: ablyMusic not ready'); return; }
+    console.log('[GM] publishMusicPlay:', track?.name, '| type:', track?.type, '| fade:', musicFadeDuration, 's');
     ablyMusic.publish('music', { type: 'play', track, fadeDuration: musicFadeDuration });
 }
-
 function publishMusicStop() {
     if (!ablyMusic) return;
+    console.log('[GM] publishMusicStop');
     ablyMusic.publish('music', { type: 'stop' });
 }
 function publishMusicPause() {
     if (!ablyMusic) return;
+    console.log('[GM] publishMusicPause');
     ablyMusic.publish('music', { type: 'pause' });
 }
 function publishMusicResume() {
     if (!ablyMusic) return;
+    console.log('[GM] publishMusicResume');
     ablyMusic.publish('music', { type: 'resume' });
 }
 
@@ -766,9 +775,11 @@ function publishMusicResume() {
 //  PLAYER PRESENCE
 // ═══════════════════════════════════════════
 function handlePresence(data) {
-    if (!data?.playerId || !data?.charId) return;
-    if (currentJoinCode && (data.campaignKey || '') !== currentJoinCode) return;
-    if (currentCampaignType && (data.ariaType || 'ancient') !== currentCampaignType) return;
+    if (!data?.playerId || !data?.charId) { console.warn('[GM] handlePresence: missing playerId or charId', data); return; }
+    if (currentJoinCode && (data.campaignKey || '') !== currentJoinCode) { console.log('[GM] handlePresence: IGNORED (campaignKey mismatch:', data.campaignKey, 'vs', currentJoinCode, ') from', data.name); return; }
+    if (currentCampaignType && (data.ariaType || 'ancient') !== currentCampaignType) { console.log('[GM] handlePresence: IGNORED (ariaType mismatch:', data.ariaType, 'vs', currentCampaignType, ') from', data.name); return; }
+    const isNew = !players.has(data.charId);
+    console.log('[GM] handlePresence:', isNew ? 'NEW' : 'update', '| player:', data.name, '| charId:', data.charId, '| hp:', data.hp, '/', data.maxHP, '| streamId:', data.streamId || 'none');
     const playerData = { ...data, ts: Date.now(), online: true };
     players.set(data.charId, playerData);
     saveKnownPlayers();
@@ -784,6 +795,7 @@ function handlePresence(data) {
         }
         if (currentVdoRoom && ablyDamage) {
             const gmStreamId = 'aria-gm-' + currentCampaignId.slice(0, 8);
+            console.log('[GM] new session detected — sending immediate gm-presence to', data.name);
             ablyDamage.publish('gm-presence', { streamId: gmStreamId, vdoRoom: currentVdoRoom, vdoRoomPassword: currentVdoRoomPassword });
         }
     }
@@ -793,14 +805,18 @@ function sweepOfflinePlayers() {
     let changed = false;
     players.forEach((p, id) => {
         const age = now - (p.ts || 0);
-        if (age > PRESENCE_TIMEOUT * 4) { // gone for 120s+ → remove entirely
+        if (age > PRESENCE_TIMEOUT * 4) {
+            console.log('[GM] sweep: REMOVED player', p.name, '(silent for', Math.round(age/1000), 's)');
             players.delete(id);
             changed = true;
             return;
         }
         const wasOnline = p.online !== false;
         const isOnline = age < PRESENCE_TIMEOUT;
-        if (wasOnline !== isOnline) { p.online = isOnline; changed = true; }
+        if (wasOnline !== isOnline) {
+            console.log('[GM] sweep:', p.name, isOnline ? '→ ONLINE' : '→ OFFLINE', '(last seen', Math.round(age/1000), 's ago)');
+            p.online = isOnline; changed = true;
+        }
         else if (p.online === undefined) { p.online = isOnline; changed = true; }
     });
     if (changed) { saveKnownPlayers(); renderPlayerCards(); }
@@ -1091,11 +1107,12 @@ function closePlayerDetails() {
     document.getElementById('player-details-modal').classList.remove('show');
 }
 function sendTabConfig(playerId, tab, enabled) {
-    if (!ablyDamage) return;
+    if (!ablyDamage) { console.warn('[GM] sendTabConfig: ablyDamage not ready'); return; }
     const p = players.get(playerId);
     if (!p) return;
     if (!p.tabs) p.tabs = { cards: false, alchemy: false };
     p.tabs[tab] = enabled;
+    console.log('[GM] sendTabConfig → ', p.name, '| tab:', tab, '=', enabled, '| full tabs:', JSON.stringify(p.tabs));
     ablyDamage.publish('tab-config', { playerId: p.playerId, tabs: p.tabs });
     openPlayerDetails(playerId); // refresh modal to reflect new state
 }
@@ -1110,6 +1127,7 @@ function applyPlayerDamage(playerId) {
     const dmg = Math.max(0, rawDmg - prot);
     const hpBefore = p.hp ?? p.maxHP ?? 0;
     const hpAfter = Math.max(0, hpBefore - dmg);
+    console.log('[GM] applyPlayerDamage:', p.name, '| raw:', rawDmg, '| armor:', prot, '| net dmg:', dmg, '| HP:', hpBefore, '→', hpAfter);
     p.hp = hpAfter;
     inp.value = '';
     publishDamage(p.playerId, dmg, hpBefore, hpAfter, p.maxHP || hpBefore, p.name);
@@ -1123,6 +1141,7 @@ function applyPlayerHeal(playerId) {
     if (!p) return;
     const hpBefore = p.hp ?? 0;
     const hpAfter = Math.min(p.maxHP || hpBefore, hpBefore + amt);
+    console.log('[GM] applyPlayerHeal:', p.name, '| heal:', amt, '| HP:', hpBefore, '→', hpAfter);
     p.hp = hpAfter;
     inp.value = '';
     publishHeal(p.playerId, amt, hpBefore, hpAfter, p.maxHP || hpBefore, p.name);
@@ -2049,13 +2068,13 @@ function sendPotionGrant(playerId, potionId) {
     if (!player.potionRecipeIds) player.potionRecipeIds = [];
     const alreadyGranted = player.potionRecipeIds.includes(potionId);
     if (alreadyGranted) {
-        // Revoke
+        console.log('[GM] sendPotionGrant: REVOKING potion', potionId, 'from', player.name);
         ablyDamage.publish('potion-revoke', { playerId: player.playerId, potionId });
         player.potionRecipeIds = player.potionRecipeIds.filter(id => id !== potionId);
     } else {
-        // Grant
         const pot = gmPotions.find(p => p.id === potionId);
         if (!pot) return;
+        console.log('[GM] sendPotionGrant: GRANTING potion', pot.name, 'to', player.name);
         ablyDamage.publish('potion-grant', { playerId: player.playerId, potion: { ...pot } });
         player.potionRecipeIds.push(potionId);
     }
@@ -2065,6 +2084,7 @@ function sendVialGrant(playerId, qty) {
     if (!ablyDamage) return;
     const p = players.get(playerId);
     if (!p) return;
+    console.log('[GM] sendVialGrant:', qty, 'vials to', p.name);
     ablyDamage.publish('vial-grant', { playerId: p.playerId, qty });
 }
 
@@ -2733,9 +2753,11 @@ function grantFileToAll(fileId) {
     const f = gmFiles.find(f => f.id === fileId);
     if (!f) return;
     if (f.grantedTo === 'all') {
+        console.log('[GM] grantFileToAll: REVOKING', f.name, 'from all');
         f.grantedTo = [];
         if (ablyDamage) ablyDamage.publish('file-revoke', { playerId: 'all', fileId });
     } else {
+        console.log('[GM] grantFileToAll: GRANTING', f.name, 'to all online players');
         f.grantedTo = 'all';
         if (ablyDamage) {
             players.forEach(p => {
@@ -2756,9 +2778,11 @@ function grantFileToPlayer(fileId, charId) {
     if (f.grantedTo === 'all') { openPlayerDetails(charId); return; }
     if (!Array.isArray(f.grantedTo)) f.grantedTo = [];
     if (f.grantedTo.includes(charId)) {
+        console.log('[GM] grantFileToPlayer: REVOKING', f.name, 'from', p.name);
         f.grantedTo = f.grantedTo.filter(id => id !== charId);
         if (ablyDamage) ablyDamage.publish('file-revoke', { playerId: p.playerId, fileId });
     } else {
+        console.log('[GM] grantFileToPlayer: GRANTING', f.name, 'to', p.name);
         f.grantedTo.push(charId);
         if (ablyDamage) ablyDamage.publish('file-grant', { playerId: p.playerId, file: { id: f.id, name: f.name, type: f.type, url: f.url } });
     }
@@ -2768,12 +2792,15 @@ function grantFileToPlayer(fileId, charId) {
 
 function sendFileGrantsToPlayer(playerData) {
     if (!ablyDamage) return;
+    const grants = [];
     for (const f of gmFiles) {
         const shouldGrant = f.grantedTo === 'all' || (Array.isArray(f.grantedTo) && f.grantedTo.includes(playerData.charId));
         if (shouldGrant) {
+            grants.push(f.name);
             ablyDamage.publish('file-grant', { playerId: playerData.playerId, file: { id: f.id, name: f.name, type: f.type, url: f.url } });
         }
     }
+    if (grants.length) console.log('[GM] sendFileGrantsToPlayer:', playerData.name, '| files:', grants.join(', '));
 }
 
 function renderGmFiles() {

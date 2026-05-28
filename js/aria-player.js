@@ -410,7 +410,7 @@ function migrateIfNeeded() {
 function loadCharacterState(id) {
     const chars = getCharacters();
     const data = chars.find(c => c.id === id);
-    if (!data) return false;
+    if (!data) { console.warn('[PLAYER] loadCharacterState: character not found', id); return false; }
     currentCharId = id;
     character = { ...data };
     delete character.id;
@@ -437,6 +437,7 @@ function loadCharacterState(id) {
     cardExcluded = new Set(saved?.excluded || []);
     lastCardId = saved?.lastCardId || null;
     playerRollHistory = JSON.parse(localStorage.getItem('aria-player-rolls-' + id) || '[]');
+    console.log('[PLAYER] loadCharacterState:', data.name, '| class:', data.class, '| charId:', id, '| campaignKey:', data.campaignKey || 'none', '| ariaType:', data.ariaType || 'ancient', '| skills:', (data.skills || []).length, '| potionRecipes:', (data.potionRecipes || []).length);
     return true;
 }
 
@@ -574,6 +575,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 
 function initApp() {
+    console.log('[PLAYER] initApp: char:', character.name, '| charId:', currentCharId, '| ablyKey:', config.ablyKey ? 'set' : 'MISSING', '| dddice:', config.dddiceKey ? 'set' : 'none');
     currentHP = null;
     playerTabs = JSON.parse(localStorage.getItem('aria-player-tabs-' + currentCharId) || '{"cards":false,"alchemy":false}');
     playerFiles = JSON.parse(localStorage.getItem('aria-player-files-' + currentCharId) || '[]');
@@ -742,6 +744,7 @@ function applyTabVisibility() {
     const btnAlchemy = document.getElementById('tab-btn-alchemy');
     const btnFiles = document.getElementById('tab-btn-files');
     if (!btnCards || !btnAlchemy) return;
+    console.log('[PLAYER] applyTabVisibility: cards=', playerTabs.cards, '| alchemy=', playerTabs.alchemy, '| files=', playerFiles.length);
     btnCards.style.display = playerTabs.cards ? '' : 'none';
     btnAlchemy.style.display = playerTabs.alchemy ? '' : 'none';
     if (btnFiles) btnFiles.style.display = playerFiles.length > 0 ? '' : 'none';
@@ -947,6 +950,7 @@ function animateHPChange(hpBefore, hpAfter, maxHP) {
 // ═══════════════════════════════════════════
 function handleGMDamage(data) {
     const { damage, hpBefore, hpAfter, maxHP } = data;
+    console.log('[PLAYER] handleGMDamage: -', damage, 'PV |', hpBefore, '→', hpAfter, '/', maxHP, hpAfter <= 0 ? '| MORT' : '');
     animateHPChange(hpBefore, hpAfter, maxHP);
     currentHP = hpAfter;
     localStorage.setItem(hpKey(), currentHP); debouncedSyncState();
@@ -957,6 +961,7 @@ function handleGMDamage(data) {
 }
 function handleGMHeal(data) {
     const { amount, hpBefore, hpAfter, maxHP } = data;
+    console.log('[PLAYER] handleGMHeal: +', amount, 'PV |', hpBefore, '→', hpAfter, '/', maxHP);
     animateHPChange(hpBefore, hpAfter, maxHP);
     currentHP = hpAfter;
     localStorage.setItem(hpKey(), currentHP); debouncedSyncState();
@@ -1409,6 +1414,7 @@ function doRoll(skillName, basePct, skipBM = false) {
     if (isRolling) return;
     const karma = character?.karma ?? 0;
     const threshold = skipBM ? Math.max(1, Math.min(100, basePct)) : Math.max(1, Math.min(100, basePct + bonusMalus + karma));
+    console.log('[PLAYER] doRoll:', skillName, '| base:', basePct, '| BM:', bonusMalus, '| karma:', karma, '| threshold:', threshold, '| via:', dddiceAPI ? 'dddice' : 'local');
     setRolling(true);
     if (dddiceAPI) rollViaDddice(skillName, threshold);
     else setTimeout(() => handleResult(skillName, threshold, Math.floor(Math.random() * 100) + 1), 600);
@@ -1522,6 +1528,7 @@ function toggleRollFilter(key) {
 
 function handleResult(skillName, threshold, roll) {
     const success = roll <= threshold;
+    console.log('[PLAYER] handleResult:', skillName, '| roll:', roll, '| threshold:', threshold, '|', success ? 'SUCCÈS' : 'ÉCHEC', roll <= 10 && success ? '(CRITIQUE)' : roll >= 91 && !success ? '(CRITIQUE)' : '');
     const data = { skillName, threshold, roll, success, char: character.name, bonusMalus, playerId };
     setRolling(false);
     showFloatCard(data);
@@ -1987,6 +1994,7 @@ function onMusicVolumeChange(val) {
 //  ABLY
 // ═══════════════════════════════════════════
 function initAbly() {
+    console.log('[PLAYER] initAbly: connecting with key', config.ablyKey?.slice(0, 8) + '...');
     try {
         ablyInstance = new Ably.Realtime({ key: config.ablyKey, transports: ['web_socket'] });
         ablyRolls = ablyInstance.channels.get('aria-rolls');
@@ -1997,6 +2005,7 @@ function initAbly() {
             const d = msg.data;
             if (!d) return;
             if (d.type === 'play' && d.track) {
+                console.log('[PLAYER] music PLAY received:', d.track.name, '| fade:', d.fadeDuration);
                 if (d.fadeDuration) musicFadeDuration = d.fadeDuration;
                 const existingIdx = _playerMusicList.findIndex(t => t.id === d.track.id);
                 if (existingIdx >= 0) {
@@ -2008,11 +2017,13 @@ function initAbly() {
                     _musicTriggerPlay(d.track, _playerMusicList.length - 1);
                 }
             } else if (d.type === 'stop') {
+                console.log('[PLAYER] music STOP received');
                 if (_musicFadeRaf) { cancelAnimationFrame(_musicFadeRaf); _musicFadeRaf = null; }
                 _stopSlot('A');
                 _stopSlot('B');
                 musicIsPlaying = false;
             } else if (d.type === 'pause') {
+                console.log('[PLAYER] music PAUSE received');
                 const slot = _musicCurrentSlot;
                 if (_musicSlots[slot].audio) _musicSlots[slot].audio.pause();
                 const yt = slot === 'A' ? _ytSlotA : _ytSlotB;
@@ -2020,6 +2031,7 @@ function initAbly() {
                 musicIsPlaying = false;
                 if (_musicProgressRaf) { cancelAnimationFrame(_musicProgressRaf); _musicProgressRaf = null; }
             } else if (d.type === 'resume') {
+                console.log('[PLAYER] music RESUME received');
                 const slot = _musicCurrentSlot;
                 if (_musicSlots[slot].audio) _musicSlots[slot].audio.play().catch(() => _showMusicUnlockPrompt(() => _musicSlots[slot].audio?.play()));
                 const yt = slot === 'A' ? _ytSlotA : _ytSlotB;
@@ -2027,8 +2039,10 @@ function initAbly() {
                 musicIsPlaying = true;
             }
         });
-        ablyInstance.connection.on('connected', () => { setAblyStatus(true); sendPresence(); });
-        ablyInstance.connection.on('failed', () => setAblyStatus(false));
+        ablyInstance.connection.on('connected',    () => { console.log('[PLAYER] Ably connected'); setAblyStatus(true); sendPresence(); });
+        ablyInstance.connection.on('failed',       () => { console.error('[PLAYER] Ably connection FAILED'); setAblyStatus(false); });
+        ablyInstance.connection.on('disconnected', () => console.warn('[PLAYER] Ably disconnected'));
+        ablyInstance.connection.on('suspended',    () => console.warn('[PLAYER] Ably suspended'));
         // Listen for GM damage/heal targeted at this player
         const myId = playerId;
         ablyDamage.subscribe(msg => {
@@ -2079,6 +2093,7 @@ function initAbly() {
             }
             if (msg.name === 'tab-config') {
                 if (d.playerId !== myId) return;
+                console.log('[PLAYER] tab-config received:', JSON.stringify(d.tabs));
                 playerTabs = { ...playerTabs, ...d.tabs };
                 localStorage.setItem('aria-player-tabs-' + currentCharId, JSON.stringify(playerTabs));
                 debouncedSyncState();
@@ -2088,6 +2103,7 @@ function initAbly() {
             if (msg.name === 'potion-grant') {
                 if (d.playerId !== myId) return;
                 if (!d.potion) return;
+                console.log('[PLAYER] potion-grant received:', d.potion.name);
                 if (!character.potionRecipes) character.potionRecipes = [];
                 if (!character.potionRecipes.find(r => r.id === d.potion.id)) {
                     character.potionRecipes.push({ ...d.potion });
@@ -2099,6 +2115,7 @@ function initAbly() {
             }
             if (msg.name === 'potion-revoke') {
                 if (d.playerId !== myId) return;
+                console.log('[PLAYER] potion-revoke received:', d.potionId);
                 character.potionRecipes = (character.potionRecipes || []).filter(r => r.id !== d.potionId);
                 saveCurrentCharacter();
                 renderPotions();
@@ -2106,6 +2123,7 @@ function initAbly() {
             }
             if (msg.name === 'vial-grant') {
                 if (d.playerId !== myId) return;
+                console.log('[PLAYER] vial-grant received:', d.qty, 'vials');
                 character.vials = (character.vials ?? 0) + (d.qty || 1);
                 saveCurrentCharacter();
                 renderPotions();
@@ -2116,6 +2134,7 @@ function initAbly() {
             if (msg.name === 'file-grant') {
                 if (d.playerId !== myId && d.playerId !== 'all') return;
                 if (!d.file?.id) return;
+                console.log('[PLAYER] file-grant received:', d.file.name, '| for:', d.playerId === 'all' ? 'all' : 'me');
                 if (!playerFiles.find(f => f.id === d.file.id)) {
                     playerFiles.push(d.file);
                     localStorage.setItem('aria-player-files-' + currentCharId, JSON.stringify(playerFiles));
@@ -2129,6 +2148,7 @@ function initAbly() {
             if (msg.name === 'file-revoke') {
                 if (d.playerId !== myId && d.playerId !== 'all') return;
                 if (!d.fileId) return;
+                console.log('[PLAYER] file-revoke received:', d.fileId);
                 playerFiles = playerFiles.filter(f => f.id !== d.fileId);
                 localStorage.setItem('aria-player-files-' + currentCharId, JSON.stringify(playerFiles));
                 deleteCharacterFile(d.fileId);
@@ -2138,6 +2158,7 @@ function initAbly() {
             }
             if (msg.name === 'karma-set') {
                 if (d.playerId !== myId) return;
+                console.log('[PLAYER] karma-set received:', d.karma);
                 character.karma = d.karma ?? 0;
                 saveCurrentCharacter();
                 renderKarma();
@@ -2161,13 +2182,13 @@ function initAbly() {
                 return;
             }
             if (d.targetId && d.targetId !== myId) return;
-            if (msg.name === 'damage') handleGMDamage(d);
-            if (msg.name === 'heal') handleGMHeal(d);
+            if (msg.name === 'damage') { console.log('[PLAYER] GM damage received: -', d.damage, 'PV | HP:', d.hpBefore, '→', d.hpAfter, '/', d.maxHP); handleGMDamage(d); }
+            if (msg.name === 'heal')   { console.log('[PLAYER] GM heal received: +',  d.amount,  'PV | HP:', d.hpBefore, '→', d.hpAfter, '/', d.maxHP); handleGMHeal(d); }
         });
-        // Listen for other players' rolls — show a brief toast
         ablyRolls.subscribe('roll', msg => {
             const d = msg.data;
-            if (!d || d.playerId === myId) return; // skip own rolls
+            if (!d || d.playerId === myId) return;
+            console.log('[PLAYER] other player rolled:', d.char, '| skill:', d.skillName, '| roll:', d.roll, '| threshold:', d.threshold, '|', d.success ? 'SUCCÈS' : 'ÉCHEC');
             showOtherRollToast(d);
         });
         // Listen for other players' card draws
