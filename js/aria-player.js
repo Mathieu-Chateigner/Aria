@@ -20,38 +20,68 @@ function buildDeck() { return shuffle([...ALL_CARDS]); }
 // ═══════════════════════════════════════════
 //  STATE
 // ═══════════════════════════════════════════
-const DEFAULT_CHAR = {
-    name: "",
-    class: "",
+const DEFAULT_CHAR_ANCIENT = {
+    name: "", class: "", ariaType: 'ancient',
     stats: { FOR: 0, DEX: 0, END: 0, INT: 0, CHA: 0, PV: 0 },
     physical: { age: "", taille: "", poids: "", yeux: "", cheveux: "", signes: "", histoire: "" },
-    inventory: [],
-    weapons: [{ nom: '', degats: '' }, { nom: '', degats: '' }, { nom: '', degats: '' }],
+    inventory: [], weapons: [{ nom: '', degats: '' }, { nom: '', degats: '' }, { nom: '', degats: '' }],
     protection: { nom: '', valeur: 0 },
     skills: [
         { name: "Artisanat, construire", link: "DEX/INT", pct: 0 },
-        { name: "Combat rapproché", link: "FOR/DEX", pct: 0 },
-        { name: "Combat à distance", link: "FOR/DEX", pct: 0 },
+        { name: "Combat rapproché",      link: "FOR/DEX", pct: 0 },
+        { name: "Combat à distance",     link: "FOR/DEX", pct: 0 },
         { name: "Connaissance de la nature", link: "DEX/INT", pct: 0 },
-        { name: "Connaissance des secrets", link: "INT/CHA", pct: 0 },
-        { name: "Courir, sauter", link: "DEX/END", pct: 0 },
-        { name: "Discrétion", link: "DEX/CHA", pct: 0 },
-        { name: "Droit", link: "INT/CHA", pct: 0 },
-        { name: "Esquiver", link: "DEX/INT", pct: 0 },
-        { name: "Intimider", link: "FOR/CHA", pct: 0 },
-        { name: "Lire, écrire", link: "INT/CHA", pct: 0 },
-        { name: "Mentir, convaincre", link: "INT/CHA", pct: 0 },
-        { name: "Perception", link: "INT/CHA", pct: 0 },
-        { name: "Piloter", link: "DEX/END", pct: 0 },
-        { name: "Psychologie", link: "END/INT", pct: 0 },
-        { name: "Réflexes", link: "DEX/INT", pct: 0 },
-        { name: "Serrures et pièges", link: "DEX/END", pct: 0 },
-        { name: "Soigner", link: "INT/CHA", pct: 0 },
-        { name: "Survie", link: "END/INT", pct: 0 },
-        { name: "Voler", link: "DEX/INT", pct: 0 },
+        { name: "Connaissance des secrets",  link: "INT/CHA", pct: 0 },
+        { name: "Courir, sauter",        link: "DEX/END", pct: 0 },
+        { name: "Discrétion",            link: "DEX/CHA", pct: 0 },
+        { name: "Droit",                 link: "INT/CHA", pct: 0 },
+        { name: "Esquiver",              link: "DEX/INT", pct: 0 },
+        { name: "Intimider",             link: "FOR/CHA", pct: 0 },
+        { name: "Lire, écrire",          link: "INT/CHA", pct: 0 },
+        { name: "Mentir, convaincre",    link: "INT/CHA", pct: 0 },
+        { name: "Perception",            link: "INT/CHA", pct: 0 },
+        { name: "Piloter",               link: "DEX/END", pct: 0 },
+        { name: "Psychologie",           link: "END/INT", pct: 0 },
+        { name: "Réflexes",              link: "DEX/INT", pct: 0 },
+        { name: "Serrures et pièges",    link: "DEX/END", pct: 0 },
+        { name: "Soigner",               link: "INT/CHA", pct: 0 },
+        { name: "Survie",                link: "END/INT", pct: 0 },
+        { name: "Voler",                 link: "DEX/INT", pct: 0 },
     ],
-    specials: [],
-    campaignKey: '',
+    specials: [], campaignKey: '',
+    money: { couronne: 0, orbe: 0, sceptre: 0, sou: 0 },
+    vials: 0, potionRecipes: [], potions: [], karma: 0,
+};
+
+const DEFAULT_CHAR_CONTEMPORARY = {
+    name: "", class: "", ariaType: 'contemporary',
+    stats: { PV: 0 },
+    physical: { age: "", taille: "", poids: "", yeux: "", cheveux: "", signes: "", histoire: "" },
+    inventory: [], weapons: [{ nom: '', degats: '' }, { nom: '', degats: '' }, { nom: '', degats: '' }],
+    protection: { nom: '', valeur: 0 },
+    skills: [
+        { name: "Courir, sauter",          link: "", pct: 0 },
+        { name: "Discrétion",              link: "", pct: 0 },
+        { name: "Intimider",               link: "", pct: 0 },
+        { name: "Mentir, convaincre",      link: "", pct: 0 },
+        { name: "Perception",              link: "", pct: 0 },
+        { name: "Psychologie",             link: "", pct: 0 },
+        { name: "Réflexes",               link: "", pct: 0 },
+        { name: "Soigner",                 link: "", pct: 0 },
+        { name: "Armes à feu",             link: "", pct: 0 },
+        { name: "Bidouiller",              link: "", pct: 0 },
+        { name: "Conduire un véhicule",    link: "", pct: 0 },
+        { name: "Connaissance de la ville",link: "", pct: 0 },
+        { name: "Être sympathique",        link: "", pct: 0 },
+        { name: "Intuition",               link: "", pct: 0 },
+        { name: "Médecine légale",         link: "", pct: 0 },
+        { name: "Relations louches",       link: "", pct: 0 },
+        { name: "Relations respectables",  link: "", pct: 0 },
+        { name: "Tabasser",                link: "", pct: 0 },
+    ],
+    specials: [], campaignKey: '',
+    money: { francs: 0 },
+    vials: 0, potionRecipes: [], potions: [], karma: 0,
 };
 
 // Character will be loaded after selection
@@ -122,6 +152,7 @@ function _charToRow(char) {
     return {
         id: char.id, save_key: saveKey, name: char.name, class: char.class,
         campaign_key: char.campaignKey || null,
+        aria_type: char.ariaType || 'ancient',
         stats: char.stats || null, physical: char.physical || null,
         skills: char.skills || null, specials: char.specials || null,
         weapons: char.weapons || null, protection: char.protection || null,
@@ -214,6 +245,7 @@ async function loadFromSupabase() {
         const dbChars = chars.map(row => ({
             id: row.id, name: row.name, class: row.class,
             campaignKey: row.campaign_key || '',
+            ariaType: row.aria_type || 'ancient',
             stats: row.stats || {}, physical: row.physical || {},
             skills: row.skills || [], specials: row.specials || [],
             weapons: row.weapons || [], protection: row.protection || {},
@@ -380,7 +412,12 @@ function loadCharacterState(id) {
     if (!character.potions) character.potions = [];
     if (!character.potionRecipes) character.potionRecipes = [];
     if (character.vials === undefined || character.vials === null) character.vials = 0;
-    if (!character.money) character.money = { couronne: 0, orbe: 0, sceptre: 0, sou: 0 };
+    if (!character.ariaType) character.ariaType = 'ancient';
+    if (!character.money) {
+        character.money = character.ariaType === 'contemporary'
+            ? { francs: 0 }
+            : { couronne: 0, orbe: 0, sceptre: 0, sou: 0 };
+    }
     if (!character.specials) character.specials = [];
     if (character.karma === undefined) character.karma = 0;
     const saved = JSON.parse(localStorage.getItem(cardKey()) || 'null');
@@ -404,7 +441,10 @@ function renderSelectionScreen() {
         const card = document.createElement('div');
         card.className = 'sel-card';
         const campBadge = c.campaignKey ? `<div class="sel-card-campaign">🔑 ${c.campaignKey}</div>` : `<div class="sel-card-campaign no-campaign">Sans campagne</div>`;
-        card.innerHTML = `<button class="sel-card-delete" onclick="event.stopPropagation();deleteCharacter('${c.id}')" title="Supprimer">✕</button><div class="sel-card-name">${c.name || '—'}</div><div class="sel-card-class">${c.class || ''}</div>${campBadge}`;
+        const typeBadge = (c.ariaType || 'ancient') === 'contemporary'
+            ? `<span class="sel-card-type contemporary">🕵 Contemporain</span>`
+            : `<span class="sel-card-type">⚔ Médiéval</span>`;
+        card.innerHTML = `<button class="sel-card-delete" onclick="event.stopPropagation();deleteCharacter('${c.id}')" title="Supprimer">✕</button><div class="sel-card-name">${c.name || '—'}</div><div class="sel-card-class">${c.class || ''}</div>${campBadge}${typeBadge}`;
         card.addEventListener('click', () => selectCharacter(c.id));
         grid.appendChild(card);
     });
@@ -464,6 +504,8 @@ function createCharacter() {
     document.getElementById('new-char-name').value = '';
     document.getElementById('new-char-class').value = '';
     document.getElementById('new-char-campaign').value = '';
+    const defaultRadio = document.querySelector('input[name="new-char-type"][value="ancient"]');
+    if (defaultRadio) defaultRadio.checked = true;
     document.getElementById('new-char-name').focus();
 }
 
@@ -471,9 +513,11 @@ function confirmCreateCharacter() {
     const name = document.getElementById('new-char-name').value.trim() || 'Nouveau personnage';
     const cls  = document.getElementById('new-char-class').value.trim();
     const campaignKey = document.getElementById('new-char-campaign').value.trim();
+    const ariaType = document.querySelector('input[name="new-char-type"]:checked')?.value || 'ancient';
+    const template = ariaType === 'contemporary' ? DEFAULT_CHAR_CONTEMPORARY : DEFAULT_CHAR_ANCIENT;
     const id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
     const chars = getCharacters();
-    chars.push({ ...JSON.parse(JSON.stringify(DEFAULT_CHAR)), name, class: cls, campaignKey, id });
+    chars.push({ ...JSON.parse(JSON.stringify(template)), name, class: cls, campaignKey, id });
     saveCharacters(chars);
     document.getElementById('new-char-form').style.display = 'none';
     selectCharacter(id);
@@ -702,6 +746,14 @@ function applyTabVisibility() {
     }
     renderInventoryEditor();
     updateCamerasTabVisibility();
+    const btnStats = document.getElementById('tab-btn-stats');
+    if (btnStats) {
+        const isContemporary = character.ariaType === 'contemporary';
+        btnStats.style.display = isContemporary ? 'none' : '';
+        if (isContemporary && document.getElementById('tab-stats')?.classList.contains('active')) {
+            switchTab('tab-skills', document.querySelector('.tab-btn'));
+        }
+    }
 }
 
 function updateCamerasTabVisibility() {
@@ -1033,7 +1085,7 @@ function renderSkills() {
         const div = document.createElement('div');
         const isSoigner = skill.name === 'Soigner';
         div.className = 'skill-item' + (isSoigner ? ' soigner-skill' : '');
-        div.innerHTML = `<span class="skill-link">${skill.link || ''}</span><span class="skill-name">${skill.name}</span><span class="skill-pct">${eff}%</span>`;
+        div.innerHTML = `${skill.link ? `<span class="skill-link">${skill.link}</span>` : ''}<span class="skill-name">${skill.name}</span><span class="skill-pct">${eff}%</span>`;
         if (isSoigner) {
             div.addEventListener('click', () => openSoignerTargetPicker(skill.pct));
         } else {
@@ -1055,6 +1107,11 @@ function renderSkills() {
 }
 
 function renderStats() {
+    if (character.ariaType === 'contemporary') {
+        document.getElementById('mult-bar-btns').innerHTML = '';
+        document.getElementById('stat-grid').innerHTML = '';
+        return;
+    }
     const bar = document.getElementById('mult-bar-btns');
     bar.innerHTML = [1, 2, 3, 4, 5].map(m =>
         `<button class="mult-btn${multiplier === m ? ' active' : ''}" onclick="setMult(${m})">${m > 1 ? '×' + m : '×1'}</button>`
@@ -1100,11 +1157,16 @@ function renderInventorySidebar() {
     const moneyEl = document.getElementById('inv-money-display');
     if (moneyEl) {
         const m = character.money || {};
-        const parts = MONEY_COINS.map(c => {
-            const v = m[c.key] ?? 0;
-            return v > 0 ? `<span style="color:${c.color};" title="${c.label}">●${v}</span>` : '';
-        }).filter(Boolean);
-        moneyEl.innerHTML = parts.join('');
+        if (character.ariaType === 'contemporary') {
+            const f = m.francs ?? 0;
+            moneyEl.innerHTML = f > 0 ? `<span style="color:var(--parchment-dim);" title="Francs">💶 ${f} F</span>` : '';
+        } else {
+            const parts = MONEY_COINS.map(c => {
+                const v = m[c.key] ?? 0;
+                return v > 0 ? `<span style="color:${c.color};" title="${c.label}">●${v}</span>` : '';
+            }).filter(Boolean);
+            moneyEl.innerHTML = parts.join('');
+        }
     }
 }
 
@@ -1132,8 +1194,9 @@ function renderCombatSidebar() {
 
     // Reaction buttons — look up Parade and Esquiver in the character's skills/specials
     const allSkills = [...(character.skills || []), ...(character.specials || [])];
-    const parrySkill = allSkills.find(s => /combat.rapproch/i.test(s.name));
-    const dodgeSkill = allSkills.find(s => /esquiv/i.test(s.name));
+    const isContemporary = character.ariaType === 'contemporary';
+    const parrySkill = allSkills.find(s => isContemporary ? /tabasser/i.test(s.name) : /combat.rapproch/i.test(s.name));
+    const dodgeSkill = allSkills.find(s => isContemporary ? /réflexes/i.test(s.name) : /esquiv/i.test(s.name));
     if (parrySkill || dodgeSkill) {
         html += `<div style="margin:8px 0 6px;border-top:1px solid var(--border);"></div>`;
         html += `<div style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:6px;">Réactions</div>`;
@@ -2111,6 +2174,7 @@ function sendPresence() {
         tabs: playerTabs,
         money: character.money || { couronne: 0, orbe: 0, sceptre: 0, sou: 0 },
         campaignKey: character.campaignKey || '',
+        ariaType: character.ariaType || 'ancient',
         streamId: derivedStreamId(),
     }, err => { if (err) console.error('[ARIA] publish error:', err); });
 }
@@ -2159,12 +2223,18 @@ function toggleConfig() {
 function renderEditorForm() {
     document.getElementById('ed-name').value = character.name;
     document.getElementById('ed-class').value = character.class || '';
-    document.getElementById('ed-for').value = character.stats.FOR;
-    document.getElementById('ed-dex').value = character.stats.DEX;
-    document.getElementById('ed-end').value = character.stats.END;
-    document.getElementById('ed-int').value = character.stats.INT;
-    document.getElementById('ed-cha').value = character.stats.CHA;
-    document.getElementById('ed-pv').value = character.stats.PV;
+    const attrsBlock = document.getElementById('cs-attrs-block');
+    if (character.ariaType === 'contemporary') {
+        if (attrsBlock) attrsBlock.style.display = 'none';
+    } else {
+        if (attrsBlock) attrsBlock.style.display = '';
+        document.getElementById('ed-for').value = character.stats.FOR ?? 0;
+        document.getElementById('ed-dex').value = character.stats.DEX ?? 0;
+        document.getElementById('ed-end').value = character.stats.END ?? 0;
+        document.getElementById('ed-int').value = character.stats.INT ?? 0;
+        document.getElementById('ed-cha').value = character.stats.CHA ?? 0;
+    }
+    document.getElementById('ed-pv').value = character.stats.PV ?? 0;
     const p = character.physical || {};
     document.getElementById('ed-age').value = p.age || '';
     document.getElementById('ed-taille').value = p.taille || '';
@@ -2214,16 +2284,27 @@ function renderMoneyEditor() {
     const el = document.getElementById('inv-money-editor');
     if (!el) return;
     const m = character.money || {};
-    el.innerHTML = `<div class="money-editor-row">${MONEY_COINS.map(c =>
-        `<div class="money-field">
-            <span class="money-dot" style="color:${c.color}">●</span>
-            <span class="money-label">${c.label}</span>
-            <input class="editor-input money-input" type="text" inputmode="numeric" value="${m[c.key] ?? 0}" oninput="updateMoney('${c.key}',this.value)" />
-        </div>`
-    ).join('')}</div>`;
+    if (character.ariaType === 'contemporary') {
+        el.innerHTML = `<div class="money-editor-row"><div class="money-field">
+            <span class="money-label">💶 Francs</span>
+            <input class="editor-input money-input" type="text" inputmode="numeric" value="${m.francs ?? 0}" oninput="updateMoney('francs',this.value)" />
+        </div></div>`;
+    } else {
+        el.innerHTML = `<div class="money-editor-row">${MONEY_COINS.map(c =>
+            `<div class="money-field">
+                <span class="money-dot" style="color:${c.color}">●</span>
+                <span class="money-label">${c.label}</span>
+                <input class="editor-input money-input" type="text" inputmode="numeric" value="${m[c.key] ?? 0}" oninput="updateMoney('${c.key}',this.value)" />
+            </div>`
+        ).join('')}</div>`;
+    }
 }
 function updateMoney(key, val) {
-    if (!character.money) character.money = { couronne: 0, orbe: 0, sceptre: 0, sou: 0 };
+    if (!character.money) {
+        character.money = character.ariaType === 'contemporary'
+            ? { francs: 0 }
+            : { couronne: 0, orbe: 0, sceptre: 0, sou: 0 };
+    }
     character.money[key] = parseInt(val.replace(/[^0-9]/g, '')) || 0;
     saveCurrentCharacter();
     renderInventorySidebar();
@@ -2428,11 +2509,13 @@ function removeSpecial(i) { character.specials.splice(i, 1); renderSpecialsEdito
 function readEditorInputs() {
     character.name = document.getElementById('ed-name').value.trim();
     character.class = document.getElementById('ed-class').value.trim();
-    character.stats.FOR = +document.getElementById('ed-for').value;
-    character.stats.DEX = +document.getElementById('ed-dex').value;
-    character.stats.END = +document.getElementById('ed-end').value;
-    character.stats.INT = +document.getElementById('ed-int').value;
-    character.stats.CHA = +document.getElementById('ed-cha').value;
+    if (character.ariaType !== 'contemporary') {
+        character.stats.FOR = +document.getElementById('ed-for').value;
+        character.stats.DEX = +document.getElementById('ed-dex').value;
+        character.stats.END = +document.getElementById('ed-end').value;
+        character.stats.INT = +document.getElementById('ed-int').value;
+        character.stats.CHA = +document.getElementById('ed-cha').value;
+    }
     character.stats.PV = +document.getElementById('ed-pv').value;
     character.physical = {
         age: document.getElementById('ed-age').value.trim(),

@@ -49,6 +49,11 @@
                 <input class="sel-new-input" id="new-char-name" placeholder="Nom du personnage" onkeydown="if(event.key==='Enter')confirmCreateCharacter()" />
                 <input class="sel-new-input" id="new-char-class" placeholder="Classe / Description" onkeydown="if(event.key==='Enter')confirmCreateCharacter()" />
                 <input class="sel-new-input" id="new-char-campaign" placeholder="Code de campagne (optionnel)" oninput="this.value=this.value.toUpperCase()" onkeydown="if(event.key==='Enter')confirmCreateCharacter()" />
+                <div class="sel-type-row">
+                    <label class="sel-type-label"><input type="radio" name="new-char-type" value="ancient" checked> ⚔ Médiéval</label>
+                    <label class="sel-type-label"><input type="radio" name="new-char-type" value="contemporary"> 🕵 Contemporain</label>
+                </div>
+                <div class="sel-type-hint">Le type doit correspondre à celui de la campagne.</div>
                 <div class="sel-new-btns">
                     <button class="sel-confirm-btn" onclick="confirmCreateCharacter()">Créer</button>
                     <button class="sel-cancel-btn" onclick="cancelCreateCharacter()">Annuler</button>
@@ -148,7 +153,7 @@
         <div class="content">
             <div class="tabs">
                 <button class="tab-btn active" onclick="switchTab('tab-skills',this)">⚔ Compétences</button>
-                <button class="tab-btn" onclick="switchTab('tab-stats',this)">◆ Caractéristiques</button>
+                <button class="tab-btn" id="tab-btn-stats" onclick="switchTab('tab-stats',this)">◆ Caractéristiques</button>
                 <button class="tab-btn" onclick="switchTab('tab-free',this)">⚄ Jet libre</button>
                 <button class="tab-btn" onclick="switchTab('tab-inventory',this)">⛁ Inventaire</button>
                 <button class="tab-btn" onclick="switchTab('tab-notes',this)">✎ Notes</button>
@@ -344,7 +349,7 @@
                     </div>
 
                     <!-- Attributs -->
-                    <div class="cs-block">
+                    <div class="cs-block" id="cs-attrs-block">
                         <div class="cs-block-title">Attributs</div>
                         <div class="cs-attrs-row">
                             <div class="cs-attr"><label class="cs-attr-label">FOR</label><input class="editor-input cs-attr-input" id="ed-for" type="text" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'')" /></div>

@@ -35,6 +35,7 @@ const PRESENCE_TIMEOUT = 30000; // 30s offline threshold
 // Campaign state — loaded after selection
 let currentCampaignId = null;
 let currentJoinCode = null;
+let currentCampaignType = 'ancient';
 let monsters = [];
 let newMonsterAttacks = [];
 let rollFeed = [];
@@ -65,7 +66,7 @@ function _nowISO() { return new Date().toISOString(); }
 
 async function syncCampaign(camp) {
     if (!_supabaseReady()) return;
-    await sbUpsert('campaigns', { id: camp.id, save_key: saveKey, name: camp.name, join_code: camp.joinCode || null, vdo_room: camp.vdoRoom || null, vdo_room_password: camp.vdoRoomPassword || null, updated_at: _nowISO() });
+    await sbUpsert('campaigns', { id: camp.id, save_key: saveKey, name: camp.name, join_code: camp.joinCode || null, vdo_room: camp.vdoRoom || null, vdo_room_password: camp.vdoRoomPassword || null, aria_type: camp.ariaType || 'ancient', updated_at: _nowISO() });
 }
 
 async function syncMonster(m) {
@@ -178,9 +179,9 @@ async function loadFromSupabase() {
     if (!_supabaseReady()) return;
     await runMigration(saveKey, 'gm');
     try {
-        const camps = await sbSelect('campaigns', 'save_key=eq.' + encodeURIComponent(saveKey) + '&select=id,name,join_code,vdo_room,vdo_room_password');
+        const camps = await sbSelect('campaigns', 'save_key=eq.' + encodeURIComponent(saveKey) + '&select=id,name,join_code,vdo_room,vdo_room_password,aria_type');
         if (!camps.length) return;
-        const campaigns = camps.map(c => ({ id: c.id, name: c.name, joinCode: c.join_code, vdoRoom: c.vdo_room || '', vdoRoomPassword: c.vdo_room_password || '' }));
+        const campaigns = camps.map(c => ({ id: c.id, name: c.name, joinCode: c.join_code, vdoRoom: c.vdo_room || '', vdoRoomPassword: c.vdo_room_password || '', ariaType: c.aria_type || 'ancient' }));
         localStorage.setItem('aria-gm-campaigns', JSON.stringify(campaigns));
         for (const c of campaigns) {
             const [mons, pots, files, kp, notes, music] = await Promise.all([
@@ -333,6 +334,7 @@ function loadCampaignState(id) {
     if (!camp.joinCode) { camp.joinCode = generateJoinCode(); saveCampaigns(campaigns); }
     currentCampaignId = id;
     currentJoinCode = camp.joinCode;
+    currentCampaignType = camp.ariaType || 'ancient';
     currentVdoRoom = camp.vdoRoom || '';
     currentVdoRoomPassword = camp.vdoRoomPassword || '';
     monsters    = JSON.parse(localStorage.getItem(monstersKey())  || '[]');
@@ -361,7 +363,10 @@ function renderCampaignScreen() {
     campaigns.forEach(c => {
         const card = document.createElement('div');
         card.className = 'sel-card';
-        card.innerHTML = `<button class="sel-card-delete" onclick="event.stopPropagation();deleteCampaign('${c.id}')" title="Supprimer">✕</button><div class="sel-card-row"><div class="sel-card-name">${c.name}</div><div class="sel-card-joincode" onclick="event.stopPropagation();copyJoinCodeFromCard(this,'${c.joinCode||''}')">🔑 ${c.joinCode || '—'}</div></div>`;
+        const typeBadge = c.ariaType === 'contemporary'
+            ? '<span class="sel-card-type contemporary">🕵 Contemporain</span>'
+            : '<span class="sel-card-type">⚔ Médiéval</span>';
+        card.innerHTML = `<button class="sel-card-delete" onclick="event.stopPropagation();deleteCampaign('${c.id}')" title="Supprimer">✕</button><div class="sel-card-row"><div class="sel-card-name">${c.name}</div><div class="sel-card-joincode" onclick="event.stopPropagation();copyJoinCodeFromCard(this,'${c.joinCode||''}')">🔑 ${c.joinCode || '—'}</div></div>${typeBadge}`;
         card.addEventListener('click', () => selectCampaign(c.id));
         grid.appendChild(card);
     });
@@ -418,9 +423,10 @@ function createCampaign() {
 
 function confirmCreateCampaign() {
     const name = document.getElementById('new-campaign-name').value.trim() || 'Nouvelle campagne';
+    const ariaType = document.querySelector('input[name="new-campaign-type"]:checked')?.value || 'ancient';
     const id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
     const campaigns = getCampaigns();
-    campaigns.push({ id, name, joinCode: generateJoinCode() });
+    campaigns.push({ id, name, joinCode: generateJoinCode(), ariaType });
     saveCampaigns(campaigns);
     document.getElementById('new-campaign-form').style.display = 'none';
     selectCampaign(id);
@@ -468,6 +474,7 @@ function switchCampaign() {
     players.clear();
     rollFilter.clear(); playerFilter.clear();
     currentCampaignId = null;
+    currentCampaignType = 'ancient';
     showSelectionScreen();
 }
 
@@ -759,6 +766,7 @@ function publishMusicResume() {
 function handlePresence(data) {
     if (!data?.playerId || !data?.charId) return;
     if (currentJoinCode && (data.campaignKey || '') !== currentJoinCode) return;
+    if (currentCampaignType && (data.ariaType || 'ancient') !== currentCampaignType) return;
     const playerData = { ...data, ts: Date.now(), online: true };
     players.set(data.charId, playerData);
     saveKnownPlayers();
@@ -1028,15 +1036,19 @@ function openPlayerDetails(playerId) {
 
     // Money
     const money = p.money || {};
-    const MONEY_COINS = [
-        { key: 'couronne', label: 'Couronne', color: '#c9a84c' },
-        { key: 'orbe',     label: 'Orbe',     color: '#b8c4cc' },
-        { key: 'sceptre',  label: 'Sceptre',  color: '#c87533' },
-        { key: 'sou',      label: 'Sou',      color: '#8a8a94' },
-    ];
     html += `<div class="pdm-section"><div class="pdm-section-title">Monnaie</div><div class="pdm-money-row">`;
-    for (const c of MONEY_COINS) {
-        html += `<div class="pdm-coin-block"><span class="pdm-coin-dot" style="color:${c.color}">●</span><span class="pdm-coin-label">${c.label}</span><span class="pdm-coin-val">${money[c.key] ?? 0}</span></div>`;
+    if ((p.ariaType || 'ancient') === 'contemporary') {
+        html += `<div class="pdm-coin-block"><span class="pdm-coin-label">Francs</span><span class="pdm-coin-val">${money.francs ?? 0}</span></div>`;
+    } else {
+        const MONEY_COINS = [
+            { key: 'couronne', label: 'Couronne', color: '#c9a84c' },
+            { key: 'orbe',     label: 'Orbe',     color: '#b8c4cc' },
+            { key: 'sceptre',  label: 'Sceptre',  color: '#c87533' },
+            { key: 'sou',      label: 'Sou',      color: '#8a8a94' },
+        ];
+        for (const c of MONEY_COINS) {
+            html += `<div class="pdm-coin-block"><span class="pdm-coin-dot" style="color:${c.color}">●</span><span class="pdm-coin-label">${c.label}</span><span class="pdm-coin-val">${money[c.key] ?? 0}</span></div>`;
+        }
     }
     html += `</div></div>`;
 

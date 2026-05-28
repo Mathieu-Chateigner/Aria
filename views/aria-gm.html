@@ -47,6 +47,10 @@
             <div class="sel-grid" id="campaign-grid"></div>
             <div class="sel-new-form" id="new-campaign-form" style="display:none;">
                 <input class="sel-new-input" id="new-campaign-name" placeholder="Nom de la campagne" onkeydown="if(event.key==='Enter')confirmCreateCampaign()" />
+                <div class="sel-type-row">
+                    <label class="sel-type-label"><input type="radio" name="new-campaign-type" value="ancient" checked> ⚔ Médiéval</label>
+                    <label class="sel-type-label"><input type="radio" name="new-campaign-type" value="contemporary"> 🕵 Contemporain</label>
+                </div>
                 <div class="sel-new-btns">
                     <button class="sel-confirm-btn" onclick="confirmCreateCampaign()">Créer</button>
                     <button class="sel-cancel-btn" onclick="cancelCreateCampaign()">Annuler</button>
