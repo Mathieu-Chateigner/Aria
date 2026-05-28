@@ -122,7 +122,8 @@ function updatePushIframe() {
         pushFrame.src = ''; return;
     }
     const sid = derivedStreamId();
-    const src = `https://vdo.ninja/?push=${sid}&autostart&webcam&noaudio&cleanoutput`;
+    let src = `https://vdo.ninja/?push=${sid}&room=${encodeURIComponent(vdoRoom)}&autostart&webcam&noaudio&cleanoutput`;
+    if (vdoRoomPassword) src += `&password=${encodeURIComponent(vdoRoomPassword)}`;
     console.log('[VDO] updatePushIframe: setting push iframe →', src);
     pushFrame.src = src;
 }
@@ -868,7 +869,8 @@ function renderCamerasTab() {
             const labelEl = rendered.get(sid).querySelector('.camera-label');
             if (labelEl) labelEl.textContent = label;
         } else {
-            const iframeSrc = `https://vdo.ninja/?view=${encodeURIComponent(sid)}&autoplay&cleanoutput`;
+            let iframeSrc = `https://vdo.ninja/?view=${encodeURIComponent(sid)}&room=${encodeURIComponent(vdoRoom)}&autoplay&cleanoutput`;
+            if (vdoRoomPassword) iframeSrc += `&password=${encodeURIComponent(vdoRoomPassword)}`;
             console.log('[VDO] renderCamerasTab: CREATING new iframe for', label, '(', sid, ') →', iframeSrc);
             const cell = document.createElement('div');
             cell.className = 'camera-cell';

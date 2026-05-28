@@ -685,7 +685,9 @@ function updateGMPushIframe() {
     const pushFrame = document.getElementById('vdo-gm-push-frame');
     if (!pushFrame) return;
     if (!currentVdoRoom || !currentCampaignId) { pushFrame.src = ''; return; }
-    pushFrame.src = `https://vdo.ninja/?push=aria-gm-${currentCampaignId.slice(0, 8)}&autostart&webcam&noaudio&cleanoutput`;
+    let src = `https://vdo.ninja/?push=aria-gm-${currentCampaignId.slice(0, 8)}&room=${encodeURIComponent(currentVdoRoom)}&autostart&webcam&noaudio&cleanoutput`;
+    if (currentVdoRoomPassword) src += `&password=${encodeURIComponent(currentVdoRoomPassword)}`;
+    pushFrame.src = src;
 }
 function startGMSelfView() {
     const section = document.getElementById('gm-self-view-section');
@@ -922,7 +924,8 @@ function renderPlayerCards() {
             const existingWrap = card.querySelector('.pc-camera-wrap');
             const existingIframe = existingWrap?.querySelector('.pc-camera-frame');
             if (p.streamId) {
-                const expectedSrc = `https://vdo.ninja/?view=${encodeURIComponent(p.streamId)}&autoplay&cleanoutput`;
+                let expectedSrc = `https://vdo.ninja/?view=${encodeURIComponent(p.streamId)}&room=${encodeURIComponent(currentVdoRoom)}&autoplay&cleanoutput`;
+                if (currentVdoRoomPassword) expectedSrc += `&password=${encodeURIComponent(currentVdoRoomPassword)}`;
                 if (!existingWrap) {
                     const wrap = document.createElement('div');
                     wrap.className = 'pc-camera-wrap';
