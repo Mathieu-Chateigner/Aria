@@ -679,7 +679,7 @@ function startGMPresenceBroadcast() {
     const gmStreamId = 'aria-gm-' + currentCampaignId.slice(0, 8);
     const publish = () => ablyDamage.publish('gm-presence', { streamId: gmStreamId, vdoRoom: currentVdoRoom, vdoRoomPassword: currentVdoRoomPassword });
     publish();
-    gmPresenceIntervalId = setInterval(publish, 30000);
+    gmPresenceIntervalId = setInterval(publish, 8000);
 }
 function updateGMPushIframe() {
     const pushFrame = document.getElementById('vdo-gm-push-frame');
@@ -773,12 +773,16 @@ function handlePresence(data) {
     syncKnownPlayer(data.charId, playerData);
     clearTimeout(renderPlayerCardsTimer);
     renderPlayerCardsTimer = setTimeout(renderPlayerCards, 150);
-    // Auto-send file grants and music state to newly connected sessions
+    // Auto-send file grants, music state, and gm-presence to newly connected sessions
     if (!filesGrantedSessions.has(data.playerId)) {
         filesGrantedSessions.add(data.playerId);
         sendFileGrantsToPlayer(data);
         if (musicIsPlaying && gmMusic[musicCurrentIndex]) {
             publishMusicPlay(gmMusic[musicCurrentIndex]);
+        }
+        if (currentVdoRoom && ablyDamage) {
+            const gmStreamId = 'aria-gm-' + currentCampaignId.slice(0, 8);
+            ablyDamage.publish('gm-presence', { streamId: gmStreamId, vdoRoom: currentVdoRoom, vdoRoomPassword: currentVdoRoomPassword });
         }
     }
 }

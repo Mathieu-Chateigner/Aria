@@ -32,6 +32,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Docs", "Docs", "{E1B2C3D4-E
 		Docs\superpowers\specs\2026-05-06-vdo-ninja-camera-design.md = Docs\superpowers\specs\2026-05-06-vdo-ninja-camera-design.md
 		Docs\Aide aux combats.pdf = Docs\Aide aux combats.pdf
 		Docs\bugs_and_issues.md = Docs\bugs_and_issues.md
+		Docs\console_logs.txt = Docs\console_logs.txt
 		Docs\development_plan.md = Docs\development_plan.md
 		Docs\README.md = Docs\README.md
 	EndProjectSection
