@@ -1080,7 +1080,7 @@ function renderAll() {
 function renderSkills() {
     const list = document.getElementById('skill-list');
     list.innerHTML = '';
-    (character.skills || []).forEach(skill => {
+    [...(character.skills || [])].sort((a, b) => a.name.localeCompare(b.name, 'fr')).forEach(skill => {
         const eff = Math.max(1, Math.min(100, skill.pct + bonusMalus + (character.karma ?? 0)));
         const div = document.createElement('div');
         const isSoigner = skill.name === 'Soigner';
@@ -1095,7 +1095,7 @@ function renderSkills() {
     });
     const slist = document.getElementById('special-list');
     slist.innerHTML = '';
-    (character.specials || []).forEach(sp => {
+    [...(character.specials || [])].sort((a, b) => a.name.localeCompare(b.name, 'fr')).forEach(sp => {
         const eff = Math.max(1, Math.min(100, sp.pct + bonusMalus + (character.karma ?? 0)));
         const div = document.createElement('div');
         div.className = 'skill-item';
