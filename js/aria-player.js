@@ -2224,10 +2224,12 @@ function renderEditorForm() {
     document.getElementById('ed-name').value = character.name;
     document.getElementById('ed-class').value = character.class || '';
     const attrsBlock = document.getElementById('cs-attrs-block');
-    if (character.ariaType === 'contemporary') {
-        if (attrsBlock) attrsBlock.style.display = 'none';
-    } else {
-        if (attrsBlock) attrsBlock.style.display = '';
+    if (attrsBlock) {
+        attrsBlock.querySelectorAll('.cs-attr:not(.cs-attr-pv)').forEach(el => {
+            el.style.display = character.ariaType === 'contemporary' ? 'none' : '';
+        });
+    }
+    if (character.ariaType !== 'contemporary') {
         document.getElementById('ed-for').value = character.stats.FOR ?? 0;
         document.getElementById('ed-dex').value = character.stats.DEX ?? 0;
         document.getElementById('ed-end').value = character.stats.END ?? 0;
@@ -2486,12 +2488,14 @@ function renderSkillsEditor() {
     const list = document.getElementById('skills-editor-list');
     if (!list) return;
     list.innerHTML = '';
-    (character.skills || []).forEach((sk, i) => {
-        const row = document.createElement('div');
-        row.className = 'skill-editor-row';
-        row.innerHTML = `<span class="sname">${sk.name}</span><input class="spct" type="text" inputmode="numeric" value="${sk.pct}" oninput="this.value=this.value.replace(/[^0-9]/g,'');character.skills[${i}].pct=+this.value||0" />`;
-        list.appendChild(row);
-    });
+    (character.skills || []).map((sk, i) => ({ sk, i }))
+        .sort((a, b) => a.sk.name.localeCompare(b.sk.name, 'fr'))
+        .forEach(({ sk, i }) => {
+            const row = document.createElement('div');
+            row.className = 'skill-editor-row';
+            row.innerHTML = `<span class="sname">${sk.name}</span><input class="spct" type="text" inputmode="numeric" value="${sk.pct}" oninput="this.value=this.value.replace(/[^0-9]/g,'');character.skills[${i}].pct=+this.value||0" />`;
+            list.appendChild(row);
+        });
 }
 function renderSpecialsEditor() {
     const list = document.getElementById('specials-editor-list');
