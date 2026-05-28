@@ -109,12 +109,22 @@ let gmStreamId = '';
 let vdoRoom = '';
 let vdoRoomPassword = '';
 let selfViewStream = null;
-function derivedStreamId() { return 'aria-' + currentCharId.slice(0, 8); }
+function derivedStreamId() {
+    const sid = 'aria-' + currentCharId.slice(0, 8);
+    console.log('[VDO] derivedStreamId() →', sid, '| currentCharId:', currentCharId);
+    return sid;
+}
 function updatePushIframe() {
     const pushFrame = document.getElementById('vdo-push-frame');
-    if (!pushFrame) return;
-    if (!vdoRoom) { pushFrame.src = ''; return; }
-    pushFrame.src = `https://vdo.ninja/?push=${derivedStreamId()}&autostart&webcam&noaudio&cleanoutput`;
+    if (!pushFrame) { console.warn('[VDO] updatePushIframe: #vdo-push-frame not found'); return; }
+    if (!vdoRoom) {
+        console.log('[VDO] updatePushIframe: vdoRoom empty → clearing push iframe src');
+        pushFrame.src = ''; return;
+    }
+    const sid = derivedStreamId();
+    const src = `https://vdo.ninja/?push=${sid}&autostart&webcam&noaudio&cleanoutput`;
+    console.log('[VDO] updatePushIframe: setting push iframe →', src);
+    pushFrame.src = src;
 }
 let ablyInstance = null;
 let currentHP = null;
@@ -757,7 +767,9 @@ function applyTabVisibility() {
 }
 
 function updateCamerasTabVisibility() {
-    const hasAny = !!gmStreamId || !!selfViewStream || [...peerCameras.values()].some(p => p.streamId);
+    const peers = [...peerCameras.values()];
+    const hasAny = !!gmStreamId || !!selfViewStream || peers.some(p => p.streamId);
+    console.log('[VDO] updateCamerasTabVisibility: gmStreamId=', gmStreamId, '| selfViewStream=', !!selfViewStream, '| peerCameras=', peers.map(p => `${p.name}(${p.streamId})`).join(', '), '| hasAny=', hasAny);
     const btn = document.getElementById('tab-btn-cameras');
     if (!btn) return;
     btn.style.display = hasAny ? '' : 'none';
@@ -765,6 +777,7 @@ function updateCamerasTabVisibility() {
         switchTab('tab-skills', document.querySelector('.tab-btn'));
     }
     if (document.getElementById('tab-cameras')?.classList.contains('active')) {
+        console.log('[VDO] cameras tab is active → calling renderCamerasTab()');
         renderCamerasTab();
     }
 }
@@ -786,9 +799,10 @@ function stopSelfView() {
 }
 
 function renderCamerasTab() {
+    console.log('[VDO] renderCamerasTab() called | currentCharId:', currentCharId, '| gmStreamId:', gmStreamId, '| peerCameras:', [...peerCameras.entries()].map(([k,v]) => `${k}:${v.name}(${v.streamId})`).join(', '));
     startSelfView();
     const grid = document.getElementById('cameras-grid');
-    if (!grid) return;
+    if (!grid) { console.warn('[VDO] renderCamerasTab: #cameras-grid not found'); return; }
     // Self-view: native camera, no VDO.ninja required
     let selfCell = grid.querySelector('.camera-cell[data-self]');
     if (selfViewStream) {
@@ -820,8 +834,15 @@ function renderCamerasTab() {
     const expected = new Map();
     if (gmStreamId) expected.set(gmStreamId, 'MJ');
     peerCameras.forEach((p, charId) => {
-        if (p.streamId && charId !== currentCharId) expected.set(p.streamId, p.name);
+        if (p.streamId && charId !== currentCharId) {
+            expected.set(p.streamId, p.name);
+        } else if (charId === currentCharId) {
+            console.log('[VDO] renderCamerasTab: skipping own charId in peerCameras:', charId, p);
+        } else if (!p.streamId) {
+            console.log('[VDO] renderCamerasTab: peer has no streamId:', charId, p);
+        }
     });
+    console.log('[VDO] renderCamerasTab: expected iframes =', [...expected.entries()].map(([sid, lbl]) => `${lbl}(${sid})`).join(', ') || '(none)');
     // Remove cells whose stream ID is no longer needed (self-view cell is excluded)
     [...grid.querySelectorAll('.camera-cell:not([data-self])')].forEach(cell => {
         const iframe = cell.querySelector('.camera-iframe');
@@ -839,18 +860,22 @@ function renderCamerasTab() {
             if (sid) rendered.set(sid, cell);
         } catch {}
     });
+    console.log('[VDO] renderCamerasTab: already-rendered iframes =', [...rendered.keys()].join(', ') || '(none)');
     // Update labels for existing cells; add cells for new stream IDs
     expected.forEach((label, sid) => {
         if (rendered.has(sid)) {
+            console.log('[VDO] renderCamerasTab: iframe already exists for', label, '(', sid, ') — updating label only');
             const labelEl = rendered.get(sid).querySelector('.camera-label');
             if (labelEl) labelEl.textContent = label;
         } else {
+            const iframeSrc = `https://vdo.ninja/?view=${encodeURIComponent(sid)}&autoplay&cleanoutput`;
+            console.log('[VDO] renderCamerasTab: CREATING new iframe for', label, '(', sid, ') →', iframeSrc);
             const cell = document.createElement('div');
             cell.className = 'camera-cell';
             const wrap = document.createElement('div');
             wrap.className = 'camera-iframe-wrap';
             const iframe = document.createElement('iframe');
-            iframe.src = `https://vdo.ninja/?view=${encodeURIComponent(sid)}&autoplay&cleanoutput`;
+            iframe.src = iframeSrc;
             iframe.allow = 'autoplay; fullscreen; display-capture; picture-in-picture; screen-wake-lock';
             iframe.allowFullscreen = true;
             iframe.className = 'camera-iframe';
@@ -2010,15 +2035,24 @@ function initAbly() {
             // Track other players' presence for Soigner targeting
             if (msg.name === 'presence' && d.playerId && d.playerId !== myId) {
                 knownPlayers[d.playerId] = { name: d.name, ts: Date.now() };
+                console.log('[VDO] received peer presence:', d.name, '| charId:', d.charId, '| streamId:', d.streamId, '| campaignKey:', d.campaignKey);
                 if (d.charId) {
                     if (d.streamId) {
                         peerCameras.set(d.charId, { name: d.name || d.charId, streamId: d.streamId });
+                        console.log('[VDO] peerCameras.set:', d.charId, '→', { name: d.name, streamId: d.streamId });
                     } else {
                         peerCameras.delete(d.charId);
+                        console.log('[VDO] peerCameras.delete (no streamId):', d.charId);
                     }
+                    console.log('[VDO] peerCameras now:', [...peerCameras.entries()].map(([k,v]) => `${k}:${v.name}(${v.streamId})`).join(', '));
                     updateCamerasTabVisibility();
+                } else {
+                    console.warn('[VDO] peer presence missing charId:', d);
                 }
                 return;
+            }
+            if (msg.name === 'presence' && d.playerId === myId) {
+                console.log('[VDO] received OWN presence echo (playerId match), ignoring for peerCameras');
             }
             // Handle player-to-player heal/damage (from another player's Soigner)
             if (d.source === 'player') {
@@ -2110,11 +2144,16 @@ function initAbly() {
                 return;
             }
             if (msg.name === 'gm-presence') {
+                console.log('[VDO] received gm-presence:', d, '| previous gmStreamId:', gmStreamId, '| previous vdoRoom:', vdoRoom);
                 gmStreamId = d.streamId || '';
+                console.log('[VDO] gmStreamId set to:', gmStreamId);
                 if (d.vdoRoom !== undefined) {
                     vdoRoom = d.vdoRoom || '';
                     vdoRoomPassword = d.vdoRoomPassword || '';
+                    console.log('[VDO] vdoRoom set to:', vdoRoom, '| calling updatePushIframe()');
                     updatePushIframe();
+                } else {
+                    console.log('[VDO] gm-presence had no vdoRoom field, push iframe unchanged');
                 }
                 updateCamerasTabVisibility();
                 return;
@@ -2160,6 +2199,8 @@ function publishCard(type, extra = {}) {
 }
 function sendPresence() {
     if (!ablyDamage) { console.warn('[ARIA] sendPresence: ablyDamage not ready'); return; }
+    const sid = derivedStreamId();
+    console.log('[VDO] sendPresence: publishing streamId:', sid, '| playerId:', playerId, '| charId:', currentCharId);
     ablyDamage.publish('presence', {
         playerId, charId: currentCharId, name: character.name, charClass: character.class,
         hp: currentHP, maxHP: getMaxHP(), stats: character.stats,
@@ -2175,7 +2216,7 @@ function sendPresence() {
         money: character.money || { couronne: 0, orbe: 0, sceptre: 0, sou: 0 },
         campaignKey: character.campaignKey || '',
         ariaType: character.ariaType || 'ancient',
-        streamId: derivedStreamId(),
+        streamId: sid,
     }, err => { if (err) console.error('[ARIA] publish error:', err); });
 }
 function setAblyStatus(ok) {
