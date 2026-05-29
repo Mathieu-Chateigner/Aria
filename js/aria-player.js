@@ -118,16 +118,13 @@ function derivedStreamId() {
     console.log('[VDO] derivedStreamId() →', sid, '| currentCharId:', currentCharId);
     return sid;
 }
-// Manage the persistent sidebar push iframe — always visible so browser grants camera access.
+// Set the VDO.ninja push iframe src — iframe is a tiny 2×2px fixed element so browser grants camera access.
 function updatePushIframe() {
-    const wrap = document.getElementById('player-push-wrap');
-    const panel = document.getElementById('player-push-panel');
-    if (!wrap || !panel) return;
+    const pushFrame = document.getElementById('vdo-push-frame');
+    if (!pushFrame) { console.warn('[VDO] updatePushIframe: #vdo-push-frame not found'); return; }
     if (!vdoRoom || !currentCharId) {
-        console.log('[VDO] updatePushIframe: vdoRoom empty → hiding push panel');
-        const existing = wrap.querySelector('iframe');
-        if (existing) existing.src = '';
-        panel.style.display = 'none';
+        console.log('[VDO] updatePushIframe: vdoRoom empty → clearing push iframe src');
+        pushFrame.src = '';
         updateCamerasTabVisibility();
         return;
     }
@@ -135,15 +132,7 @@ function updatePushIframe() {
     let src = `https://vdo.ninja/?push=${sid}&room=${encodeURIComponent(vdoRoom)}&autostart&webcam&noaudio&cleanoutput`;
     if (vdoRoomPassword) src += `&password=${encodeURIComponent(vdoRoomPassword)}`;
     console.log('[VDO] updatePushIframe: setting push iframe →', src);
-    let iframe = wrap.querySelector('iframe');
-    if (!iframe) {
-        iframe = document.createElement('iframe');
-        iframe.allow = 'camera; microphone; autoplay; fullscreen; display-capture; picture-in-picture; screen-wake-lock; encrypted-media';
-        iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;';
-        wrap.appendChild(iframe);
-    }
-    if (iframe.src !== src) iframe.src = src;
-    panel.style.display = '';
+    if (pushFrame.src !== src) pushFrame.src = src;
     stopSelfView();
     updateCamerasTabVisibility();
 }
