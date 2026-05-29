@@ -761,33 +761,36 @@ function startGMPresenceBroadcast() {
 }
 // Set the GM VDO.ninja push iframe src so the GM camera streams to the room.
 function updateGMPushIframe() {
-    const pushFrame = document.getElementById('vdo-gm-push-frame');
-    if (!pushFrame) return;
-    if (!currentVdoRoom || !currentCampaignId) { console.log('[GM] updateGMPushIframe: no vdoRoom, clearing push iframe'); pushFrame.src = ''; return; }
-    let src = `https://vdo.ninja/?push=aria-gm-${currentCampaignId.slice(0, 8)}&room=${encodeURIComponent(currentVdoRoom)}&autostart&webcam&noaudio&cleanoutput`;
+    const wrap = document.getElementById('gm-self-view-wrap');
+    const section = document.getElementById('gm-self-view-section');
+    if (!wrap || !section) return;
+    if (!currentVdoRoom || !currentCampaignId) {
+        console.log('[GM] updateGMPushIframe: no vdoRoom, clearing push iframe');
+        const existing = wrap.querySelector('iframe');
+        if (existing) existing.src = '';
+        return;
+    }
+    const gmStreamId = 'aria-gm-' + currentCampaignId.slice(0, 8);
+    let src = `https://vdo.ninja/?push=${gmStreamId}&room=${encodeURIComponent(currentVdoRoom)}&autostart&webcam&noaudio&cleanoutput`;
     if (currentVdoRoomPassword) src += `&password=${encodeURIComponent(currentVdoRoomPassword)}`;
     console.log('[GM] updateGMPushIframe:', src);
-    pushFrame.src = src;
+    let iframe = wrap.querySelector('iframe');
+    if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.allow = 'camera; microphone; autoplay; fullscreen; display-capture; picture-in-picture; screen-wake-lock; encrypted-media';
+        iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;';
+        wrap.appendChild(iframe);
+    }
+    if (iframe.src !== src) iframe.src = src;
+    section.style.display = '';
 }
-// Show GM self-view: a VDO.ninja viewer iframe if a room is configured, else native camera.
+// Show GM self-view: visible push iframe if a VDO room is configured, else native camera.
 function startGMSelfView() {
     const section = document.getElementById('gm-self-view-section');
     const wrap = document.getElementById('gm-self-view-wrap');
     if (!section || !wrap) return;
     if (currentVdoRoom && currentCampaignId) {
-        // Push iframe owns the camera — show viewer iframe to avoid getUserMedia conflict
-        const gmStreamId = 'aria-gm-' + currentCampaignId.slice(0, 8);
-        let iframe = wrap.querySelector('iframe');
-        if (!iframe) {
-            iframe = document.createElement('iframe');
-            iframe.allow = 'camera;microphone;autoplay;fullscreen';
-            iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;';
-            wrap.appendChild(iframe);
-        }
-        let selfViewSrc = `https://vdo.ninja/?view=${gmStreamId}&room=${encodeURIComponent(currentVdoRoom)}&cleanoutput&autoplay&muted`;
-        if (currentVdoRoomPassword) selfViewSrc += `&password=${encodeURIComponent(currentVdoRoomPassword)}`;
-        iframe.src = selfViewSrc;
-        section.style.display = '';
+        updateGMPushIframe();
         return;
     }
     if (gmSelfViewStream) return;

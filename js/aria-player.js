@@ -118,19 +118,18 @@ function derivedStreamId() {
     console.log('[VDO] derivedStreamId() →', sid, '| currentCharId:', currentCharId);
     return sid;
 }
-// Set the VDO.ninja push iframe src to stream this player's camera to the GM.
+// Trigger cameras grid update when vdoRoom changes — push iframe lives in the visible self-view cell.
 function updatePushIframe() {
     const pushFrame = document.getElementById('vdo-push-frame');
-    if (!pushFrame) { console.warn('[VDO] updatePushIframe: #vdo-push-frame not found'); return; }
+    if (pushFrame) pushFrame.src = '';
     if (!vdoRoom) {
-        console.log('[VDO] updatePushIframe: vdoRoom empty → clearing push iframe src');
-        pushFrame.src = ''; return;
+        console.log('[VDO] updatePushIframe: vdoRoom empty');
+        updateCamerasTabVisibility();
+        return;
     }
-    const sid = derivedStreamId();
-    let src = `https://vdo.ninja/?push=${sid}&room=${encodeURIComponent(vdoRoom)}&autostart&webcam&noaudio&cleanoutput`;
-    if (vdoRoomPassword) src += `&password=${encodeURIComponent(vdoRoomPassword)}`;
-    console.log('[VDO] updatePushIframe: setting push iframe →', src);
-    pushFrame.src = src;
+    console.log('[VDO] updatePushIframe: vdoRoom=', vdoRoom, '| triggering cameras update');
+    stopSelfView();
+    updateCamerasTabVisibility();
 }
 let ablyInstance = null;
 let currentHP = null;
@@ -833,7 +832,7 @@ function applyTabVisibility() {
 // Show/hide the Cameras tab based on whether any active stream IDs are known.
 function updateCamerasTabVisibility() {
     const peers = [...peerCameras.values()];
-    const hasAny = !!gmStreamId || !!selfViewStream || peers.some(p => p.streamId);
+    const hasAny = !!gmStreamId || !!selfViewStream || !!vdoRoom || peers.some(p => p.streamId);
     console.log('[VDO] updateCamerasTabVisibility: gmStreamId=', gmStreamId, '| selfViewStream=', !!selfViewStream, '| peerCameras=', peers.map(p => `${p.name}(${p.streamId})`).join(', '), '| hasAny=', hasAny);
     const btn = document.getElementById('tab-btn-cameras');
     if (!btn) return;
@@ -847,14 +846,15 @@ function updateCamerasTabVisibility() {
     }
 }
 
-// Request camera access and store the stream for the self-view preview cell.
+// Request native camera access for the self-view preview (only when no VDO room is active).
 function startSelfView() {
+    if (vdoRoom) return; // push iframe handles camera when VDO room is active
     if (selfViewStream) return;
     if (!navigator.mediaDevices?.getUserMedia) return;
     navigator.mediaDevices.getUserMedia({ video: true, audio: false })
         .then(stream => {
             selfViewStream = stream;
-            updateCamerasTabVisibility(); // show tab button + re-render if tab is open
+            updateCamerasTabVisibility();
         })
         .catch(() => {});
 }
@@ -871,9 +871,47 @@ function renderCamerasTab() {
     startSelfView();
     const grid = document.getElementById('cameras-grid');
     if (!grid) { console.warn('[VDO] renderCamerasTab: #cameras-grid not found'); return; }
-    // Self-view: native camera, no VDO.ninja required
+    // Self-view: push iframe when VDO room is active, native video otherwise
     let selfCell = grid.querySelector('.camera-cell[data-self]');
-    if (selfViewStream) {
+    if (vdoRoom && currentCharId) {
+        const sid = derivedStreamId();
+        let pushSrc = `https://vdo.ninja/?push=${sid}&room=${encodeURIComponent(vdoRoom)}&autostart&webcam&noaudio&cleanoutput`;
+        if (vdoRoomPassword) pushSrc += `&password=${encodeURIComponent(vdoRoomPassword)}`;
+        if (!selfCell) {
+            selfCell = document.createElement('div');
+            selfCell.className = 'camera-cell';
+            selfCell.dataset.self = '1';
+            const wrap = document.createElement('div');
+            wrap.className = 'camera-iframe-wrap';
+            const iframe = document.createElement('iframe');
+            iframe.allow = 'camera; microphone; autoplay; fullscreen; display-capture; picture-in-picture; screen-wake-lock; encrypted-media';
+            iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;';
+            iframe.src = pushSrc;
+            wrap.appendChild(iframe);
+            const labelEl = document.createElement('div');
+            labelEl.className = 'camera-label';
+            labelEl.textContent = character.name || 'Vous';
+            selfCell.appendChild(wrap);
+            selfCell.appendChild(labelEl);
+            grid.insertBefore(selfCell, grid.firstChild);
+        } else {
+            const existingIframe = selfCell.querySelector('iframe');
+            if (!existingIframe) {
+                const wrap = selfCell.querySelector('.camera-iframe-wrap');
+                if (wrap) wrap.innerHTML = '';
+                const targetWrap = wrap || (() => { const w = document.createElement('div'); w.className = 'camera-iframe-wrap'; selfCell.insertBefore(w, selfCell.firstChild); return w; })();
+                const iframe = document.createElement('iframe');
+                iframe.allow = 'camera; microphone; autoplay; fullscreen; display-capture; picture-in-picture; screen-wake-lock; encrypted-media';
+                iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;';
+                iframe.src = pushSrc;
+                targetWrap.appendChild(iframe);
+            } else if (existingIframe.src !== pushSrc) {
+                existingIframe.src = pushSrc;
+            }
+            const lbl = selfCell.querySelector('.camera-label');
+            if (lbl) lbl.textContent = character.name || 'Vous';
+        }
+    } else if (selfViewStream) {
         if (!selfCell) {
             selfCell = document.createElement('div');
             selfCell.className = 'camera-cell';
