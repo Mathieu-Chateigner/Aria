@@ -980,7 +980,9 @@ function renderPlayerCards() {
                 const wrap = document.createElement('div');
                 wrap.className = 'pc-camera-wrap';
                 const iframe = document.createElement('iframe');
-                iframe.src = `https://vdo.ninja/?view=${encodeURIComponent(p.streamId)}&autoplay&cleanoutput`;
+                let newCardSrc = `https://vdo.ninja/?view=${encodeURIComponent(p.streamId)}&room=${encodeURIComponent(currentVdoRoom)}&autoplay&cleanoutput`;
+                if (currentVdoRoomPassword) newCardSrc += `&password=${encodeURIComponent(currentVdoRoomPassword)}`;
+                iframe.src = newCardSrc;
                 iframe.allow = 'autoplay; fullscreen; display-capture; picture-in-picture; screen-wake-lock';
                 iframe.allowFullscreen = true;
                 iframe.className = 'pc-camera-frame';
