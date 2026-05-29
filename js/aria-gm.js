@@ -526,8 +526,6 @@ function switchCampaign() {
     if (gmPresenceIntervalId) { clearInterval(gmPresenceIntervalId); gmPresenceIntervalId = null; }
     currentVdoRoom = '';
     currentVdoRoomPassword = '';
-    const gmPushFrame = document.getElementById('vdo-gm-push-frame');
-    if (gmPushFrame) gmPushFrame.src = '';
     stopGMSelfView();
     if (renderPlayerCardsTimer) { clearTimeout(renderPlayerCardsTimer); renderPlayerCardsTimer = null; }
     if (renderMonstersTimer) { clearTimeout(renderMonstersTimer); renderMonstersTimer = null; }

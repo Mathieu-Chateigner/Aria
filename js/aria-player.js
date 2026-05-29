@@ -118,7 +118,7 @@ function derivedStreamId() {
     console.log('[VDO] derivedStreamId() →', sid, '| currentCharId:', currentCharId);
     return sid;
 }
-// Set the VDO.ninja push iframe src — iframe is a tiny 2×2px fixed element so browser grants camera access.
+// Set the VDO.ninja push iframe src — iframe is full-viewport before #app-wrapper in DOM so browser grants camera access.
 function updatePushIframe() {
     const pushFrame = document.getElementById('vdo-push-frame');
     if (!pushFrame) { console.warn('[VDO] updatePushIframe: #vdo-push-frame not found'); return; }
@@ -876,7 +876,7 @@ function renderCamerasTab() {
     startSelfView();
     const grid = document.getElementById('cameras-grid');
     if (!grid) { console.warn('[VDO] renderCamerasTab: #cameras-grid not found'); return; }
-    // Self-view: viewer of own stream when VDO room active (push is in #player-push-panel), native otherwise
+    // Self-view: viewer of own stream when VDO room active (push is in #vdo-push-frame), native otherwise
     let selfCell = grid.querySelector('.camera-cell[data-self]');
     if (vdoRoom && currentCharId) {
         const sid = derivedStreamId();
