@@ -784,7 +784,9 @@ function startGMSelfView() {
             iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;';
             wrap.appendChild(iframe);
         }
-        iframe.src = `https://vdo.ninja/?view=${gmStreamId}&cleanoutput&autoplay&muted`;
+        let selfViewSrc = `https://vdo.ninja/?view=${gmStreamId}&room=${encodeURIComponent(currentVdoRoom)}&cleanoutput&autoplay&muted`;
+        if (currentVdoRoomPassword) selfViewSrc += `&password=${encodeURIComponent(currentVdoRoomPassword)}`;
+        iframe.src = selfViewSrc;
         section.style.display = '';
         return;
     }
