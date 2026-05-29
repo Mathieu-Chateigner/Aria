@@ -1159,12 +1159,12 @@ function updateBMDisplay() {
     el.textContent = (bonusMalus > 0 ? '+' : '') + bonusMalus;
     el.className = 'bm-display' + (bonusMalus > 0 ? ' positive' : bonusMalus < 0 ? ' negative' : '');
     // Update only the percentage text in existing skill elements — no DOM rebuild
-    document.getElementById('skill-list').querySelectorAll('.skill-item').forEach((div, i) => {
-        const skill = (character.skills || [])[i];
+    document.getElementById('skill-list').querySelectorAll('.skill-item').forEach(div => {
+        const skill = (character.skills || []).find(s => s.name === div.dataset.skillName);
         if (skill) div.querySelector('.skill-pct').textContent = Math.max(1, Math.min(100, skill.pct + bonusMalus + (character?.karma ?? 0))) + '%';
     });
-    document.getElementById('special-list').querySelectorAll('.skill-item').forEach((div, i) => {
-        const sp = (character.specials || [])[i];
+    document.getElementById('special-list').querySelectorAll('.skill-item').forEach(div => {
+        const sp = (character.specials || []).find(s => s.name === div.dataset.skillName);
         if (sp) div.querySelector('.skill-pct').textContent = Math.max(1, Math.min(100, sp.pct + bonusMalus + (character?.karma ?? 0))) + '%';
     });
     document.getElementById('potion-list')?.querySelectorAll('.recipe-row').forEach((div, i) => {
@@ -1201,6 +1201,7 @@ function renderSkills() {
         const div = document.createElement('div');
         const isSoigner = skill.name === 'Soigner';
         div.className = 'skill-item' + (isSoigner ? ' soigner-skill' : '');
+        div.dataset.skillName = skill.name;
         div.innerHTML = `${skill.link ? `<span class="skill-link">${skill.link}</span>` : ''}<span class="skill-name">${skill.name}</span><span class="skill-pct">${eff}%</span>`;
         if (isSoigner) {
             div.addEventListener('click', () => openSoignerTargetPicker(skill.pct));
@@ -1215,6 +1216,7 @@ function renderSkills() {
         const eff = Math.max(1, Math.min(100, sp.pct + bonusMalus + (character.karma ?? 0)));
         const div = document.createElement('div');
         div.className = 'skill-item';
+        div.dataset.skillName = sp.name;
         div.style.borderColor = 'rgba(123,63,160,.3)';
         div.innerHTML = `<span class="skill-link" style="color:var(--card-purple)">Spéciale</span><span class="skill-name">${sp.name}${sp.desc ? ` <span style="font-size:12px;color:var(--parchment-dim)">— ${sp.desc}</span>` : ''}</span><span class="skill-pct" style="color:var(--card-purple)">${eff}%</span>`;
         div.addEventListener('click', () => doRoll(sp.name, sp.pct));
