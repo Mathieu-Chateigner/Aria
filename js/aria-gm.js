@@ -13,8 +13,11 @@ const ALL_CARDS = [];
 for (const s of SUITS) for (const r of RANKS) ALL_CARDS.push({ id: `${r}-${s.name}`, rank: r, suit: s });
 ALL_CARDS.push({ id: 'joker-red', isJoker: true, jokerColor: 'red', label: 'Joker Rouge' });
 ALL_CARDS.push({ id: 'joker-black', isJoker: true, jokerColor: 'black', label: 'Joker Noir' });
+// Look up a card in ALL_CARDS by its ID string.
 function cardById(id) { return ALL_CARDS.find(c => c.id === id); }
+// Fisher-Yates shuffle of an array, returning a new array.
 function shuffle(a) { const b = [...a]; for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[b[i], b[j]] = [b[j], b[i]]; } return b; }
+// Build a freshly shuffled deck of all 54 cards.
 function buildDeck() { return shuffle([...ALL_CARDS]); }
 
 // ═══════════════════════════════════════════
@@ -61,57 +64,69 @@ let _pendingNewKey = null;
 // ═══════════════════════════════════════════
 //  CLOUD SAVE — RELATIONAL SYNC
 // ═══════════════════════════════════════════
+// Check whether a save key is set (required for all Supabase writes).
 function _supabaseReady() { return !!saveKey; }
+// Return the current UTC time as an ISO 8601 string.
 function _nowISO() { return new Date().toISOString(); }
 
+// Upsert campaign metadata (name, join code, VDO room) to Supabase.
 async function syncCampaign(camp) {
     if (!_supabaseReady()) return;
     await sbUpsert('campaigns', { id: camp.id, save_key: saveKey, name: camp.name, join_code: camp.joinCode || null, vdo_room: camp.vdoRoom || null, vdo_room_password: camp.vdoRoomPassword || null, aria_type: camp.ariaType || 'ancient', updated_at: _nowISO() });
 }
 
+// Upsert a single monster's stats and attacks to Supabase.
 async function syncMonster(m) {
     if (!_supabaseReady() || !currentCampaignId) return;
     await sbUpsert('monsters', { id: String(m.id), campaign_id: currentCampaignId, name: m.name, pv: m.pv, max_pv: m.maxPV, armor: m.armor || 0, stats: m.stats || null, attacks: m.attacks || null, updated_at: _nowISO() });
 }
 
 let _monstersTimer = null;
+// Debounced sync of all monsters for the current campaign.
 function debouncedSyncMonsters() {
     clearTimeout(_monstersTimer);
     _monstersTimer = setTimeout(() => { if (_supabaseReady() && currentCampaignId) Promise.all(monsters.map(m => syncMonster(m))); }, 800);
 }
 
+// Insert a new roll entry into the campaign_rolls table.
 async function insertRoll(data) {
     if (!_supabaseReady() || !currentCampaignId) return;
     await sbInsert('campaign_rolls', { campaign_id: currentCampaignId, skill_name: data.skillName || '', threshold: data.threshold ?? null, roll: data.roll, success: !!data.success, char_name: data.char || data.playerId || '', bonus_malus: data.bonusMalus || 0, created_at: _nowISO() });
 }
 
+// Insert a new card draw entry into the campaign_card_history table.
 async function insertCardHistory(cardId) {
     if (!_supabaseReady() || !currentCampaignId) return;
     await sbInsert('campaign_card_history', { campaign_id: currentCampaignId, card_id: cardId, drawn_at: _nowISO() });
 }
 
+// Upsert a GM potion recipe to the campaign_potions table.
 async function syncPotion(p) {
     if (!_supabaseReady() || !currentCampaignId) return;
     await sbUpsert('campaign_potions', { id: p.id, campaign_id: currentCampaignId, name: p.name, description: p.desc || '', ingredients: p.ingredients || null, success_chance: p.successChance || 0, updated_at: _nowISO() });
 }
 
 let _potionsTimer = null;
+// Debounced sync of all GM potion recipes for the current campaign.
 function debouncedSyncPotions() {
     clearTimeout(_potionsTimer);
     _potionsTimer = setTimeout(() => { if (_supabaseReady() && currentCampaignId) Promise.all(gmPotions.map(p => syncPotion(p))); }, 800);
 }
 
+// Upsert a campaign file record (URL, grants) to Supabase.
 async function syncFile(f) {
     if (!_supabaseReady() || !currentCampaignId) return;
     await sbUpsert('campaign_files', { id: f.id, campaign_id: currentCampaignId, name: f.name, type: f.type || '', url: f.url || '', path: f.path || '', granted_to: f.grantedTo || [], updated_at: _nowISO() });
 }
 
 let _filesTimer = null;
+// Debounced sync of all campaign files.
 function debouncedSyncFiles() {
     clearTimeout(_filesTimer);
     _filesTimer = setTimeout(() => { if (_supabaseReady() && currentCampaignId) Promise.all(gmFiles.map(f => syncFile(f))); }, 800);
 }
 
+// Upsert a music track record to the campaign_music table.
 async function syncMusicTrack(t) {
     if (!_supabaseReady() || !currentCampaignId) return;
     const pos = gmMusic.findIndex(x => x.id === t.id);
@@ -123,6 +138,7 @@ async function syncMusicTrack(t) {
 }
 
 let _musicSyncTimer = null;
+// Debounced sync of all music tracks for the current campaign.
 function debouncedSyncMusic() {
     clearTimeout(_musicSyncTimer);
     _musicSyncTimer = setTimeout(() => {
@@ -130,11 +146,13 @@ function debouncedSyncMusic() {
     }, 800);
 }
 
+// Delete a music track from the campaign_music table by ID.
 async function deleteMusicTrackFromDB(id) {
     if (!_supabaseReady()) return;
     await sbDelete('campaign_music', 'id=eq.' + encodeURIComponent(id));
 }
 
+// Upsert a GM note to the campaign_notes table.
 async function syncGMNote(note) {
     if (!_supabaseReady() || !currentCampaignId) return;
     const pos = gmNotesList.findIndex(n => n.id === note.id);
@@ -142,13 +160,16 @@ async function syncGMNote(note) {
 }
 
 let _gmNoteTimer = null;
+// Debounced sync of a single GM note.
 function debouncedSyncGMNote(note) { clearTimeout(_gmNoteTimer); _gmNoteTimer = setTimeout(() => syncGMNote(note), 800); }
 
+// Delete a GM note from Supabase by ID.
 async function deleteGMNoteFromDB(id) {
     if (!_supabaseReady()) return;
     await sbDelete('campaign_notes', 'id=eq.' + encodeURIComponent(id));
 }
 
+// Upsert a known player record for this campaign to Supabase.
 async function syncKnownPlayer(charId, data) {
     if (!_supabaseReady() || !currentCampaignId) return;
     const camp = getCampaigns().find(c => c.id === currentCampaignId);
@@ -156,6 +177,7 @@ async function syncKnownPlayer(charId, data) {
     await sbUpsert('campaign_known_players', { id: charId + ':' + currentCampaignId, campaign_id: currentCampaignId, char_id: charId, data, updated_at: _nowISO() }, 'campaign_id,char_id');
 }
 
+// Full sync of all GM data (campaigns, monsters, potions, files, music, notes) to Supabase.
 async function _syncAllGMData() {
     if (!_supabaseReady()) return;
     await sbUpsert('saves', { save_key: saveKey, type: 'gm' });
@@ -175,6 +197,7 @@ async function _syncAllGMData() {
     }
 }
 
+// Load all GM data from Supabase into localStorage for the current save key.
 async function loadFromSupabase() {
     if (!_supabaseReady()) return;
     await runMigration(saveKey, 'gm');
@@ -208,6 +231,7 @@ async function loadFromSupabase() {
     } catch(e) { console.warn('[ARIA] GM load failed:', e); }
 }
 
+// Show the save-key creation panel with a freshly generated key.
 function showGateway() {
     _pendingNewKey = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
     document.getElementById('gateway-key-display').textContent = _pendingNewKey;
@@ -216,6 +240,7 @@ function showGateway() {
     document.getElementById('file-gateway').style.display = 'flex';
 }
 
+// Switch the gateway panel to the "enter an existing key" form.
 function showGatewayExisting() {
     document.getElementById('gateway-new').style.display = 'none';
     document.getElementById('gateway-existing').style.display = '';
@@ -223,10 +248,12 @@ function showGatewayExisting() {
     if (input) { input.value = ''; input.focus(); }
 }
 
+// Hide the file-gateway panel.
 function hideGateway() {
     document.getElementById('file-gateway').style.display = 'none';
 }
 
+// Copy the displayed save key to the clipboard.
 function copyGatewayKey() {
     const key = document.getElementById('gateway-key-display').textContent;
     navigator.clipboard.writeText(key).catch(() => {});
@@ -234,6 +261,7 @@ function copyGatewayKey() {
     if (btn) { btn.textContent = 'Copié !'; setTimeout(() => { btn.textContent = 'Copier'; }, 2000); }
 }
 
+// Confirm new save key creation: persist it, create the Supabase row, and sync data.
 async function confirmNewKey() {
     if (!_pendingNewKey) return;
     saveKey = _pendingNewKey;
@@ -244,6 +272,7 @@ async function confirmNewKey() {
     showSelectionScreen();
 }
 
+// Load data from Supabase using an existing save key entered by the user.
 async function submitExistingKey() {
     const input = document.getElementById('gateway-key-input');
     const key = input ? input.value.trim() : '';
@@ -255,6 +284,7 @@ async function submitExistingKey() {
     showSelectionScreen();
 }
 
+// Update the save-key status label on the campaign selection screen.
 function updateSaveKeyStatus() {
     const label = document.getElementById('sel-save-label');
     if (!label) return;
@@ -262,11 +292,13 @@ function updateSaveKeyStatus() {
     label.className = 'sel-save-label' + (saveKey ? ' connected' : '');
 }
 
+// Show the existing-key form so the user can switch save keys.
 function changeSaveKey() {
     showGatewayExisting();
     document.getElementById('file-gateway').style.display = 'flex';
 }
 
+// Copy the current save key to the clipboard.
 function copySaveKey() {
     if (!saveKey) return;
     navigator.clipboard.writeText(saveKey).catch(() => {});
@@ -275,10 +307,12 @@ function copySaveKey() {
     if (copyBtn) { copyBtn.textContent = 'Copié !'; setTimeout(() => { copyBtn.textContent = 'Copier'; }, 2000); }
 }
 
+// Cancel key entry: hide the gateway if a key exists, else show the creation panel.
 function cancelGateway() {
     if (saveKey) { hideGateway(); } else { showGateway(); }
 }
 
+// On load: restore from Supabase if a save key exists, otherwise show the gateway.
 async function tryRestoreSupabase() {
     if (!saveKey) { showGateway(); return; }
     await loadFromSupabase();
@@ -289,6 +323,7 @@ async function tryRestoreSupabase() {
 // ═══════════════════════════════════════════
 //  CAMPAIGN MANAGEMENT
 // ═══════════════════════════════════════════
+// Generate a random 5-character alphanumeric join code for a campaign.
 function generateJoinCode() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let code = '';
@@ -296,24 +331,36 @@ function generateJoinCode() {
     return code;
 }
 
+// Return the campaign-scoped localStorage key for monsters.
 function monstersKey()      { return 'aria-gm-monsters-'      + currentCampaignId; }
+// Return the campaign-scoped localStorage key for rolls.
 function rollsKey()         { return 'aria-gm-rolls-'          + currentCampaignId; }
+// Return the campaign-scoped localStorage key for card history.
 function cardHistKey()      { return 'aria-gm-card-history-'   + currentCampaignId; }
+// Return the campaign-scoped localStorage key for potion recipes.
 function potionsKey()       { return 'aria-gm-potions-'        + currentCampaignId; }
+// Return the campaign-scoped localStorage key for known players.
 function knownPlayersKey()  { return 'aria-gm-known-players-'  + currentCampaignId; }
+// Return the campaign-scoped localStorage key for files.
 function filesKey()         { return 'aria-gm-files-'          + currentCampaignId; }
+// Return the campaign-scoped localStorage key for GM notes.
 function gmNotesKey()       { return 'aria-gm-notes-'          + currentCampaignId; }
+// Return the campaign-scoped localStorage key for the music playlist.
 function musicKey()         { return 'aria-gm-music-'          + currentCampaignId; }
 
+// Persist the players Map to localStorage as a plain object.
 function saveKnownPlayers() {
     const obj = {};
     players.forEach((p, id) => { obj[id] = p; });
     localStorage.setItem(knownPlayersKey(), JSON.stringify(obj));
 }
 
+// Read the campaigns array from localStorage.
 function getCampaigns() { return JSON.parse(localStorage.getItem('aria-gm-campaigns') || '[]'); }
+// Write campaigns to localStorage and sync each one to Supabase.
 function saveCampaigns(campaigns) { localStorage.setItem('aria-gm-campaigns', JSON.stringify(campaigns)); Promise.all(campaigns.map(c => syncCampaign(c))); }
 
+// Migrate old single-campaign localStorage keys to the multi-campaign format.
 function migrateGMIfNeeded() {
     if (localStorage.getItem('aria-gm-campaigns')) return;
     const oldMonsters = localStorage.getItem('aria-gm-monsters');
@@ -327,6 +374,7 @@ function migrateGMIfNeeded() {
     if (oldCards)    localStorage.setItem('aria-gm-card-history-' + id, oldCards);
 }
 
+// Load a campaign by ID into module state, initializing all scoped data.
 function loadCampaignState(id) {
     const campaigns = getCampaigns();
     const camp = campaigns.find(c => c.id === id);
@@ -353,6 +401,7 @@ function loadCampaignState(id) {
     return true;
 }
 
+// Render the campaign selection grid from localStorage.
 function renderCampaignScreen() {
     const campaigns = getCampaigns();
     const grid = document.getElementById('campaign-grid');
@@ -373,6 +422,7 @@ function renderCampaignScreen() {
     });
 }
 
+// Switch the UI to the campaign selection screen.
 function showSelectionScreen() {
     document.getElementById('selection-screen').style.display = 'flex';
     document.getElementById('app-wrapper').style.display = 'none';
@@ -381,6 +431,7 @@ function showSelectionScreen() {
     updateSaveKeyStatus();
 }
 
+// Copy a join code to the clipboard from a campaign card element, showing feedback.
 function copyJoinCodeFromCard(el, code) {
     if (!code) return;
     navigator.clipboard.writeText(code).catch(() => {});
@@ -389,17 +440,20 @@ function copyJoinCodeFromCard(el, code) {
     setTimeout(() => { el.textContent = orig; }, 1500);
 }
 
+// Switch the UI to the main GM app view.
 function showApp() {
     document.getElementById('selection-screen').style.display = 'none';
     document.getElementById('app-wrapper').style.display = 'flex';
 }
 
+// Select a campaign, load its state, and initialize the GM app.
 function selectCampaign(id) {
     if (!loadCampaignState(id)) return;
     showApp();
     initApp();
 }
 
+// Delete a campaign and all its scoped localStorage data and Supabase rows.
 function deleteCampaign(id) {
     if (!confirm('Supprimer cette campagne ? Tous les monstres et données seront perdus.')) return;
     sbDelete('campaigns', 'id=eq.' + encodeURIComponent(id));
@@ -416,12 +470,14 @@ function deleteCampaign(id) {
     renderCampaignScreen();
 }
 
+// Show the new campaign creation form.
 function createCampaign() {
     document.getElementById('new-campaign-form').style.display = 'flex';
     document.getElementById('new-campaign-name').value = '';
     document.getElementById('new-campaign-name').focus();
 }
 
+// Create a new campaign from the form and immediately select it.
 function confirmCreateCampaign() {
     const name = document.getElementById('new-campaign-name').value.trim() || 'Nouvelle campagne';
     const ariaType = document.querySelector('input[name="new-campaign-type"]:checked')?.value || 'ancient';
@@ -433,10 +489,12 @@ function confirmCreateCampaign() {
     selectCampaign(id);
 }
 
+// Hide the new campaign creation form without creating.
 function cancelCreateCampaign() {
     document.getElementById('new-campaign-form').style.display = 'none';
 }
 
+// Save an inline campaign name edit from a text input element.
 function saveCampaignName(input) {
     const name = input.value.trim();
     const campaigns = getCampaigns();
@@ -447,6 +505,7 @@ function saveCampaignName(input) {
     saveCampaigns(campaigns);
 }
 
+// Tear down the current campaign session (Ably, music, VDO) and return to selection.
 function switchCampaign() {
     if (currentCampaignId) {
         saveMonsters();
@@ -487,6 +546,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     await tryRestoreSupabase();
 });
 
+// Initialize the full GM app after a campaign is selected.
 function initApp() {
     console.log('[GM] initApp: campaign:', currentCampaignId, '| joinCode:', currentJoinCode, '| ablyKey:', config.ablyKey ? 'set' : 'MISSING', '| dddice:', config.dddiceKey ? 'set' : 'none');
     renderPlayerCards();
@@ -519,6 +579,7 @@ function initApp() {
     updateOverlayEditorBtn();
 }
 
+// Configure the overlay editor button href for this campaign.
 function updateOverlayEditorBtn() {
     const btn = document.getElementById('btn-open-overlay-editor');
     if (!btn || !currentCampaignId) return;
@@ -526,6 +587,7 @@ function updateOverlayEditorBtn() {
     btn.onclick = () => window.open('../views/aria-overlay-editor.html?type=gm&id=' + currentCampaignId, '_blank');
 }
 
+// Broadcast the current monster HP list to the overlay via Ably.
 function publishMonsterStateToOverlay() {
     if (!currentCampaignId) return;
     const overlayId = 'gm_' + currentCampaignId;
@@ -535,6 +597,7 @@ function publishMonsterStateToOverlay() {
     }
 }
 
+// Copy the current campaign join code to the clipboard.
 function copyJoinCode() {
     if (!currentJoinCode) return;
     navigator.clipboard.writeText(currentJoinCode).catch(() => {});
@@ -545,16 +608,20 @@ function copyJoinCode() {
 // ═══════════════════════════════════════════
 //  CUSTOM SELECT
 // ═══════════════════════════════════════════
+// Close all open custom select dropdown panels.
 function closeAllSelects() {
     document.querySelectorAll('.gm-select-panel.open').forEach(p => p.classList.remove('open'));
 }
+// Toggle a custom select dropdown open, closing any others first.
 function toggleSelect(trigger) {
     const panel = trigger.closest('.gm-select').querySelector('.gm-select-panel');
     const isOpen = panel.classList.contains('open');
     closeAllSelects();
     if (!isOpen) panel.classList.add('open');
 }
+// Read the selected value from a custom select element by ID.
 function getSelectValue(id) { return document.getElementById(id)?.dataset.value ?? ''; }
+// Set the displayed value and label of a custom select element.
 function setSelectValue(id, value, label) {
     const el = document.getElementById(id);
     if (!el) return;
@@ -563,6 +630,7 @@ function setSelectValue(id, value, label) {
     if (lbl) lbl.textContent = label;
     closeAllSelects();
 }
+// Add an option div to a custom select panel with a click handler.
 function addSelectOpt(panel, value, label, onClick) {
     const opt = document.createElement('div');
     opt.className = 'gm-select-opt';
@@ -574,6 +642,7 @@ function addSelectOpt(panel, value, label, onClick) {
 // ═══════════════════════════════════════════
 //  TABS
 // ═══════════════════════════════════════════
+// Switch the active GM panel tab and refresh the monster select if on the GM Roll tab.
 function switchTab(id, btn) {
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -585,11 +654,13 @@ function switchTab(id, btn) {
 // ═══════════════════════════════════════════
 //  DDDICE
 // ═══════════════════════════════════════════
+// Extract the dddice room slug from a full URL or return the raw value.
 function extractRoomSlug(val) {
     if (!val) return '';
     const m = val.match(/\/room\/([^/?#]+)/);
     return m ? m[1] : val.trim();
 }
+// Initialize the dddice SDK for GM rolls: fetch themes, create renderer, connect to room.
 async function initDddice() {
     const slug = extractRoomSlug(config.dddiceRoom);
     if (!config.dddiceKey || !slug) return;
@@ -637,6 +708,7 @@ async function initDddice() {
         sel.onchange = () => { if (dddiceAPI) dddiceAPI.theme = sel.value; config.dddiceTheme = sel.value; localStorage.setItem('aria-config', JSON.stringify(config)); };
     } catch (e) { console.error('dddice:', e); setDddiceStatus(false, e.message); dddiceSDK = null; dddiceAPI = null; }
 }
+// Update the dddice status dot and text labels in the topbar and config modal.
 function setDddiceStatus(ok, detail) {
     ['dddice-dot', 'cfg-dddice-dot'].forEach(id => { const el = document.getElementById(id); if (el) el.className = 'status-dot ' + (ok ? 'connected' : 'error'); });
     ['dddice-status', 'cfg-dddice-status'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = ok ? `dddice: ${detail || 'connecté'}` : `Erreur: ${detail || 'dddice'}`; });
@@ -645,6 +717,7 @@ function setDddiceStatus(ok, detail) {
 // ═══════════════════════════════════════════
 //  ABLY
 // ═══════════════════════════════════════════
+// Initialize Ably channels and subscribe to all game events (rolls, cards, presence).
 function initAbly() {
     console.log('[GM] initAbly: connecting with key', config.ablyKey?.slice(0, 8) + '...');
     try {
@@ -671,10 +744,12 @@ function initAbly() {
         console.log('[GM] initAbly: subscribed to all channels');
     } catch (e) { console.error('[GM] initAbly error:', e); setAblyStatus(false); }
 }
+// Update the Ably status dot and text labels in the topbar and config modal.
 function setAblyStatus(ok) {
     ['ably-dot', 'cfg-ably-dot'].forEach(id => { const el = document.getElementById(id); if (el) el.className = 'status-dot ' + (ok ? 'connected' : 'error'); });
     ['ably-status', 'cfg-ably-status'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = ok ? 'Ably connecté' : 'Ably erreur'; });
 }
+// Start broadcasting gm-presence (streamId + VDO room) to players every 8s.
 function startGMPresenceBroadcast() {
     if (gmPresenceIntervalId) { clearInterval(gmPresenceIntervalId); gmPresenceIntervalId = null; }
     if (!currentVdoRoom || !ablyDamage) { console.log('[GM] startGMPresenceBroadcast: skipped (vdoRoom:', currentVdoRoom || 'empty', '| ablyDamage:', !!ablyDamage, ')'); return; }
@@ -684,6 +759,7 @@ function startGMPresenceBroadcast() {
     gmPresenceIntervalId = setInterval(publish, 8000);
     console.log('[GM] startGMPresenceBroadcast: broadcasting every 8s | streamId:', gmStreamId);
 }
+// Set the GM VDO.ninja push iframe src so the GM camera streams to the room.
 function updateGMPushIframe() {
     const pushFrame = document.getElementById('vdo-gm-push-frame');
     if (!pushFrame) return;
@@ -693,6 +769,7 @@ function updateGMPushIframe() {
     console.log('[GM] updateGMPushIframe:', src);
     pushFrame.src = src;
 }
+// Show GM self-view: a VDO.ninja viewer iframe if a room is configured, else native camera.
 function startGMSelfView() {
     const section = document.getElementById('gm-self-view-section');
     const wrap = document.getElementById('gm-self-view-wrap');
@@ -729,6 +806,7 @@ function startGMSelfView() {
         })
         .catch(() => {});
 }
+// Stop the GM self-view stream and hide its container.
 function stopGMSelfView() {
     if (gmSelfViewStream) {
         gmSelfViewStream.getTracks().forEach(t => t.stop());
@@ -739,32 +817,38 @@ function stopGMSelfView() {
     const wrap = document.getElementById('gm-self-view-wrap');
     if (wrap) wrap.innerHTML = '';
 }
+// Publish a damage event to a specific player via the aria-damage channel.
 function publishDamage(targetId, damage, hpBefore, hpAfter, maxHP, charName) {
     if (!ablyDamage) { console.warn('[GM] publishDamage: ablyDamage not ready'); return; }
     console.log('[GM] publishDamage → ', charName, '| dmg:', damage, '| HP:', hpBefore, '→', hpAfter, '/', maxHP);
     ablyDamage.publish('damage', { targetId, damage, hpBefore, hpAfter, maxHP, charName, source: 'gm' });
 }
+// Publish a heal event to a specific player via the aria-damage channel.
 function publishHeal(targetId, amount, hpBefore, hpAfter, maxHP, charName) {
     if (!ablyDamage) { console.warn('[GM] publishHeal: ablyDamage not ready'); return; }
     console.log('[GM] publishHeal → ', charName, '| heal:', amount, '| HP:', hpBefore, '→', hpAfter, '/', maxHP);
     ablyDamage.publish('heal', { targetId, amount, hpBefore, hpAfter, maxHP, charName, source: 'gm' });
 }
 
+// Publish a music play command with fade duration to all players via Ably.
 function publishMusicPlay(track) {
     if (!ablyMusic) { console.warn('[GM] publishMusicPlay: ablyMusic not ready'); return; }
     console.log('[GM] publishMusicPlay:', track?.name, '| type:', track?.type, '| fade:', musicFadeDuration, 's');
     ablyMusic.publish('music', { type: 'play', track, fadeDuration: musicFadeDuration });
 }
+// Publish a music stop command to all players via Ably.
 function publishMusicStop() {
     if (!ablyMusic) return;
     console.log('[GM] publishMusicStop');
     ablyMusic.publish('music', { type: 'stop' });
 }
+// Publish a music pause command to all players via Ably.
 function publishMusicPause() {
     if (!ablyMusic) return;
     console.log('[GM] publishMusicPause');
     ablyMusic.publish('music', { type: 'pause' });
 }
+// Publish a music resume command to all players via Ably.
 function publishMusicResume() {
     if (!ablyMusic) return;
     console.log('[GM] publishMusicResume');
@@ -774,6 +858,7 @@ function publishMusicResume() {
 // ═══════════════════════════════════════════
 //  PLAYER PRESENCE
 // ═══════════════════════════════════════════
+// Process a player presence heartbeat: update the players Map and trigger card/music/file grants.
 function handlePresence(data) {
     if (!data?.playerId || !data?.charId) { console.warn('[GM] handlePresence: missing playerId or charId', data); return; }
     if (currentJoinCode && (data.campaignKey || '') !== currentJoinCode) { console.log('[GM] handlePresence: IGNORED (campaignKey mismatch:', data.campaignKey, 'vs', currentJoinCode, ') from', data.name); return; }
@@ -800,6 +885,7 @@ function handlePresence(data) {
         }
     }
 }
+// Mark players as offline or remove them if they haven't sent a heartbeat recently.
 function sweepOfflinePlayers() {
     const now = Date.now();
     let changed = false;
@@ -821,6 +907,7 @@ function sweepOfflinePlayers() {
     });
     if (changed) { saveKnownPlayers(); renderPlayerCards(); }
 }
+// Render/update all player cards with in-place DOM updates to preserve camera iframes.
 function renderPlayerCards() {
     const grid = document.getElementById('players-grid');
     const noP = document.getElementById('no-players');
@@ -964,6 +1051,7 @@ function renderPlayerCards() {
     });
     if (focusedId) document.getElementById(focusedId)?.focus();
 }
+// Open the player details modal with character info, tab toggles, and file/potion grants.
 function openPlayerDetails(playerId) {
     const p = players.get(playerId);
     if (!p) return;
@@ -1102,10 +1190,12 @@ function openPlayerDetails(playerId) {
     document.getElementById('details-scrim').classList.add('show');
     document.getElementById('player-details-modal').classList.add('show');
 }
+// Close the player details modal.
 function closePlayerDetails() {
     document.getElementById('details-scrim').classList.remove('show');
     document.getElementById('player-details-modal').classList.remove('show');
 }
+// Send a tab-config message to toggle a player's Cartes or Alchimie tab access.
 function sendTabConfig(playerId, tab, enabled) {
     if (!ablyDamage) { console.warn('[GM] sendTabConfig: ablyDamage not ready'); return; }
     const p = players.get(playerId);
@@ -1117,6 +1207,7 @@ function sendTabConfig(playerId, tab, enabled) {
     openPlayerDetails(playerId); // refresh modal to reflect new state
 }
 
+// Read the damage input for a player, apply armor reduction, and publish the damage.
 function applyPlayerDamage(playerId) {
     const inp = document.getElementById(`dmg-${playerId}`);
     const rawDmg = parseInt(inp.value);
@@ -1133,6 +1224,7 @@ function applyPlayerDamage(playerId) {
     publishDamage(p.playerId, dmg, hpBefore, hpAfter, p.maxHP || hpBefore, p.name);
     renderPlayerCards();
 }
+// Read the heal input for a player, clamp to max HP, and publish the heal.
 function applyPlayerHeal(playerId) {
     const inp = document.getElementById(`heal-${playerId}`);
     const amt = parseInt(inp.value);
@@ -1151,7 +1243,9 @@ function applyPlayerHeal(playerId) {
 // ═══════════════════════════════════════════
 //  MONSTERS
 // ═══════════════════════════════════════════
+// Persist monsters to localStorage, debounce Supabase sync, and push state to overlay.
 function saveMonsters() { localStorage.setItem(monstersKey(), JSON.stringify(monsters)); debouncedSyncMonsters(); publishMonsterStateToOverlay(); }
+// Add one or more monsters from the add-monster form (supports a count field).
 function addMonster() {
     const name = document.getElementById('amf-name').value.trim();
     if (!name) { alert('Entrez un nom.'); return; }
@@ -1179,6 +1273,7 @@ function addMonster() {
     renderMonsters();
     refreshMonsterSelect();
 }
+// Remove a monster by ID from the list, Supabase, and the select dropdown.
 function removeMonster(id) {
     sbDelete('monsters', 'id=eq.' + encodeURIComponent(String(id)));
     monsters = monsters.filter(m => String(m.id) !== String(id));
@@ -1186,6 +1281,7 @@ function removeMonster(id) {
     renderMonsters();
     refreshMonsterSelect();
 }
+// Add an attack row to the add-monster form.
 function addAmfAttack() {
     const idx = newMonsterAttacks.length;
     newMonsterAttacks.push({ name: '', pct: 50, dmg: '' });
@@ -1194,6 +1290,7 @@ function addAmfAttack() {
     row.innerHTML = `<input placeholder="Nom" oninput="newMonsterAttacks[${idx}].name=this.value" /><input type="text" inputmode="numeric" placeholder="%" oninput="this.value=this.value.replace(/[^0-9]/g,'');newMonsterAttacks[${idx}].pct=+this.value||0" /><input placeholder="1d6" oninput="newMonsterAttacks[${idx}].dmg=this.value" /><button class="del-btn" onclick="removeAmfAttack(${idx})">✕</button>`;
     list.appendChild(row);
 }
+// Remove an attack by index from the add-monster form and re-render the rows.
 function removeAmfAttack(idx) {
     newMonsterAttacks.splice(idx, 1);
     // re-render amf attacks
@@ -1205,6 +1302,7 @@ function removeAmfAttack(idx) {
         list.appendChild(row);
     });
 }
+// Apply damage to the selected monster in the GM roll panel.
 function doGMMonsterDamage() {
     const mId = getSelectValue('gm-monster-select');
     const m = monsters.find(m => String(m.id) === mId); if (!m) return;
@@ -1215,6 +1313,7 @@ function doGMMonsterDamage() {
     saveMonsters();
     clearTimeout(renderMonstersTimer); renderMonstersTimer = setTimeout(renderMonsters, 50);
 }
+// Apply heal to the selected monster in the GM roll panel.
 function doGMMonsterHeal() {
     const mId = getSelectValue('gm-monster-select');
     const m = monsters.find(m => String(m.id) === mId); if (!m) return;
@@ -1224,6 +1323,7 @@ function doGMMonsterHeal() {
     saveMonsters();
     clearTimeout(renderMonstersTimer); renderMonstersTimer = setTimeout(renderMonsters, 50);
 }
+// Evaluate a dice formula string (e.g. "2d6+2") and return total and breakdown.
 function rollDiceFormula(formula) {
     const expr = (formula || '').replace(/\s+/g, '').toLowerCase();
     if (!expr) return { total: 0, breakdown: '' };
@@ -1248,6 +1348,7 @@ function rollDiceFormula(formula) {
     }
     return { total, breakdown: parts.join(' ') };
 }
+// Rebuild the attack select dropdown when the monster selection changes.
 function onMonsterSelectChange() {
     const mId = getSelectValue('gm-monster-select');
     const panel = document.getElementById('gm-attack-select')?.querySelector('.gm-select-panel');
@@ -1263,6 +1364,7 @@ function onMonsterSelectChange() {
         addSelectOpt(panel, String(i), label, () => { setSelectValue('gm-attack-select', String(i), label); onAttackSelectChange(); });
     });
 }
+// Fill the threshold input with the selected attack's percentage.
 function onAttackSelectChange() {
     const mId = getSelectValue('gm-monster-select');
     const atkIdx = getSelectValue('gm-attack-select');
@@ -1272,6 +1374,7 @@ function onAttackSelectChange() {
     const atk = m.attacks[parseInt(atkIdx)];
     if (atk) document.getElementById('gm-monster-threshold').value = atk.pct;
 }
+// Render all monster cards with inline damage/heal inputs and attack editing rows.
 function renderMonsters() {
     const grid = document.getElementById('monsters-grid');
     const noM = document.getElementById('no-monsters');
@@ -1326,16 +1429,19 @@ function renderMonsters() {
         grid.appendChild(card);
     });
 }
+// Add a new empty attack to an existing monster and re-render.
 function addMonsterAttack(mId) {
     const m = monsters.find(m => String(m.id) === String(mId)); if (!m) return;
     m.attacks.push({ name: '', pct: 50, dmg: '' });
     saveMonsters(); renderMonsters(); refreshMonsterSelect();
 }
+// Remove an attack from an existing monster by index and re-render.
 function removeMonsterAttack(mId, idx) {
     const m = monsters.find(m => String(m.id) === String(mId)); if (!m) return;
     m.attacks.splice(idx, 1);
     saveMonsters(); renderMonsters(); refreshMonsterSelect();
 }
+// Update a single field of a monster attack and quietly refresh the GM roll dropdown.
 function updateMonsterAttack(mId, idx, field, value) {
     const m = monsters.find(m => String(m.id) === String(mId)); if (!m || !m.attacks[idx]) return;
     m.attacks[idx][field] = value;
@@ -1345,6 +1451,7 @@ function updateMonsterAttack(mId, idx, field, value) {
     refreshMonsterSelect();
     if (prevMonster) setSelectValue('gm-monster-select', prevMonster, monsters.find(x => String(x.id) === prevMonster)?.name || '');
 }
+// Rebuild the monster dropdown in the GM Roll tab from the current monsters array.
 function refreshMonsterSelect() {
     const wrapper = document.getElementById('gm-monster-select');
     if (!wrapper) return;
@@ -1364,6 +1471,7 @@ function refreshMonsterSelect() {
 // ═══════════════════════════════════════════
 //  ROLL FEED
 // ═══════════════════════════════════════════
+// Add an incoming roll to the feed, persist it, and re-render the roll list.
 function handleIncomingRoll(data) {
     if (!data) return;
     rollFeed.unshift({ ...data, receivedAt: Date.now() });
@@ -1372,11 +1480,13 @@ function handleIncomingRoll(data) {
     insertRoll(data);
     renderRollFeed();
 }
+// Classify a d100 roll as success, fail, crit-success, or crit-fail.
 function classify(roll, threshold, success) {
     if (roll <= 10 && success) return 'crit-success';
     if (roll >= 91 && !success) return 'crit-fail';
     return success ? 'success' : 'fail';
 }
+// Render the GM roll feed with player pills, filters, and day-grouped entries.
 function renderRollFeed() {
     const feed = document.getElementById('rolls-feed');
 
@@ -1453,6 +1563,7 @@ function renderRollFeed() {
         });
     });
 }
+// Clear the roll feed from memory, localStorage, and reset all filter pills.
 function clearRolls() {
     rollFeed = [];
     rollFilter.clear();
@@ -1464,6 +1575,7 @@ function clearRolls() {
     renderRollFeed();
 }
 
+// Toggle a roll type filter pill and re-render the roll feed.
 function toggleGMRollFilter(key) {
     if (key === 'all') {
         rollFilter.clear();
@@ -1481,6 +1593,7 @@ function toggleGMRollFilter(key) {
     renderRollFeed();
 }
 
+// Toggle a player name pill filter and re-render the roll feed.
 function togglePlayerFilter(name) {
     if (playerFilter.has(name)) playerFilter.delete(name);
     else playerFilter.add(name);
@@ -1490,6 +1603,7 @@ function togglePlayerFilter(name) {
 // ═══════════════════════════════════════════
 //  GM ROLLS
 // ═══════════════════════════════════════════
+// Execute a free-threshold GM roll from the Jet MJ form.
 function doGMFreeRoll() {
     const name = document.getElementById('gm-free-name').value.trim() || 'Jet MJ';
     const t = parseInt(document.getElementById('gm-free-threshold').value);
@@ -1503,6 +1617,7 @@ function doGMFreeRoll() {
         showGMRollResult(name, t, roll, roll <= t);
     }
 }
+// Roll an attack for the selected monster, optionally rolling damage on success.
 function doGMMonsterRoll() {
     const mId = getSelectValue('gm-monster-select');
     const t = parseInt(document.getElementById('gm-monster-threshold').value);
@@ -1529,6 +1644,7 @@ function doGMMonsterRoll() {
         showGMRollResult(name, t, roll, success, dmgResult);
     }
 }
+// Display a GM roll result in the result panel with optional damage and player target buttons.
 function showGMRollResult(name, threshold, roll, success, dmgResult) {
     // Add to the roll feed
     handleIncomingRoll({ skillName: name, threshold, roll, success, char: 'MJ', bonusMalus: 0, playerId: 'gm' });
@@ -1555,6 +1671,7 @@ function showGMRollResult(name, threshold, roll, success, dmgResult) {
         <div class="gm-rr-verdict" style="color:${colors[type]};">${verdicts[type]}</div>
         ${dmgHtml}${targetHtml}`;
 }
+// Apply a damage amount to a player from the GM roll result panel, with armor reduction.
 function applyDamageToPlayer(playerId, amount) {
     const p = players.get(playerId);
     if (!p) return;
@@ -1570,6 +1687,7 @@ function applyDamageToPlayer(playerId, amount) {
 }
 
 // ── GM DICE TRAY ─────────────────────────────
+// Roll a standard GM die (shown in the die tray) and add it to the roll feed.
 function gmRollDie(sides) {
     const result = Math.floor(Math.random() * sides) + 1;
     const el = document.getElementById('gm-die-result');
@@ -1578,6 +1696,7 @@ function gmRollDie(sides) {
 }
 
 // ── GM BULK DAMAGE / HEAL ─────────────────────
+// Apply a damage amount (with armor reduction) to all online players simultaneously.
 function bulkDamageAll() {
     const inp = document.getElementById('bulk-dmg-input');
     const rawDmg = parseInt(inp?.value);
@@ -1594,6 +1713,7 @@ function bulkDamageAll() {
     if (inp) inp.value = '';
     renderPlayerCards();
 }
+// Apply a heal amount to all online players simultaneously.
 function bulkHealAll() {
     const inp = document.getElementById('bulk-heal-input');
     const amt = parseInt(inp?.value);
@@ -1611,6 +1731,7 @@ function bulkHealAll() {
 
 // ── KARMA ─────────────────────────────────────
 const gmKarma = {};
+// Increment or decrement a player's karma and broadcast the new value via Ably.
 function setPlayerKarma(charId, delta) {
     gmKarma[charId] = (gmKarma[charId] ?? 0) + delta;
     const p = players.get(charId);
@@ -1621,6 +1742,7 @@ function setPlayerKarma(charId, delta) {
 }
 
 // ── MONSTER INLINE DAMAGE / HEAL ─────────────
+// Apply damage (with armor reduction) from the monster card inline input.
 function monsterInlineDamage(id) {
     const m = monsters.find(m => String(m.id) === String(id)); if (!m) return;
     const safeId = String(id).replace(/[^a-zA-Z0-9_-]/g, '-');
@@ -1632,6 +1754,7 @@ function monsterInlineDamage(id) {
     saveMonsters();
     clearTimeout(renderMonstersTimer); renderMonstersTimer = setTimeout(renderMonsters, 50);
 }
+// Apply heal from the monster card inline input, capping at maxPV.
 function monsterInlineHeal(id) {
     const m = monsters.find(m => String(m.id) === String(id)); if (!m) return;
     const safeId = String(id).replace(/[^a-zA-Z0-9_-]/g, '-');
@@ -1646,14 +1769,17 @@ function monsterInlineHeal(id) {
 // ═══════════════════════════════════════════
 //  CONFIG
 // ═══════════════════════════════════════════
+// Toggle light mode on the document body.
 function applyTheme(light) {
     document.body.classList.toggle('light-mode', !!light);
 }
+// Populate the config modal inputs from the current config and campaign.
 function loadConfigInputs() {
     document.getElementById('cfg-light-mode').checked = !!config.lightMode;
     document.getElementById('cfg-vdo-room').value = currentVdoRoom;
     document.getElementById('cfg-vdo-room-password').value = currentVdoRoomPassword;
 }
+// Save config modal changes: VDO room, theme, and reinitialize Ably/dddice/presence.
 function saveConfig() {
     const newVdoRoom = document.getElementById('cfg-vdo-room').value.trim();
     const newVdoRoomPassword = document.getElementById('cfg-vdo-room-password').value.trim();
@@ -1680,6 +1806,7 @@ function saveConfig() {
     updateGMPushIframe();
     toggleConfig();
 }
+// Toggle the config modal and scrim visibility.
 function toggleConfig() {
     document.getElementById('config-modal').classList.toggle('show');
     document.getElementById('config-scrim').classList.toggle('show');
@@ -1688,7 +1815,9 @@ function toggleConfig() {
 // ═══════════════════════════════════════════
 //  CARD DISPLAY (player draws only)
 // ═══════════════════════════════════════════
+// Return a Promise that resolves after ms milliseconds.
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+// Render the face of a playing card into the player-view drawn-card element.
 function renderCardContent(card) {
     const el = document.getElementById('drawn-card');
     if (card.isJoker) {
@@ -1699,6 +1828,7 @@ function renderCardContent(card) {
         el.innerHTML = `<div class="card-corner tl"><span class="rank">${card.rank}</span><span class="suit-small">${card.suit.sym}</span></div><div class="card-center">${card.suit.sym}</div><div class="card-corner br"><span class="rank">${card.rank}</span><span class="suit-small">${card.suit.sym}</span></div>`;
     }
 }
+// Render the card draw history feed.
 function renderCardHistory() {
     const feed = document.getElementById('card-history-feed');
     if (!cardHistory.length) { feed.innerHTML = '<div class="rolls-empty">Aucun tirage pour l\'instant…</div>'; return; }
@@ -1717,11 +1847,13 @@ function renderCardHistory() {
         feed.appendChild(row);
     });
 }
+// Clear the card draw history from memory and localStorage.
 function clearCardHistory() {
     cardHistory = [];
     localStorage.removeItem(cardHistKey());
     renderCardHistory();
 }
+// Handle a player card draw: log it, animate the card display, and update history.
 async function handlePlayerCard(data) {
     if (!data?.cardId) return;
     const card = cardById(data.cardId);
@@ -1750,6 +1882,7 @@ async function handlePlayerCard(data) {
     await delay(400);
     flipWrap.classList.remove('flipped');
 }
+// Handle a player deck reshuffle: hide the card display and update the info label.
 function handlePlayerReshuffle() {
     const flipWrap = document.getElementById('flip-wrap');
     flipWrap.classList.remove('flipped'); flipWrap.classList.add('hidden');
@@ -1767,6 +1900,7 @@ let gmLastCardId = null;
 let gmCardDrawing = false;
 let gmCardStatusTimer = null;
 
+// Initialize the GM private deck to a fresh shuffled state.
 function initGmDeck() {
     gmCardDeck = buildDeck();
     gmCardDrawn = new Set();
@@ -1777,6 +1911,7 @@ function initGmDeck() {
     gmUpdateDeckCount();
 }
 
+// Build the GM card tracker grid of suit rows and rank pills.
 function gmBuildTracker() {
     const container = document.getElementById('gm-tracker-suits');
     if (!container) return;
@@ -1798,6 +1933,7 @@ function gmBuildTracker() {
     jRow.appendChild(jPills); container.appendChild(jRow);
 }
 
+// Create a rank pill element for the GM card tracker.
 function gmMakePill(id, label, extraCls) {
     const p = document.createElement('span');
     p.className = `rank-pill${extraCls ? ' ' + extraCls : ''}`;
@@ -1807,15 +1943,18 @@ function gmMakePill(id, label, extraCls) {
     return p;
 }
 
+// Update a GM tracker pill's drawn/excluded visual state.
 function gmRefreshPill(p, id) {
     p.classList.toggle('drawn', gmCardDrawn.has(id));
     p.classList.toggle('excluded', gmCardExcluded.has(id));
 }
 
+// Refresh all GM tracker pills to match the current deck state.
 function gmRefreshAllPills() {
     ALL_CARDS.forEach(c => { const p = document.getElementById(`gm-pill-${c.id}`); if (p) gmRefreshPill(p, c.id); });
 }
 
+// Cycle a GM tracker card's state: normal → excluded → returned to deck.
 function gmTogglePill(id) {
     const card = cardById(id);
     if (!card) return;
@@ -1826,8 +1965,10 @@ function gmTogglePill(id) {
     gmUpdateClearBtn();
 }
 
+// Remove all GM deck exclusions and put excluded cards back.
 function gmClearExclusions() { if (gmCardDrawing) return; gmCardExcluded.forEach(id => { const c = cardById(id); if (c) gmCardDeck.splice(Math.floor(Math.random() * (gmCardDeck.length + 1)), 0, c); }); gmCardExcluded.clear(); gmUpdateDeckCount(); gmRefreshAllPills(); gmUpdateClearBtn(); gmShowCardStatus('Exclusions effacées'); }
 
+// Update the GM deck count label and toggle reshuffle/clear button visibility.
 function gmUpdateDeckCount() {
     const n = gmCardDeck.length;
     const countEl = document.getElementById('gm-deck-count');
@@ -1841,8 +1982,10 @@ function gmUpdateDeckCount() {
     gmUpdateClearBtn();
 }
 
+// Show or hide the GM clear-exclusions button based on whether any cards are excluded.
 function gmUpdateClearBtn() { const btn = document.getElementById('gm-clear-exclusions-btn'); if (btn) btn.classList.toggle('visible', gmCardExcluded.size > 0); }
 
+// Show a temporary card status message in the GM card tab.
 function gmShowCardStatus(msg) {
     const el = document.getElementById('gm-card-status');
     if (!el) return;
@@ -1851,6 +1994,7 @@ function gmShowCardStatus(msg) {
     gmCardStatusTimer = setTimeout(() => el.textContent = '', 2200);
 }
 
+// Render the face of a playing card into the GM private deck drawn-card element.
 function gmRenderCardContent(card) {
     const el = document.getElementById('gm-drawn-card');
     if (!el) return;
@@ -1863,6 +2007,7 @@ function gmRenderCardContent(card) {
     }
 }
 
+// Render and flip a card into view on the GM deck stage.
 async function gmRevealCard(card) {
     const flipWrap = document.getElementById('gm-flip-wrap');
     const drawnEl = document.getElementById('gm-drawn-card');
@@ -1878,6 +2023,7 @@ async function gmRevealCard(card) {
     flipWrap.classList.remove('flipped');
 }
 
+// Draw the top card from the GM private deck and reveal it with a flip animation.
 async function gmDrawCard() {
     if (gmCardDrawing || gmCardDeck.length === 0) return;
     gmCardDrawing = true;
@@ -1895,6 +2041,7 @@ async function gmDrawCard() {
     gmCardDrawing = false;
 }
 
+// Play the GM deck shuffle animation using ghost card elements.
 async function gmAnimateShuffle() {
     const overlay = document.getElementById('gm-shuffle-overlay');
     const wrap = document.getElementById('gm-deck-wrap');
@@ -1913,6 +2060,7 @@ async function gmAnimateShuffle() {
     await delay(680); ghosts.forEach(g => g.remove()); wrap.classList.remove('shuffling');
 }
 
+// Reshuffle all or remaining GM deck cards with animation.
 async function gmManualReshuffle(remainingOnly) {
     if (gmCardDrawing) return;
     gmCardDrawing = true;
@@ -1931,6 +2079,7 @@ async function gmManualReshuffle(remainingOnly) {
 // ═══════════════════════════════════════════
 //  GM FILE VIEWER
 // ═══════════════════════════════════════════
+// Open the GM file viewer modal for a file, rendering image/PDF/text inline.
 function openGmFileViewer(fileId) {
     const f = gmFiles.find(f => f.id === fileId);
     if (!f) return;
@@ -1960,6 +2109,7 @@ function openGmFileViewer(fileId) {
     document.getElementById('gm-file-viewer-modal').classList.add('show');
 }
 
+// Close the GM file viewer modal and clear its body.
 function closeGmFileViewer() {
     document.getElementById('gm-file-viewer-scrim').classList.remove('show');
     document.getElementById('gm-file-viewer-modal').classList.remove('show');
@@ -1969,8 +2119,10 @@ function closeGmFileViewer() {
 // ═══════════════════════════════════════════
 //  GM ALCHEMY
 // ═══════════════════════════════════════════
+// Persist GM potion recipes to localStorage and debounce Supabase sync.
 function saveGMPotions() { if (currentCampaignId) { localStorage.setItem(potionsKey(), JSON.stringify(gmPotions)); debouncedSyncPotions(); } }
 
+// Add a new GM potion recipe from the add-potion form.
 function addGMPotion() {
     const name = document.getElementById('apf-name').value.trim();
     if (!name) { alert('Entrez un nom.'); return; }
@@ -1984,6 +2136,7 @@ function addGMPotion() {
     renderGMPotions();
 }
 
+// Remove a GM potion recipe by ID from the list and Supabase.
 function removeGMPotion(id) {
     sbDelete('campaign_potions', 'id=eq.' + encodeURIComponent(id));
     gmPotions = gmPotions.filter(p => p.id !== id);
@@ -1991,6 +2144,7 @@ function removeGMPotion(id) {
     renderGMPotions();
 }
 
+// Update a single field of a GM potion recipe and save.
 function updateGMPotion(id, field, value) {
     const p = gmPotions.find(p => p.id === id);
     if (!p) return;
@@ -1998,6 +2152,7 @@ function updateGMPotion(id, field, value) {
     saveGMPotions();
 }
 
+// Render all GM potion recipe cards with inline editing inputs.
 function renderGMPotions() {
     const list = document.getElementById('gm-pot-list');
     const empty = document.getElementById('gm-pot-empty');
@@ -2032,6 +2187,7 @@ function renderGMPotions() {
     });
 }
 
+// Toggle the alchemy import picker, listing other campaigns to import from.
 function toggleAlchemyImportPicker(btn) {
     const picker = document.getElementById('alchemy-import-picker');
     if (picker.style.display !== 'none') { picker.style.display = 'none'; return; }
@@ -2047,6 +2203,7 @@ function toggleAlchemyImportPicker(btn) {
     picker.style.display = '';
 }
 
+// Replace the current alchemy grimoire with recipes from another campaign.
 function importAlchemyFrom(sourceId, sourceName) {
     document.getElementById('alchemy-import-picker').style.display = 'none';
     const sourcePotions = JSON.parse(localStorage.getItem('aria-gm-potions-' + sourceId) || '[]');
@@ -2061,6 +2218,7 @@ function importAlchemyFrom(sourceId, sourceName) {
     renderGMPotions();
 }
 
+// Grant or revoke a potion recipe for a player via Ably, toggling state.
 function sendPotionGrant(playerId, potionId) {
     if (!ablyDamage) return;
     const player = players.get(playerId);
@@ -2080,6 +2238,7 @@ function sendPotionGrant(playerId, potionId) {
     }
     openPlayerDetails(playerId);
 }
+// Send a vial-grant message to give a player a quantity of empty vials.
 function sendVialGrant(playerId, qty) {
     if (!ablyDamage) return;
     const p = players.get(playerId);
@@ -2091,9 +2250,11 @@ function sendVialGrant(playerId, qty) {
 // ═══════════════════════════════════════════
 //  GM FILES
 // ═══════════════════════════════════════════
+// Escape HTML special characters for safe injection into innerHTML.
 function _escHtml(s) {
     return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+// Return an emoji icon string for a file MIME type.
 function _fileIcon(type) {
     if (!type) return '📄';
     if (type.startsWith('image/')) return '🖼';
@@ -2102,8 +2263,10 @@ function _fileIcon(type) {
     return '📄';
 }
 
+// Persist GM files to localStorage and debounce Supabase sync.
 function saveGmFiles() { localStorage.setItem(filesKey(), JSON.stringify(gmFiles)); debouncedSyncFiles(); }
 
+// Persist the GM music playlist to localStorage and debounce Supabase sync.
 function saveGMMusic() {
     if (!currentCampaignId) return;
     localStorage.setItem(musicKey(), JSON.stringify(gmMusic));
@@ -2134,11 +2297,13 @@ let _ytPendingCbs     = [];
 let _ytSlotA          = null; // YT.Player instance
 let _ytSlotB          = null;
 
+// Lazily create and return the Audio element for a given slot (A or B).
 function _getAudio(slot) {
     if (!_musicSlots[slot].audio) _musicSlots[slot].audio = new Audio();
     return _musicSlots[slot].audio;
 }
 
+// Set the volume (0–100) on a music slot's Audio element and YouTube player.
 function _setSlotVol(slot, vol) {
     const v = Math.max(0, Math.min(100, vol));
     const audio = _musicSlots[slot].audio;
@@ -2147,6 +2312,7 @@ function _setSlotVol(slot, vol) {
     if (yt) { try { yt.setVolume(v); } catch(_) {} }
 }
 
+// Stop and clear a music slot: pause audio, stop YouTube, clear ended callback.
 function _stopSlot(slot) {
     const audio = _musicSlots[slot].audio;
     if (audio) { audio.pause(); audio.onended = null; audio.src = ''; }
@@ -2155,6 +2321,7 @@ function _stopSlot(slot) {
     _musicSlots[slot].ytEndedCb = null;
 }
 
+// Lazily load the YouTube IFrame API script and call back when it is ready.
 function _ensureYTAPI(cb) {
     if (_ytAPIReady) { cb(); return; }
     _ytPendingCbs.push(cb);
@@ -2169,6 +2336,7 @@ function _ensureYTAPI(cb) {
     document.head.appendChild(s);
 }
 
+// Ensure both YouTube player slots A and B are initialized, then call back.
 function _ensureYTSlots(cb) {
     _ensureYTAPI(() => {
         if (_ytSlotA && _ytSlotB) { cb(); return; }
@@ -2193,6 +2361,7 @@ function _ensureYTSlots(cb) {
     });
 }
 
+// Load a track into a slot at volume 0 and call onStarted once playback begins.
 function _loadSlotAtZeroVol(track, slot, onStarted) {
     _setSlotVol(slot, 0);
     if (track.type === 'file') {
@@ -2214,6 +2383,7 @@ function _loadSlotAtZeroVol(track, slot, onStarted) {
     }
 }
 
+// Cross-fade volume from one audio slot to another over musicFadeDuration ms.
 function _runCrossfade(fromSlot, toSlot, onDone) {
     if (_musicFadeRaf) { cancelAnimationFrame(_musicFadeRaf); _musicFadeRaf = null; }
     const start = performance.now();
@@ -2228,6 +2398,7 @@ function _runCrossfade(fromSlot, toSlot, onDone) {
     _musicFadeRaf = requestAnimationFrame(tick);
 }
 
+// Register the "track ended" callback for a slot (audio onended or YouTube state change).
 function _setSlotEndedCallback(slot, track, cb) {
     if (track.type === 'file') {
         const audio = _musicSlots[slot].audio;
@@ -2237,6 +2408,7 @@ function _setSlotEndedCallback(slot, track, cb) {
     }
 }
 
+// Show a "click to enable audio" banner for browsers that block autoplay.
 function _showMusicUnlockPrompt(onUnlock) {
     let el = document.getElementById('music-unlock-prompt');
     if (!el) {
@@ -2251,6 +2423,7 @@ function _showMusicUnlockPrompt(onUnlock) {
     el.addEventListener('click', handler);
 }
 
+// Advance to the next track when the current ends; loops or stops based on musicLoop flag.
 function _musicAutoAdvance() {
     if (!gmMusic.length) return;
     const nextIdx = (musicCurrentIndex + 1 < gmMusic.length)
@@ -2266,6 +2439,7 @@ function _musicAutoAdvance() {
     publishMusicPlay(gmMusic[nextIdx]);
 }
 
+// Start playing a track on the inactive slot and cross-fade in from the current slot.
 function _musicTriggerPlay(track, index) {
     if (_musicFadeRaf) { cancelAnimationFrame(_musicFadeRaf); _musicFadeRaf = null; }
     // Disable auto-advance on current slot before transition
@@ -2288,6 +2462,7 @@ function _musicTriggerPlay(track, index) {
     });
 }
 
+// Start the rAF loop that updates the music progress bar for file-based tracks.
 function _startMusicProgress() {
     if (_musicProgressRaf) cancelAnimationFrame(_musicProgressRaf);
     function tick() {
@@ -2306,6 +2481,7 @@ function _startMusicProgress() {
     _musicProgressRaf = requestAnimationFrame(tick);
 }
 
+// Render the music tab: now-playing label, play/loop buttons, volume, and playlist rows.
 function renderMusicTab() {
     const track = gmMusic[musicCurrentIndex] || null;
 
@@ -2346,6 +2522,7 @@ function renderMusicTab() {
     });
 }
 
+// Select and play a track by index locally and broadcast to players via Ably.
 function musicSelectTrack(index) {
     const track = gmMusic[index];
     if (!track) return;
@@ -2353,6 +2530,7 @@ function musicSelectTrack(index) {
     publishMusicPlay(track);          // broadcast to players via Ably
 }
 
+// Toggle music playback (play/pause) and broadcast the command to players.
 function musicTogglePlay() {
     if (!musicIsPlaying) {
         const track = gmMusic[musicCurrentIndex];
@@ -2376,6 +2554,7 @@ function musicTogglePlay() {
     renderMusicTab();
 }
 
+// Stop music playback on both slots locally and broadcast the stop command.
 function musicStop() {
     if (_musicFadeRaf) { cancelAnimationFrame(_musicFadeRaf); _musicFadeRaf = null; }
     if (_musicProgressRaf) { cancelAnimationFrame(_musicProgressRaf); _musicProgressRaf = null; }
@@ -2386,6 +2565,7 @@ function musicStop() {
     publishMusicStop();
 }
 
+// Skip to the next track (wraps if loop is on).
 function musicNext() {
     if (!gmMusic.length) return;
     const next = musicCurrentIndex + 1 < gmMusic.length
@@ -2395,6 +2575,7 @@ function musicNext() {
     musicSelectTrack(next);
 }
 
+// Skip to the previous track (wraps if loop is on).
 function musicPrev() {
     if (!gmMusic.length) return;
     const prev = musicCurrentIndex > 0
@@ -2403,16 +2584,19 @@ function musicPrev() {
     musicSelectTrack(prev);
 }
 
+// Toggle the music loop flag and refresh the tab UI.
 function musicToggleLoop() {
     musicLoop = !musicLoop;
     renderMusicTab();
 }
 
+// Set the crossfade duration in seconds (1–10).
 function musicSetFade(val) {
     const n = parseInt(val);
     if (!isNaN(n) && n >= 1 && n <= 10) musicFadeDuration = n * 1000;
 }
 
+// Handle GM volume slider change: persist the value and apply it to the active slot.
 function onGMMusicVolumeChange(val) {
     musicMasterVolume = Math.max(0, Math.min(100, parseInt(val) || 0));
     localStorage.setItem('aria-music-volume', String(musicMasterVolume));
@@ -2421,6 +2605,7 @@ function onGMMusicVolumeChange(val) {
     if (volVal) volVal.textContent = String(musicMasterVolume);
 }
 
+// Delete a track from the playlist, stopping it if it is playing, and clean up storage.
 function musicDeleteTrack(index) {
     const track = gmMusic[index];
     if (!track) return;
@@ -2433,6 +2618,7 @@ function musicDeleteTrack(index) {
     renderMusicTab();
 }
 
+// Delete an audio file from Supabase Storage (campaign-music bucket).
 async function deleteMusicFileFromStorage(path) {
     try {
         await fetch(`${SUPABASE_URL}/storage/v1/object/campaign-music/${path}`, {
@@ -2442,6 +2628,7 @@ async function deleteMusicFileFromStorage(path) {
     } catch(e) { console.warn('[ARIA] Music storage delete failed:', e); }
 }
 
+// Extract a YouTube video ID from a URL or raw 11-char ID string.
 function _parseYTVideoId(input) {
     const m = input.match(/(?:youtu\.be\/|[?&]v=|\/embed\/)([a-zA-Z0-9_-]{11})/);
     if (m) return m[1];
@@ -2449,11 +2636,13 @@ function _parseYTVideoId(input) {
     return null;
 }
 
+// Extract a YouTube playlist ID from a URL query string.
 function _parseYTPlaylistId(input) {
     const m = input.match(/[?&]list=([a-zA-Z0-9_-]+)/);
     return m ? m[1] : null;
 }
 
+// Fetch a YouTube video title via the Data API or oEmbed fallback.
 async function _fetchYTTitle(videoId, apiKey) {
     if (apiKey) {
         try {
@@ -2470,6 +2659,7 @@ async function _fetchYTTitle(videoId, apiKey) {
     } catch(_) { return videoId; }
 }
 
+// Fetch all video items from a YouTube playlist via the Data API (paginated).
 async function _fetchYTPlaylist(playlistId, apiKey) {
     const tracks = [];
     let pageToken = '';
@@ -2492,6 +2682,7 @@ async function _fetchYTPlaylist(playlistId, apiKey) {
     return tracks;
 }
 
+// Add a YouTube video or playlist to the GM music playlist from the input field.
 async function musicAddYoutube() {
     const input    = document.getElementById('music-yt-input');
     const statusEl = document.getElementById('music-add-status');
@@ -2531,6 +2722,7 @@ async function musicAddYoutube() {
     setTimeout(() => { statusEl.textContent = ''; }, 3000);
 }
 
+// Upload an audio file to Supabase Storage and add it to the GM music playlist.
 async function musicUploadFile(input) {
     const file     = input.files[0];
     input.value    = '';
@@ -2574,10 +2766,12 @@ async function musicUploadFile(input) {
 let gmNotesList = [];
 let gmCurrentNoteId = null;
 
+// Generate a new UUID for a GM note.
 function _gmNoteId() {
     return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
 
+// Load GM notes from localStorage for the current campaign, migrating plain-string format if needed.
 function loadGMNotes() {
     const raw = localStorage.getItem(gmNotesKey());
     if (!raw) {
@@ -2595,10 +2789,12 @@ function loadGMNotes() {
     loadGMNoteContent();
 }
 
+// Save the current GM notes list to localStorage.
 function persistGMNotes() {
     localStorage.setItem(gmNotesKey(), JSON.stringify(gmNotesList));
 }
 
+// Render the GM notes sidebar list, highlighting the currently selected note.
 function renderGMNotesList() {
     const list = document.getElementById('gm-notes-list');
     if (!list) return;
@@ -2621,6 +2817,7 @@ function renderGMNotesList() {
     });
 }
 
+// Load the selected GM note's name and body into the editor fields.
 function loadGMNoteContent() {
     const nameInput = document.getElementById('gm-notes-name-input');
     const area = document.getElementById('gm-notes-area');
@@ -2639,6 +2836,7 @@ function loadGMNoteContent() {
     }
 }
 
+// Select a GM note by ID and display it in the editor.
 function selectGMNote(id) {
     gmCurrentNoteId = id;
     renderGMNotesList();
@@ -2646,6 +2844,7 @@ function selectGMNote(id) {
     document.getElementById('gm-notes-area').focus();
 }
 
+// Add a new empty GM note, persist it, sync to Supabase, and select it.
 function addGMNote() {
     const note = { id: _gmNoteId(), name: 'Nouvelle note', content: '' };
     gmNotesList.push(note);
@@ -2656,6 +2855,7 @@ function addGMNote() {
     if (nameInput) { nameInput.focus(); nameInput.select(); }
 }
 
+// Delete a GM note, remove it from Supabase, and select the adjacent note.
 function deleteGMNote(id) {
     deleteGMNoteFromDB(id);
     const idx = gmNotesList.findIndex(n => n.id === id);
@@ -2666,6 +2866,7 @@ function deleteGMNote(id) {
     loadGMNoteContent();
 }
 
+// Save the current GM note's content from the textarea and schedule Supabase sync.
 function saveCurrentGMNote() {
     const note = gmNotesList.find(n => n.id === gmCurrentNoteId);
     if (!note) return;
@@ -2674,6 +2875,7 @@ function saveCurrentGMNote() {
     debouncedSyncGMNote(note);
 }
 
+// Rename the current GM note from the name input and refresh the list.
 function renameCurrentGMNote() {
     const note = gmNotesList.find(n => n.id === gmCurrentNoteId);
     if (!note) return;
@@ -2683,6 +2885,7 @@ function renameCurrentGMNote() {
     debouncedSyncGMNote(note);
 }
 
+// Upload a file to Supabase Storage (campaign-files bucket) and return its URL and path.
 async function uploadFileToStorage(file) {
     const fileId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
     const parts = file.name.split('.');
@@ -2706,6 +2909,7 @@ async function uploadFileToStorage(file) {
     return { fileId, path, url: `${SUPABASE_URL}/storage/v1/object/public/campaign-files/${path}` };
 }
 
+// Delete a file from Supabase Storage (campaign-files bucket) by path.
 async function deleteFileFromStorage(path) {
     try {
         await fetch(`${SUPABASE_URL}/storage/v1/object/campaign-files/${path}`, {
@@ -2715,6 +2919,7 @@ async function deleteFileFromStorage(path) {
     } catch(e) { console.warn('[ARIA] Storage delete failed:', e); }
 }
 
+// Handle a file upload input: upload to Supabase Storage, add to gmFiles, and re-render.
 async function handleFileUpload(input) {
     const file = input.files[0];
     input.value = '';
@@ -2738,6 +2943,7 @@ async function handleFileUpload(input) {
     }
 }
 
+// Remove a GM file: revoke from all players, delete from storage and Supabase, re-render.
 async function removeGmFile(fileId) {
     const f = gmFiles.find(f => f.id === fileId);
     if (!f) return;
@@ -2749,6 +2955,7 @@ async function removeGmFile(fileId) {
     renderGmFiles();
 }
 
+// Toggle a file's access: grant to all online players or revoke global access.
 function grantFileToAll(fileId) {
     const f = gmFiles.find(f => f.id === fileId);
     if (!f) return;
@@ -2771,6 +2978,7 @@ function grantFileToAll(fileId) {
     renderGmFiles();
 }
 
+// Grant or revoke a file for a specific player, toggling their access.
 function grantFileToPlayer(fileId, charId) {
     const f = gmFiles.find(f => f.id === fileId);
     const p = players.get(charId);
@@ -2790,6 +2998,7 @@ function grantFileToPlayer(fileId, charId) {
     openPlayerDetails(charId);
 }
 
+// Send all applicable file-grant messages to a newly connected player.
 function sendFileGrantsToPlayer(playerData) {
     if (!ablyDamage) return;
     const grants = [];
@@ -2803,6 +3012,7 @@ function sendFileGrantsToPlayer(playerData) {
     if (grants.length) console.log('[GM] sendFileGrantsToPlayer:', playerData.name, '| files:', grants.join(', '));
 }
 
+// Render all GM files as cards with access status, open, grant-all, and delete buttons.
 function renderGmFiles() {
     const list = document.getElementById('gm-files-list');
     const empty = document.getElementById('gm-files-empty');

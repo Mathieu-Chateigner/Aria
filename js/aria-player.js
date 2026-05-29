@@ -13,8 +13,11 @@ const ALL_CARDS = [];
 for (const s of SUITS) for (const r of RANKS) ALL_CARDS.push({ id: `${r}-${s.name}`, rank: r, suit: s });
 ALL_CARDS.push({ id: 'joker-red', isJoker: true, jokerColor: 'red', label: 'Joker Rouge' });
 ALL_CARDS.push({ id: 'joker-black', isJoker: true, jokerColor: 'black', label: 'Joker Noir' });
+// Look up a card in ALL_CARDS by its ID string.
 function cardById(id) { return ALL_CARDS.find(c => c.id === id); }
+// Fisher-Yates shuffle of an array, returning a new array.
 function shuffle(a) { const b = [...a]; for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[b[i], b[j]] = [b[j], b[i]]; } return b; }
+// Build a freshly shuffled deck of all 54 cards.
 function buildDeck() { return shuffle([...ALL_CARDS]); }
 
 // ═══════════════════════════════════════════
@@ -109,11 +112,13 @@ let gmStreamId = '';
 let vdoRoom = '';
 let vdoRoomPassword = '';
 let selfViewStream = null;
+// Derive the VDO.ninja push stream ID from the first 8 chars of the character UUID.
 function derivedStreamId() {
     const sid = 'aria-' + currentCharId.slice(0, 8);
     console.log('[VDO] derivedStreamId() →', sid, '| currentCharId:', currentCharId);
     return sid;
 }
+// Set the VDO.ninja push iframe src to stream this player's camera to the GM.
 function updatePushIframe() {
     const pushFrame = document.getElementById('vdo-push-frame');
     if (!pushFrame) { console.warn('[VDO] updatePushIframe: #vdo-push-frame not found'); return; }
@@ -155,10 +160,13 @@ let syncTimer      = null;
 // ═══════════════════════════════════════════
 //  CLOUD SAVE — per-entity sync
 // ═══════════════════════════════════════════
+// Check whether Supabase sync is configured and a save key is available.
 function _supabaseReady() { return !!SUPABASE_URL && !!SUPABASE_ANON_KEY && !!saveKey; }
 
+// Return the current UTC time as an ISO 8601 string.
 function _nowISO() { return new Date().toISOString(); }
 
+// Convert a character object into a Supabase characters table row.
 function _charToRow(char) {
     return {
         id: char.id, save_key: saveKey, name: char.name, class: char.class,
@@ -172,6 +180,7 @@ function _charToRow(char) {
     };
 }
 
+// Full sync of all characters and their states to Supabase.
 async function _syncAllPlayerData() {
     if (!_supabaseReady()) return;
     const chars = getCharacters();
@@ -186,23 +195,27 @@ async function _syncAllPlayerData() {
 }
 
 let _charTimer = null;
+// Debounced full character sync: waits 800ms after the last call before writing.
 function debouncedSync() {
     clearTimeout(_charTimer);
     _charTimer = setTimeout(_syncAllPlayerData, 800);
 }
 
 let _stateTimer = null;
+// Debounced sync of the current character's HP, cards, and tabs state.
 function debouncedSyncState() {
     clearTimeout(_stateTimer);
     _stateTimer = setTimeout(() => syncCharacterState(currentCharId), 800);
 }
 
 let _noteTimer = null;
+// Debounced sync of a single note to Supabase.
 function debouncedSyncNote(note) {
     clearTimeout(_noteTimer);
     _noteTimer = setTimeout(() => syncCharacterNote(note), 800);
 }
 
+// Sync HP, cards, and tabs for a character to the character_state table.
 async function syncCharacterState(charId) {
     if (!_supabaseReady() || !charId) return;
     const hp    = localStorage.getItem('aria-current-hp-'  + charId);
@@ -217,6 +230,7 @@ async function syncCharacterState(charId) {
     });
 }
 
+// Upsert a single note to the character_notes table.
 async function syncCharacterNote(note) {
     if (!_supabaseReady() || !currentCharId || !note?.id) return;
     await sbUpsert('character_notes', {
@@ -227,11 +241,13 @@ async function syncCharacterNote(note) {
     });
 }
 
+// Delete a note from the character_notes table by ID.
 async function deleteCharacterNote(id) {
     if (!_supabaseReady()) return;
     await sbDelete('character_notes', 'id=eq.' + encodeURIComponent(id));
 }
 
+// Upsert a GM-granted file record for a character to Supabase.
 async function syncCharacterFile(file, charId) {
     if (!_supabaseReady() || !charId || !file?.id) return;
     await sbUpsert('character_files', {
@@ -241,11 +257,13 @@ async function syncCharacterFile(file, charId) {
     });
 }
 
+// Delete a granted file record from Supabase by file ID.
 async function deleteCharacterFile(fileId) {
     if (!_supabaseReady()) return;
     await sbDelete('character_files', 'id=eq.' + encodeURIComponent(fileId));
 }
 
+// Load all player data (characters, states, notes, files) from Supabase into localStorage.
 async function loadFromSupabase() {
     if (!_supabaseReady()) return;
     try {
@@ -298,6 +316,7 @@ async function loadFromSupabase() {
     } catch(e) { console.warn('[ARIA] Supabase load failed:', e); }
 }
 
+// Show the save-key creation panel with a freshly generated key.
 function showGateway() {
     _pendingNewKey = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
     document.getElementById('gateway-key-display').textContent = _pendingNewKey;
@@ -306,6 +325,7 @@ function showGateway() {
     document.getElementById('file-gateway').style.display = 'flex';
 }
 
+// Switch the gateway panel to the "enter an existing key" form.
 function showGatewayExisting() {
     document.getElementById('gateway-new').style.display = 'none';
     document.getElementById('gateway-existing').style.display = '';
@@ -313,10 +333,12 @@ function showGatewayExisting() {
     if (input) { input.value = ''; input.focus(); }
 }
 
+// Hide the file-gateway panel.
 function hideGateway() {
     document.getElementById('file-gateway').style.display = 'none';
 }
 
+// Copy the displayed save key to the clipboard.
 function copyGatewayKey() {
     const key = document.getElementById('gateway-key-display').textContent;
     navigator.clipboard.writeText(key).catch(() => {});
@@ -324,6 +346,7 @@ function copyGatewayKey() {
     if (btn) { btn.textContent = 'Copié !'; setTimeout(() => { btn.textContent = 'Copier'; }, 2000); }
 }
 
+// Confirm new save key creation: persist it, create the Supabase row, and sync data.
 async function confirmNewKey() {
     if (!_pendingNewKey) return;
     saveKey = _pendingNewKey;
@@ -334,6 +357,7 @@ async function confirmNewKey() {
     showSelectionScreen();
 }
 
+// Load data from Supabase using an existing save key entered by the user.
 async function submitExistingKey() {
     const input = document.getElementById('gateway-key-input');
     const key = input ? input.value.trim() : '';
@@ -345,6 +369,7 @@ async function submitExistingKey() {
     showSelectionScreen();
 }
 
+// Update the save-key status label on the character selection screen.
 function updateSaveKeyStatus() {
     const label = document.getElementById('sel-save-label');
     if (!label) return;
@@ -352,11 +377,13 @@ function updateSaveKeyStatus() {
     label.className = 'sel-save-label' + (saveKey ? ' connected' : '');
 }
 
+// Show the existing-key form so the user can switch to a different save key.
 function changeSaveKey() {
     showGatewayExisting();
     document.getElementById('file-gateway').style.display = 'flex';
 }
 
+// Copy the current save key to the clipboard.
 function copySaveKey() {
     if (!saveKey) return;
     navigator.clipboard.writeText(saveKey).catch(() => {});
@@ -365,10 +392,12 @@ function copySaveKey() {
     if (copyBtn) { copyBtn.textContent = 'Copié !'; setTimeout(() => { copyBtn.textContent = 'Copier'; }, 2000); }
 }
 
+// Cancel key entry: return to gateway if no key exists, else just hide it.
 function cancelGateway() {
     if (saveKey) { hideGateway(); } else { showGateway(); }
 }
 
+// On load: restore from Supabase if a save key exists, otherwise show the gateway.
 async function tryRestoreSupabase() {
     if (!saveKey) { showGateway(); return; }
     await loadFromSupabase();
@@ -379,12 +408,18 @@ async function tryRestoreSupabase() {
 // ═══════════════════════════════════════════
 //  CHARACTER MANAGEMENT
 // ═══════════════════════════════════════════
+// Return the localStorage key for the current character's HP.
 function hpKey()    { return 'aria-current-hp-' + currentCharId; }
+// Return the localStorage key for the current character's card deck state.
 function cardKey()  { return 'aria-cards-'       + currentCharId; }
+// Return the localStorage key for the current character's notes.
 function notesKey() { return 'aria-notes-'       + currentCharId; }
 
+// Read the characters array from localStorage.
 function getCharacters() { return JSON.parse(localStorage.getItem('aria-characters') || '[]'); }
+// Write the characters array to localStorage and schedule a Supabase sync.
 function saveCharacters(chars) { localStorage.setItem('aria-characters', JSON.stringify(chars)); debouncedSync(); }
+// Persist the current character object back into the characters array in localStorage.
 function saveCurrentCharacter() {
     if (!currentCharId) return;
     const chars = getCharacters();
@@ -395,6 +430,7 @@ function saveCurrentCharacter() {
     saveCharacters(chars);
 }
 
+// Migrate a single legacy aria-character entry to the multi-character array format.
 function migrateIfNeeded() {
     if (localStorage.getItem('aria-characters')) return;
     const oldChar = JSON.parse(localStorage.getItem('aria-character') || 'null');
@@ -407,6 +443,7 @@ function migrateIfNeeded() {
     if (oldCards !== null) localStorage.setItem('aria-cards-' + id, oldCards);
 }
 
+// Load a character by ID into module state, initializing all derived fields.
 function loadCharacterState(id) {
     const chars = getCharacters();
     const data = chars.find(c => c.id === id);
@@ -441,6 +478,7 @@ function loadCharacterState(id) {
     return true;
 }
 
+// Render the character selection grid from localStorage.
 function renderSelectionScreen() {
     const chars = getCharacters();
     const grid = document.getElementById('char-grid');
@@ -462,6 +500,7 @@ function renderSelectionScreen() {
     });
 }
 
+// Switch the UI to the character selection screen.
 function showSelectionScreen() {
     document.getElementById('selection-screen').style.display = 'flex';
     document.getElementById('app-wrapper').style.display = 'none';
@@ -470,11 +509,13 @@ function showSelectionScreen() {
     updateSaveKeyStatus();
 }
 
+// Switch the UI to the main app view.
 function showApp() {
     document.getElementById('selection-screen').style.display = 'none';
     document.getElementById('app-wrapper').style.display = 'flex';
 }
 
+// Select a character, load its state, start the app, and lazily load roll history.
 async function selectCharacter(id) {
     if (!loadCharacterState(id)) return;
     showApp();
@@ -499,6 +540,7 @@ async function selectCharacter(id) {
     }
 }
 
+// Delete a character from localStorage and Supabase, then re-render the selection screen.
 function deleteCharacter(id) {
     if (!confirm('Supprimer ce personnage ? Cette action est irréversible.')) return;
     sbDelete('characters', 'id=eq.' + encodeURIComponent(id));
@@ -511,6 +553,7 @@ function deleteCharacter(id) {
     renderSelectionScreen();
 }
 
+// Show the new-character creation form.
 function createCharacter() {
     document.getElementById('new-char-form').style.display = 'flex';
     document.getElementById('new-char-name').value = '';
@@ -521,6 +564,7 @@ function createCharacter() {
     document.getElementById('new-char-name').focus();
 }
 
+// Create a new character from form inputs and immediately select it.
 function confirmCreateCharacter() {
     const name = document.getElementById('new-char-name').value.trim() || 'Nouveau personnage';
     const cls  = document.getElementById('new-char-class').value.trim();
@@ -535,10 +579,12 @@ function confirmCreateCharacter() {
     selectCharacter(id);
 }
 
+// Hide the new-character form without creating.
 function cancelCreateCharacter() {
     document.getElementById('new-char-form').style.display = 'none';
 }
 
+// Tear down the current session (Ably, dddice, music, VDO) and return to selection screen.
 function switchCharacter() {
     if (currentCharId) saveCurrentCharacter();
     if (presenceIntervalId) { clearInterval(presenceIntervalId); presenceIntervalId = null; }
@@ -574,6 +620,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     await tryRestoreSupabase();
 });
 
+// Initialize the full player app after a character is selected.
 function initApp() {
     console.log('[PLAYER] initApp: char:', character.name, '| charId:', currentCharId, '| ablyKey:', config.ablyKey ? 'set' : 'MISSING', '| dddice:', config.dddiceKey ? 'set' : 'none');
     currentHP = null;
@@ -602,6 +649,7 @@ function initApp() {
     startSelfView();
 }
 
+// Configure the overlay editor button href for this character.
 function updateOverlayEditorBtn() {
     const btn = document.getElementById('btn-open-overlay-editor');
     if (!btn || !currentCharId) return;
@@ -612,6 +660,7 @@ function updateOverlayEditorBtn() {
 // ═══════════════════════════════════════════
 //  TABS
 // ═══════════════════════════════════════════
+// Switch the active tab panel in the player UI.
 function switchTab(id, btn) {
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -624,6 +673,7 @@ function switchTab(id, btn) {
 let notesList = [];
 let currentNoteId = null;
 
+// Load notes from localStorage for the current character, migrating plain-string format if needed.
 function loadNotes() {
     const raw = localStorage.getItem(notesKey());
     if (!raw) {
@@ -647,14 +697,17 @@ function loadNotes() {
     loadNoteContent();
 }
 
+// Generate a new UUID for a note.
 function _noteId() {
     return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
 
+// Save the current notes list to localStorage.
 function persistNotes() {
     localStorage.setItem(notesKey(), JSON.stringify(notesList));
 }
 
+// Render the notes sidebar list, highlighting the currently selected note.
 function renderNotesList() {
     const list = document.getElementById('notes-list');
     if (!list) return;
@@ -677,6 +730,7 @@ function renderNotesList() {
     });
 }
 
+// Load the selected note's name and body into the editor fields.
 function loadNoteContent() {
     const nameInput = document.getElementById('notes-name-input');
     const area = document.getElementById('notes-area');
@@ -695,6 +749,7 @@ function loadNoteContent() {
     }
 }
 
+// Select a note by ID and display it in the editor.
 function selectNote(id) {
     currentNoteId = id;
     renderNotesList();
@@ -702,6 +757,7 @@ function selectNote(id) {
     document.getElementById('notes-area').focus();
 }
 
+// Add a new empty note, persist it, sync to Supabase, and select it.
 function addNote() {
     const note = { id: _noteId(), name: 'Nouvelle note', content: '' };
     notesList.push(note);
@@ -712,6 +768,7 @@ function addNote() {
     if (nameInput) { nameInput.focus(); nameInput.select(); }
 }
 
+// Delete a note, remove it from Supabase, and select the adjacent note.
 function deleteNote(id) {
     deleteCharacterNote(id);
     const idx = notesList.findIndex(n => n.id === id);
@@ -722,6 +779,7 @@ function deleteNote(id) {
     loadNoteContent();
 }
 
+// Save the current note's content from the textarea and schedule a Supabase sync.
 function saveCurrentNote() {
     const note = notesList.find(n => n.id === currentNoteId);
     if (!note) return;
@@ -730,6 +788,7 @@ function saveCurrentNote() {
     debouncedSyncNote(note);
 }
 
+// Rename the current note from the name input and refresh the list.
 function renameCurrentNote() {
     const note = notesList.find(n => n.id === currentNoteId);
     if (!note) return;
@@ -739,6 +798,7 @@ function renameCurrentNote() {
     debouncedSyncNote(note);
 }
 
+// Show/hide conditional tabs based on GM-granted access and character type.
 function applyTabVisibility() {
     const btnCards = document.getElementById('tab-btn-cards');
     const btnAlchemy = document.getElementById('tab-btn-alchemy');
@@ -770,6 +830,7 @@ function applyTabVisibility() {
     }
 }
 
+// Show/hide the Cameras tab based on whether any active stream IDs are known.
 function updateCamerasTabVisibility() {
     const peers = [...peerCameras.values()];
     const hasAny = !!gmStreamId || !!selfViewStream || peers.some(p => p.streamId);
@@ -786,6 +847,7 @@ function updateCamerasTabVisibility() {
     }
 }
 
+// Request camera access and store the stream for the self-view preview cell.
 function startSelfView() {
     if (selfViewStream) return;
     if (!navigator.mediaDevices?.getUserMedia) return;
@@ -796,12 +858,14 @@ function startSelfView() {
         })
         .catch(() => {});
 }
+// Stop all tracks of the self-view camera stream.
 function stopSelfView() {
     if (!selfViewStream) return;
     selfViewStream.getTracks().forEach(t => t.stop());
     selfViewStream = null;
 }
 
+// Render/update the cameras grid: self-view, GM iframe, and peer VDO.ninja iframes.
 function renderCamerasTab() {
     console.log('[VDO] renderCamerasTab() called | currentCharId:', currentCharId, '| gmStreamId:', gmStreamId, '| peerCameras:', [...peerCameras.entries()].map(([k,v]) => `${k}:${v.name}(${v.streamId})`).join(', '));
     startSelfView();
@@ -913,11 +977,14 @@ function renderCamerasTab() {
 // ═══════════════════════════════════════════
 //  HP
 // ═══════════════════════════════════════════
+// Return the character's max HP from stats.PV, defaulting to 14 if unset.
 function getMaxHP() { return character.stats.PV || 14; }
+// Initialize currentHP from localStorage, defaulting to max HP if not stored.
 function initCurrentHP() {
     if (currentHP === null) currentHP = parseInt(localStorage.getItem(hpKey()));
     if (currentHP === null || isNaN(currentHP)) currentHP = getMaxHP();
 }
+// Update the HP number, fraction label, bar fill, and color class.
 function updateHPDisplay() {
     const max = getMaxHP(), cur = Math.max(0, Math.min(currentHP, max));
     const numEl = document.getElementById('hp-number');
@@ -929,6 +996,7 @@ function updateHPDisplay() {
     fill.style.width = `${pct * 100}%`;
     fill.style.background = pct > 0.5 ? 'var(--success)' : pct > 0.25 ? '#e8a020' : 'var(--fail)';
 }
+// Animate the HP bar from its old value to the new value with a ghost trail.
 function animateHPChange(hpBefore, hpAfter, maxHP) {
     const ghost = document.getElementById('hp-bar-ghost');
     const fill = document.getElementById('hp-bar-fill');
@@ -948,6 +1016,7 @@ function animateHPChange(hpBefore, hpAfter, maxHP) {
 // ═══════════════════════════════════════════
 //  DAMAGE ANIMATIONS (received from GM)
 // ═══════════════════════════════════════════
+// Apply incoming damage from the GM: update HP, animate bar, trigger VFX.
 function handleGMDamage(data) {
     const { damage, hpBefore, hpAfter, maxHP } = data;
     console.log('[PLAYER] handleGMDamage: -', damage, 'PV |', hpBefore, '→', hpAfter, '/', maxHP, hpAfter <= 0 ? '| MORT' : '');
@@ -959,6 +1028,7 @@ function handleGMDamage(data) {
     showToast('gm-dmg-toast', `⚔ Dégâts reçus : -${damage} PV`);
     if (hpAfter <= 0) showMort();
 }
+// Apply incoming heal from the GM: update HP, animate bar, show heal number.
 function handleGMHeal(data) {
     const { amount, hpBefore, hpAfter, maxHP } = data;
     console.log('[PLAYER] handleGMHeal: +', amount, 'PV |', hpBefore, '→', hpAfter, '/', maxHP);
@@ -969,6 +1039,7 @@ function handleGMHeal(data) {
     showHealNumber(amount);
     showToast('gm-heal-toast', `♥ Soins reçus : +${amount} PV`);
 }
+// Trigger screen shake, red vignette flash, blood particles, and floating damage number.
 function triggerDamageVFX(dmg, local) {
     // screen shake
     document.body.style.animation = 'none';
@@ -987,7 +1058,9 @@ function triggerDamageVFX(dmg, local) {
     // damage number
     spawnDmgNumber(`-${dmg}`, false);
 }
+// Show a floating green heal number on screen.
 function showHealNumber(amt) { spawnDmgNumber(`+${amt}`, true); }
+// Create and animate a floating damage or heal number element on screen.
 function spawnDmgNumber(txt, isHeal) {
     const el = document.createElement('div');
     el.textContent = txt;
@@ -998,6 +1071,7 @@ function spawnDmgNumber(txt, isHeal) {
     el.style.opacity = '0';
     setTimeout(() => el.remove(), 1000);
 }
+// Spawn blood splatter particles on the player's damage canvas.
 function spawnBloodParticles() {
     const canvas = document.getElementById('dmg-canvas');
     const ctx = canvas.getContext('2d');
@@ -1024,12 +1098,14 @@ function spawnBloodParticles() {
     }
     requestAnimationFrame(frame);
 }
+// Flash the MORT screen overlay for 4 seconds.
 function showMort() {
     const m = document.getElementById('mort-screen');
     m.classList.add('show');
     setTimeout(() => m.classList.remove('show'), 4000);
 }
 let toastTimers = {};
+// Show a toast notification by element ID for 3.5 seconds.
 function showToast(id, msg) {
     clearTimeout(toastTimers[id]);
     const el = document.getElementById(id);
@@ -1042,6 +1118,7 @@ function showToast(id, msg) {
 //  BONUS / MALUS
 // ═══════════════════════════════════════════
 let otherRollToastTimer = null;
+// Show a toast when another player makes a roll, displaying their name and result.
 function showOtherRollToast(d) {
     const isDie = d.threshold === null;
     const type = isDie ? 'die' : classify(d.roll, d.threshold, d.success);
@@ -1059,8 +1136,11 @@ function showOtherRollToast(d) {
     otherRollToastTimer = setTimeout(() => toast.classList.remove('show'), 4000);
 }
 
+// Add a value to the current bonus/malus and refresh the display.
 function addBM(v) { bonusMalus += v; updateBMDisplay(); }
+// Reset the bonus/malus to 0 and refresh the display.
 function resetBM() { bonusMalus = 0; updateBMDisplay(); }
+// Render the karma value display with appropriate positive/negative styling.
 function renderKarma() {
     const el = document.getElementById('karma-display');
     if (!el) return;
@@ -1068,10 +1148,12 @@ function renderKarma() {
     el.textContent = (k > 0 ? '+' : '') + k;
     el.className = 'karma-display' + (k > 0 ? ' positive' : k < 0 ? ' negative' : '');
 }
+// Apply a custom ± value from the BM input to the current bonus/malus.
 function addCustomBM(sign) {
     const v = parseInt(document.getElementById('bm-custom-val').value);
     if (!isNaN(v)) { bonusMalus += sign * Math.abs(v); updateBMDisplay(); }
 }
+// Update the BM display label and in-place refresh all affected skill percentages.
 function updateBMDisplay() {
     const el = document.getElementById('bm-display');
     el.textContent = (bonusMalus > 0 ? '+' : '') + bonusMalus;
@@ -1095,6 +1177,7 @@ function updateBMDisplay() {
 // ═══════════════════════════════════════════
 //  RENDER
 // ═══════════════════════════════════════════
+// Full re-render of all player panel sections.
 function renderAll() {
     document.getElementById('char-display').textContent = `${character.name} — ${character.class}`;
     document.title = character.name ? `ARIA – ${character.name}` : 'ARIA – Joueur';
@@ -1109,6 +1192,7 @@ function renderAll() {
     renderKarma();
 }
 
+// Render the skills and specials lists (sorted) with effective percentages applied.
 function renderSkills() {
     const list = document.getElementById('skill-list');
     list.innerHTML = '';
@@ -1138,6 +1222,7 @@ function renderSkills() {
     });
 }
 
+// Render the stat grid and multiplier bar; cleared for contemporary characters.
 function renderStats() {
     if (character.ariaType === 'contemporary') {
         document.getElementById('mult-bar-btns').innerHTML = '';
@@ -1164,6 +1249,7 @@ function renderStats() {
         grid.appendChild(div);
     });
 }
+// Set the stat roll multiplier and re-render the stat grid.
 function setMult(m) {
     multiplier = m;
     renderStats();
@@ -1175,6 +1261,7 @@ const MONEY_COINS = [
     { key: 'sceptre',  label: 'Sceptre',  color: '#c87533' },
     { key: 'sou',      label: 'Sou',      color: '#8a8a94' },
 ];
+// Render the inventory sidebar with items, vials (if alchemy enabled), and money.
 function renderInventorySidebar() {
     const body = document.getElementById('inv-sidebar-body');
     const items = character.inventory || [];
@@ -1202,6 +1289,7 @@ function renderInventorySidebar() {
     }
 }
 
+// Render the combat sidebar with equipped weapons, protection, and reaction buttons.
 function renderCombatSidebar() {
     const body = document.getElementById('combat-sidebar-body');
     if (!body) return;
@@ -1250,6 +1338,7 @@ function renderCombatSidebar() {
 // ═══════════════════════════════════════════
 //  ROLLS
 // ═══════════════════════════════════════════
+// Execute a free-threshold roll from the "Jet libre" tab form.
 function doFreeRoll() {
     const name = document.getElementById('free-name').value.trim() || 'Jet libre';
     const t = parseInt(document.getElementById('free-threshold').value);
@@ -1258,6 +1347,7 @@ function doFreeRoll() {
 }
 // Roll a single die via dddice (3D animation); falls back to Math.random when SDK not ready.
 // d3 is simulated as d6 with ceil(v/2) mapping.
+// Roll a single die via the dddice SDK; falls back to Math.random if the SDK is unavailable.
 async function rollDieViaDddice(sides, callback) {
     if (!dddiceAPI || !dddiceSDK || pendingDddiceRoll || pendingSecondaryRoll) {
         callback(Math.floor(Math.random() * sides) + 1);
@@ -1285,6 +1375,7 @@ async function rollDieViaDddice(sides, callback) {
     }
 }
 // Parse "2d6+2" → { dice: ['d6','d6'], modifier: 2 }
+// Parse a dice formula string like "2d6+2" into a dice type array and a flat modifier.
 function formulaToDiceSpec(formula) {
     const tokens = formula.replace(/\s+/g,'').toLowerCase().split(/(?=[+-])/);
     const dice = []; let modifier = 0;
@@ -1298,6 +1389,7 @@ function formulaToDiceSpec(formula) {
     }
     return { dice, modifier };
 }
+// Roll a standard die (d4/d6/d8/d10/d12/d20) and publish the result.
 function rollDie(sides) {
     if (pendingDddiceRoll || pendingSecondaryRoll) return;
     rollDieViaDddice(sides, result => {
@@ -1309,6 +1401,7 @@ function rollDie(sides) {
 }
 
 // Parse and roll a dice formula like "2d6+2", "1d8-1", "3d4", "5"
+// Evaluate a dice formula string (e.g. "2d6+2") and return total and breakdown.
 function rollDiceFormula(formula) {
     const expr = (formula || '').replace(/\s+/g, '').toLowerCase();
     if (!expr) return { total: 0, breakdown: '0' };
@@ -1341,6 +1434,7 @@ function rollDiceFormula(formula) {
     return { total, breakdown: parts.join(' ') };
 }
 
+// Show a weapon damage result on the float card and publish it to Ably.
 function _showWeaponDamageResult(name, formula, result) {
     const card = document.getElementById('float-roll-card');
     const scrim = document.getElementById('roll-scrim');
@@ -1360,6 +1454,7 @@ function _showWeaponDamageResult(name, formula, result) {
     publishRoll({ skillName: `${name} (dégâts)`, threshold: null, roll: result.total, success: null, char: character.name, bonusMalus: 0, playerId });
     pushRollHistory({ skillName: `${name} (dégâts)`, threshold: null, roll: result.total, success: null, char: character.name, bonusMalus: 0, playerId });
 }
+// Roll weapon damage via dddice SDK if available, otherwise fall back to local RNG.
 async function rollWeaponDamage(name, formula) {
     if (!formula || !formula.trim()) return;
     if (pendingDddiceRoll || pendingSecondaryRoll || !dddiceAPI || !dddiceSDK) {
@@ -1393,6 +1488,7 @@ async function rollWeaponDamage(name, formula) {
         _showWeaponDamageResult(name, formula, rollDiceFormula(formula));
     }
 }
+// Show a plain die result on the float roll card without a verdict.
 function showDieCard(diceName, result) {
     const card = document.getElementById('float-roll-card');
     const scrim = document.getElementById('roll-scrim');
@@ -1410,6 +1506,7 @@ function showDieCard(diceName, result) {
     card.classList.add('show');
     floatCardTimer = setTimeout(dismissFloatCard, 5000);
 }
+// Main skill/stat roll: compute effective threshold and trigger dddice or local RNG.
 function doRoll(skillName, basePct, skipBM = false) {
     if (isRolling) return;
     const karma = character?.karma ?? 0;
@@ -1419,6 +1516,7 @@ function doRoll(skillName, basePct, skipBM = false) {
     if (dddiceAPI) rollViaDddice(skillName, threshold);
     else setTimeout(() => handleResult(skillName, threshold, Math.floor(Math.random() * 100) + 1), 600);
 }
+// Roll a stat check using the current multiplier.
 function rollStat(key, val) {
     const t = Math.max(1, Math.min(100, val * multiplier + bonusMalus));
     doRoll(`${multiplier > 1 ? multiplier + '× ' : ''}${key}`, val * multiplier);
@@ -1427,6 +1525,7 @@ function rollStat(key, val) {
 let playerRollHistory = [];
 const PLAYER_ROLL_HISTORY_MAX = 100;
 
+// Add a roll entry to the player roll history, persist it, and sync to Supabase.
 function pushRollHistory(entry) {
     const stamped = { ...entry, ts: Date.now() };
     playerRollHistory.unshift(stamped);
@@ -1444,6 +1543,7 @@ function pushRollHistory(entry) {
     renderRollHistory();
 }
 
+// Render the roll history list with day separators and active filter pills.
 function renderRollHistory() {
     const list = document.getElementById('roll-history-list');
     if (!list) return;
@@ -1499,6 +1599,7 @@ function renderRollHistory() {
     });
 }
 
+// Clear roll history from memory, localStorage, and reset all filter pills.
 function clearRollHistory() {
     playerRollHistory = [];
     rollFilter.clear();
@@ -1509,6 +1610,7 @@ function clearRollHistory() {
     renderRollHistory();
 }
 
+// Toggle a roll filter pill and re-render the history list.
 function toggleRollFilter(key) {
     if (key === 'all') {
         rollFilter.clear();
@@ -1526,6 +1628,7 @@ function toggleRollFilter(key) {
     renderRollHistory();
 }
 
+// Process the final dice result: show float card, publish, update history, check side-effects.
 function handleResult(skillName, threshold, roll) {
     const success = roll <= threshold;
     console.log('[PLAYER] handleResult:', skillName, '| roll:', roll, '| threshold:', threshold, '|', success ? 'SUCCÈS' : 'ÉCHEC', roll <= 10 && success ? '(CRITIQUE)' : roll >= 91 && !success ? '(CRITIQUE)' : '');
@@ -1537,6 +1640,7 @@ function handleResult(skillName, threshold, roll) {
     if (skillName === 'Soigner') applySoigner(success);
     if (pendingCraft !== null) { applyCraft(success, pendingCraft); pendingCraft = null; }
 }
+// Open the Soigner target picker modal listing self and nearby players.
 function openSoignerTargetPicker(pct) {
     soignerPct = pct;
     const now = Date.now();
@@ -1560,14 +1664,17 @@ function openSoignerTargetPicker(pct) {
     document.getElementById('soigner-scrim').classList.add('show');
     document.getElementById('soigner-target-modal').classList.add('show');
 }
+// Close the Soigner target picker modal.
 function closeSoignerTargetPicker() {
     document.getElementById('soigner-scrim').classList.remove('show');
     document.getElementById('soigner-target-modal').classList.remove('show');
 }
+// Cancel Soigner target selection and close the modal.
 function cancelSoigner() {
     soignerTarget = null;
     closeSoignerTargetPicker();
 }
+// Apply the Soigner result: heal (1d6) on success or damage (1d3) on failure, to self or a target.
 function applySoigner(success) {
     const target = soignerTarget; // capture before async delay
     soignerTarget = null;
@@ -1615,12 +1722,14 @@ function applySoigner(success) {
         }
     }, 1500);
 }
+// Classify a d100 roll as success, fail, crit-success, or crit-fail.
 function classify(roll, threshold, success) {
     if (roll <= 10 && success) return 'crit-success';
     if (roll >= 91 && !success) return 'crit-fail';
     return success ? 'success' : 'fail';
 }
 let floatCardTimer = null;
+// Show the floating roll result card with verdict text and crit particle effects.
 function showFloatCard(data) {
     const card = document.getElementById('float-roll-card');
     const scrim = document.getElementById('roll-scrim');
@@ -1646,6 +1755,7 @@ function showFloatCard(data) {
     const dur = (type === 'crit-success' || type === 'crit-fail') ? 8000 : 5000;
     floatCardTimer = setTimeout(dismissFloatCard, dur);
 }
+// Dismiss the float roll card with an exit animation and stop particles.
 function dismissFloatCard() {
     clearTimeout(floatCardTimer);
     const card = document.getElementById('float-roll-card');
@@ -1656,6 +1766,7 @@ function dismissFloatCard() {
     stopFcParticles();
     setTimeout(() => { card.className = 'float-roll-card'; }, 320);
 }
+// Set the rolling lock state and toggle the rolling indicator chip.
 function setRolling(v) {
     isRolling = v;
     document.getElementById('rolling-ind').classList.toggle('active', v);
@@ -1667,9 +1778,11 @@ function setRolling(v) {
 const fcCanvas = document.getElementById('fc-particles');
 const fcCtx = fcCanvas.getContext('2d');
 let fcParticles = [], fcAnimFrame = null;
+// Resize the float card particle canvas to the window dimensions.
 function resizeFcCanvas() { fcCanvas.width = window.innerWidth; fcCanvas.height = window.innerHeight; }
 resizeFcCanvas();
 window.addEventListener('resize', resizeFcCanvas);
+// Spawn confetti particles on the float card canvas for crit success or fail.
 function spawnFcParticles(type) {
     fcParticles = [];
     const cx = fcCanvas.width / 2, cy = fcCanvas.height / 2;
@@ -1683,6 +1796,7 @@ function spawnFcParticles(type) {
     if (fcAnimFrame) cancelAnimationFrame(fcAnimFrame);
     loopFcParticles();
 }
+// rAF loop that updates and draws the float card particle system each frame.
 function loopFcParticles() {
     fcCtx.clearRect(0, 0, fcCanvas.width, fcCanvas.height);
     fcParticles = fcParticles.filter(p => p.alpha > .02);
@@ -1695,17 +1809,21 @@ function loopFcParticles() {
     if (fcParticles.length) fcAnimFrame = requestAnimationFrame(loopFcParticles);
     else { fcCtx.clearRect(0, 0, fcCanvas.width, fcCanvas.height); fcAnimFrame = null; }
 }
+// Draw a 4-pointed star for float card particle effects.
 function drawFcStar(ctx, r) { const spikes = 4, out = r / 2, inn = r / 5; let rot = -Math.PI / 2; ctx.beginPath(); for (let i = 0; i < spikes * 2; i++) { const radius = i % 2 === 0 ? out : inn; ctx.lineTo(Math.cos(rot) * radius, Math.sin(rot) * radius); rot += Math.PI / spikes; } ctx.closePath(); ctx.fill(); }
+// Stop the float card particle animation and clear the canvas.
 function stopFcParticles() { if (fcAnimFrame) { cancelAnimationFrame(fcAnimFrame); fcAnimFrame = null; } fcCtx.clearRect(0, 0, fcCanvas.width, fcCanvas.height); fcParticles = []; }
 
 // ═══════════════════════════════════════════
 //  DDDICE
 // ═══════════════════════════════════════════
+// Extract the dddice room slug from a full URL or return the raw value.
 function extractRoomSlug(val) {
     if (!val) return '';
     const m = val.match(/\/room\/([^/?#]+)/);
     return m ? m[1] : val.trim();
 }
+// Initialize the dddice SDK: fetch available themes, create the canvas renderer, and connect to the room.
 async function initDddice() {
     const slug = extractRoomSlug(config.dddiceRoom);
     if (!config.dddiceKey || !slug) return;
@@ -1773,9 +1891,12 @@ async function initDddice() {
         } catch (_) {}
     } catch (e) { console.error('dddice:', e); setDddiceStatus(false, e.message); dddiceSDK = null; dddiceAPI = null; }
 }
+// Show the dddice canvas wrapper (makes the 3D dice animation visible).
 function showDddiceCanvas() { const w = document.getElementById('dddice-wrap'); if (w) w.style.visibility = 'visible'; }
+// Hide the dddice canvas wrapper.
 function hideDddiceCanvas() { const w = document.getElementById('dddice-wrap'); if (w) w.style.visibility = 'hidden'; }
 
+// Trigger a d100 roll (d10x + d10) via the dddice SDK with a 12s safety fallback.
 async function rollViaDddice(skillName, threshold) {
     if (!dddiceSDK) { handleResult(skillName, threshold, Math.floor(Math.random() * 100) + 1); return; }
     try {
@@ -1795,6 +1916,7 @@ async function rollViaDddice(skillName, threshold) {
         // well before the animation ends. RollFinished handles the clear.
     } catch (e) { console.error('dddice roll:', e); pendingDddiceRoll = null; hideDddiceCanvas(); handleResult(skillName, threshold, Math.floor(Math.random() * 100) + 1); }
 }
+// Update the dddice status dot and text labels in the topbar and config modal.
 function setDddiceStatus(ok, detail) {
     const d = ['dddice-dot', 'cfg-dddice-dot'], s = ['dddice-status', 'cfg-dddice-status'];
     d.forEach(id => { const el = document.getElementById(id); if (el) el.className = 'status-dot ' + (ok ? 'connected' : 'error'); });
@@ -1821,11 +1943,13 @@ let _ytPendingCbs = [];
 let _ytSlotA      = null;
 let _ytSlotB      = null;
 
+// Lazily create and return the Audio element for a given slot (A or B).
 function _getAudio(slot) {
     if (!_musicSlots[slot].audio) _musicSlots[slot].audio = new Audio();
     return _musicSlots[slot].audio;
 }
 
+// Set the volume (0–100) on a music slot's Audio element and YouTube player.
 function _setSlotVol(slot, vol) {
     const v = Math.max(0, Math.min(100, vol));
     const audio = _musicSlots[slot].audio;
@@ -1834,6 +1958,7 @@ function _setSlotVol(slot, vol) {
     if (yt) { try { yt.setVolume(v); } catch(_) {} }
 }
 
+// Stop and clear a music slot: pause audio, stop YouTube, clear ended callback.
 function _stopSlot(slot) {
     const audio = _musicSlots[slot].audio;
     if (audio) { audio.pause(); audio.onended = null; audio.src = ''; }
@@ -1842,6 +1967,7 @@ function _stopSlot(slot) {
     _musicSlots[slot].ytEndedCb = null;
 }
 
+// Lazily load the YouTube IFrame API script and call back when it is ready.
 function _ensureYTAPI(cb) {
     if (_ytAPIReady) { cb(); return; }
     _ytPendingCbs.push(cb);
@@ -1856,6 +1982,7 @@ function _ensureYTAPI(cb) {
     document.head.appendChild(s);
 }
 
+// Ensure both YouTube player slots A and B are initialized, then call back.
 function _ensureYTSlots(cb) {
     _ensureYTAPI(() => {
         if (_ytSlotA && _ytSlotB) { cb(); return; }
@@ -1880,6 +2007,7 @@ function _ensureYTSlots(cb) {
     });
 }
 
+// Load a track into a slot at volume 0 and call onStarted once playback begins.
 function _loadSlotAtZeroVol(track, slot, onStarted) {
     _setSlotVol(slot, 0);
     if (track.type === 'file') {
@@ -1913,6 +2041,7 @@ function _loadSlotAtZeroVol(track, slot, onStarted) {
     }
 }
 
+// Cross-fade volume from one audio slot to another over musicFadeDuration ms.
 function _runCrossfade(fromSlot, toSlot, onDone) {
     if (_musicFadeRaf) { cancelAnimationFrame(_musicFadeRaf); _musicFadeRaf = null; }
     const start = performance.now();
@@ -1927,6 +2056,7 @@ function _runCrossfade(fromSlot, toSlot, onDone) {
     _musicFadeRaf = requestAnimationFrame(tick);
 }
 
+// Register the "track ended" callback for a slot (audio onended or YouTube state change).
 function _setSlotEndedCallback(slot, track, cb) {
     if (track.type === 'file') {
         const audio = _musicSlots[slot].audio;
@@ -1936,6 +2066,7 @@ function _setSlotEndedCallback(slot, track, cb) {
     }
 }
 
+// Show a "click to enable audio" banner for browsers that block autoplay.
 function _showMusicUnlockPrompt(onUnlock) {
     let el = document.getElementById('music-unlock-prompt');
     if (!el) {
@@ -1950,6 +2081,7 @@ function _showMusicUnlockPrompt(onUnlock) {
     el.addEventListener('click', handler);
 }
 
+// Advance to the next track when the current one ends; stops if the list is exhausted.
 function _musicAutoAdvance() {
     if (!_playerMusicList.length) return;
     const nextIdx = musicCurrentIndex + 1 < _playerMusicList.length ? musicCurrentIndex + 1 : -1;
@@ -1957,6 +2089,7 @@ function _musicAutoAdvance() {
     _musicTriggerPlay(_playerMusicList[nextIdx], nextIdx);
 }
 
+// Start playing a track on the inactive slot and cross-fade in from the current slot.
 function _musicTriggerPlay(track, index) {
     if (_musicFadeRaf) { cancelAnimationFrame(_musicFadeRaf); _musicFadeRaf = null; }
     const currentSlot = _musicCurrentSlot;
@@ -1974,6 +2107,7 @@ function _musicTriggerPlay(track, index) {
     });
 }
 
+// Update the music bar title and make it visible when a track starts.
 function _updatePlayerMusicBar(track) {
     const bar   = document.getElementById('music-bar');
     const title = document.getElementById('music-bar-title');
@@ -1984,6 +2118,7 @@ function _updatePlayerMusicBar(track) {
     }
 }
 
+// Handle volume slider change: persist the value and apply it to the active slot.
 function onMusicVolumeChange(val) {
     musicMasterVolume = parseInt(val);
     localStorage.setItem('aria-music-volume', String(musicMasterVolume));
@@ -1993,6 +2128,7 @@ function onMusicVolumeChange(val) {
 // ═══════════════════════════════════════════
 //  ABLY
 // ═══════════════════════════════════════════
+// Initialize Ably channels and subscribe to all game events (rolls, damage, music, cards).
 function initAbly() {
     console.log('[PLAYER] initAbly: connecting with key', config.ablyKey?.slice(0, 8) + '...');
     try {
@@ -2203,7 +2339,9 @@ function initAbly() {
         });
     } catch (e) { console.error('Ably:', e); setAblyStatus(false); }
 }
+// Publish a roll event to the aria-rolls Ably channel.
 function publishRoll(data) { if (ablyRolls) ablyRolls.publish('roll', data); }
+// Build and copy the OBS overlay URL for this player to the clipboard.
 function copyOverlayUrl() {
     const base = window.location.href.replace(/aria-player\.html.*$/, 'aria-overlay.html');
     const params = new URLSearchParams({ mode: 'player', ably: config.ablyKey || '' });
@@ -2217,9 +2355,11 @@ function copyOverlayUrl() {
         setTimeout(() => btn.textContent = orig, 2000);
     });
 }
+// Publish a card event (draw/reshuffle) to the aria-cards Ably channel.
 function publishCard(type, extra = {}) {
     if (ablyCards) ablyCards.publish(type, { ...extra, excluded: [...cardExcluded], drawn: [...cardDrawn], deckIds: cardDeck.map(c => c.id), lastCardId });
 }
+// Publish the player's full presence heartbeat to the aria-damage channel.
 function sendPresence() {
     if (!ablyDamage) { console.warn('[ARIA] sendPresence: ablyDamage not ready'); return; }
     const sid = derivedStreamId();
@@ -2242,6 +2382,7 @@ function sendPresence() {
         streamId: sid,
     }, err => { if (err) console.error('[ARIA] publish error:', err); });
 }
+// Update the Ably status dot and text labels in the topbar and config modal.
 function setAblyStatus(ok) {
     ['ably-dot', 'cfg-ably-dot2'].forEach(id => { const el = document.getElementById(id); if (el) el.className = 'status-dot ' + (ok ? 'connected' : 'error'); });
     ['ably-status', 'cfg-ably-status2'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = ok ? 'Ably connecté' : 'Ably erreur'; });
@@ -2250,9 +2391,11 @@ function setAblyStatus(ok) {
 // ═══════════════════════════════════════════
 //  CONFIG
 // ═══════════════════════════════════════════
+// Toggle light mode on the document body.
 function applyTheme(light) {
     document.body.classList.toggle('light-mode', !!light);
 }
+// Populate the config modal inputs from the current config and character.
 function loadConfigInputs() {
     const idEl = document.getElementById('cfg-identity-display');
     if (idEl) idEl.textContent = character.name || '—';
@@ -2260,6 +2403,7 @@ function loadConfigInputs() {
     document.getElementById('cfg-dddice-theme').value = config.dddiceTheme || '';
     document.getElementById('cfg-light-mode').checked = !!config.lightMode;
 }
+// Save config modal changes to localStorage and reinitialize Ably and dddice.
 function saveConfig() {
     character.campaignKey = document.getElementById('cfg-campaign-key').value.trim().toUpperCase();
     saveCurrentCharacter();
@@ -2276,6 +2420,7 @@ function saveConfig() {
     if (config.dddiceKey && config.dddiceRoom) initDddice();
     if (config.ablyKey) initAbly();
 }
+// Toggle the config modal and scrim visibility.
 function toggleConfig() {
     document.getElementById('config-modal').classList.toggle('show');
     document.getElementById('config-scrim').classList.toggle('show');
@@ -2284,6 +2429,7 @@ function toggleConfig() {
 // ═══════════════════════════════════════════
 //  CHARACTER EDITOR
 // ═══════════════════════════════════════════
+// Populate all character editor form inputs from the current character object.
 function renderEditorForm() {
     document.getElementById('ed-name').value = character.name;
     document.getElementById('ed-class').value = character.class || '';
@@ -2317,6 +2463,7 @@ function renderEditorForm() {
     renderSkillsEditor();
     renderSpecialsEditor();
 }
+// Render the weapons editor list with name, damage, and favourite star toggle.
 function renderWeaponsEditor() {
     const list = document.getElementById('weapons-editor-list');
     if (!list) return;
@@ -2328,24 +2475,28 @@ function renderWeaponsEditor() {
         list.appendChild(row);
     });
 }
+// Add a new empty weapon slot and re-render the weapons editor.
 function addWeapon() {
     if (!character.weapons) character.weapons = [];
     character.weapons.push({ nom: '', degats: '', favourite: false });
     renderWeaponsEditor();
     saveCurrentCharacter();
 }
+// Remove a weapon by index and re-render the editor and combat sidebar.
 function removeWeapon(i) {
     character.weapons.splice(i, 1);
     renderWeaponsEditor();
     renderCombatSidebar();
     saveCurrentCharacter();
 }
+// Toggle a weapon's equipped (favourite) status and refresh both editor and combat sidebar.
 function toggleWeaponFavourite(i) {
     character.weapons[i].favourite = !character.weapons[i].favourite;
     renderWeaponsEditor();
     renderCombatSidebar();
     saveCurrentCharacter();
 }
+// Render the money editor fields based on character type (ancient coins vs. contemporary francs).
 function renderMoneyEditor() {
     const el = document.getElementById('inv-money-editor');
     if (!el) return;
@@ -2365,6 +2516,7 @@ function renderMoneyEditor() {
         ).join('')}</div>`;
     }
 }
+// Update a single money denomination value and refresh the inventory sidebar.
 function updateMoney(key, val) {
     if (!character.money) {
         character.money = character.ariaType === 'contemporary'
@@ -2375,6 +2527,7 @@ function updateMoney(key, val) {
     saveCurrentCharacter();
     renderInventorySidebar();
 }
+// Render the inventory editor list with item rows and vials counter if alchemy is enabled.
 function renderInventoryEditor() {
     renderMoneyEditor();
     const list = document.getElementById('inv-editor-list');
@@ -2394,10 +2547,13 @@ function renderInventoryEditor() {
         list.insertBefore(vRow, list.firstChild);
     }
 }
+// Add a new empty inventory item and refresh the editor and sidebar.
 function addInventoryRow() { character.inventory.push({ name: '', qty: 1 }); renderInventoryEditor(); renderInventorySidebar(); }
+// Remove an inventory item by index and refresh the editor and sidebar.
 function removeInventoryRow(i) { character.inventory.splice(i, 1); renderInventoryEditor(); renderInventorySidebar(); }
 
 // ── POTIONS ──────────────────────────────────
+// Render the alchemy tab: vials counter, known recipes, and crafted potions stock.
 function renderPotions() {
     const container = document.getElementById('potion-list');
     const empty = document.getElementById('alchemy-empty');
@@ -2468,6 +2624,7 @@ function renderPotions() {
 }
 
 
+// Increment or decrement the vials counter and update all related views.
 function changeVials(delta) {
     character.vials = Math.max(0, (character.vials ?? 0) + delta);
     saveCurrentCharacter();
@@ -2475,11 +2632,13 @@ function changeVials(delta) {
     renderInventorySidebar();
     renderPotions();
 }
+// Toggle the custom potion add form visibility.
 function toggleCustomPotionForm() {
     const form = document.getElementById('custom-potion-form');
     if (!form) return;
     form.style.display = form.style.display === 'none' ? '' : 'none';
 }
+// Add a custom (non-recipe) potion to stock from the form inputs.
 function addCustomPotion() {
     const name = (document.getElementById('cpf-name')?.value || '').trim();
     if (!name) return;
@@ -2494,6 +2653,7 @@ function addCustomPotion() {
     renderPotions();
     sendPresence();
 }
+// Spend a vial and trigger a craft skill roll for the given recipe index.
 function craftPotion(recipeIdx) {
     if ((character.vials ?? 0) <= 0 || isRolling) return;
     const recipe = (character.potionRecipes || [])[recipeIdx];
@@ -2503,6 +2663,7 @@ function craftPotion(recipeIdx) {
     pendingCraft = recipeIdx;
     doRoll(recipe.name, recipe.successChance || 0);
 }
+// Apply the craft roll result: add to stock on success, show toast, update inventory.
 function applyCraft(success, recipeIdx) {
     setTimeout(() => {
         const recipe = (character.potionRecipes || [])[recipeIdx];
@@ -2530,12 +2691,14 @@ function applyCraft(success, recipeIdx) {
         sendPresence();
     }, 1500);
 }
+// Remove a crafted potion from stock by index.
 function removePotion(i) {
     if (!character.potions) return;
     character.potions.splice(i, 1);
     saveCurrentCharacter();
     renderPotions();
 }
+// Consume one unit of a potion, decrement inventory, and show a toast.
 function usePotion(i) {
     const p = character.potions[i];
     if (!p || !p.qty) return;
@@ -2548,6 +2711,7 @@ function usePotion(i) {
     renderInventorySidebar();
     showToast('gm-heal-toast', `${p.name || 'Potion'} utilisée${p.qty > 0 ? ` (×${p.qty} restante${p.qty > 1 ? 's' : ''})` : ' — épuisée'}`);
 }
+// Render the skills percentage editor list, sorted alphabetically.
 function renderSkillsEditor() {
     const list = document.getElementById('skills-editor-list');
     if (!list) return;
@@ -2561,6 +2725,7 @@ function renderSkillsEditor() {
             list.appendChild(row);
         });
 }
+// Render the special skills editor list with name, percentage, and description inputs.
 function renderSpecialsEditor() {
     const list = document.getElementById('specials-editor-list');
     if (!list) return;
@@ -2572,8 +2737,11 @@ function renderSpecialsEditor() {
         list.appendChild(row);
     });
 }
+// Add a new empty special skill entry and re-render.
 function addSpecialRow() { character.specials.push({ name: '', desc: '', pct: 0 }); renderSpecialsEditor(); }
+// Remove a special skill by index and re-render.
 function removeSpecial(i) { character.specials.splice(i, 1); renderSpecialsEditor(); }
+// Read all character editor form inputs back into the character object.
 function readEditorInputs() {
     character.name = document.getElementById('ed-name').value.trim();
     character.class = document.getElementById('ed-class').value.trim();
@@ -2598,10 +2766,12 @@ function readEditorInputs() {
 }
 
 let autoSaveTimer = null;
+// Debounce an auto-save of the character after 700ms of inactivity.
 function scheduleAutoSave() {
     clearTimeout(autoSaveTimer);
     autoSaveTimer = setTimeout(autoSaveChar, 700);
 }
+// Auto-save: read editor inputs, adjust HP if max PV changed, and refresh the UI.
 function autoSaveChar() {
     if (!document.getElementById('tab-char')?.classList.contains('active')) {
         saveCurrentCharacter();
@@ -2633,6 +2803,7 @@ function autoSaveChar() {
     flashSaveStatus();
 }
 let saveStatusTimer = null;
+// Briefly flash the "saved" status indicator in the character editor.
 function flashSaveStatus() {
     const el = document.getElementById('cs-save-status');
     if (!el) return;
@@ -2644,6 +2815,7 @@ function flashSaveStatus() {
 // ═══════════════════════════════════════════
 //  CARD SYSTEM
 // ═══════════════════════════════════════════
+// Build the card tracker grid of suit rows and rank pills.
 function buildTracker() {
     const container = document.getElementById('tracker-suits');
     container.innerHTML = '';
@@ -2663,13 +2835,17 @@ function buildTracker() {
     jPills.appendChild(makePill('joker-black', 'N★', 'is-joker'));
     jRow.appendChild(jPills); container.appendChild(jRow);
 }
+// Create a rank pill element for the card tracker.
 function makePill(id, label, extraCls) {
     const p = document.createElement('span');
     p.id = `pill-${id}`; p.className = 'rank-pill' + (extraCls ? ' ' + extraCls : ''); p.textContent = label;
     refreshPill(p, id); p.addEventListener('click', () => togglePill(id)); return p;
 }
+// Update a pill's visual state to reflect drawn/excluded/normal status.
 function refreshPill(p, id) { const drawn = cardDrawn.has(id), excl = cardExcluded.has(id); p.classList.toggle('drawn', drawn); p.classList.toggle('excluded', excl); }
+// Refresh all pills in the tracker to match the current deck state.
 function refreshAllPills() { ALL_CARDS.forEach(c => { const p = document.getElementById(`pill-${c.id}`); if (p) refreshPill(p, c.id); }); }
+// Cycle a card's state: normal → excluded → returned to deck, updating the deck.
 function togglePill(id) {
     if (cardDrawing) return;
     const card = cardById(id);
@@ -2680,8 +2856,11 @@ function togglePill(id) {
     const p = document.getElementById(`pill-${id}`); if (p) refreshPill(p, id);
     updateClearBtn(); saveCardState();
 }
+// Remove all card exclusions and put excluded cards back in the deck.
 function clearExclusions() { if (cardDrawing) return; cardExcluded.forEach(id => { const c = cardById(id); if (c) cardDeck.splice(Math.floor(Math.random() * (cardDeck.length + 1)), 0, c); }); cardExcluded.clear(); updateDeckCount(); refreshAllPills(); updateClearBtn(); saveCardState(); showCardStatus('Exclusions effacées'); }
+// Persist the current card deck state (excluded, drawn, deckIds) to localStorage.
 function saveCardState() { localStorage.setItem(cardKey(), JSON.stringify({ excluded: [...cardExcluded], drawn: [...cardDrawn], deckIds: cardDeck.map(c => c.id), lastCardId })); debouncedSyncState(); }
+// Update the deck count label and toggle reshuffle/clear button visibility.
 function updateDeckCount() {
     const n = cardDeck.length;
     document.getElementById('deck-count').textContent = n === 0 ? 'Vide' : `${n} carte${n !== 1 ? 's' : ''}`;
@@ -2690,9 +2869,13 @@ function updateDeckCount() {
     document.getElementById('reshuffle-remaining-btn').classList.toggle('visible', n > 1 && n < ALL_CARDS.length - cardExcluded.size);
     updateClearBtn();
 }
+// Show or hide the clear-exclusions button based on whether any cards are excluded.
 function updateClearBtn() { document.getElementById('clear-exclusions-btn').classList.toggle('visible', cardExcluded.size > 0); }
+// Show a temporary status message in the card tab for 2.2 seconds.
 function showCardStatus(msg) { const el = document.getElementById('card-status'); el.textContent = msg; clearTimeout(cardStatusTimer); cardStatusTimer = setTimeout(() => el.textContent = '', 2200); }
+// Return a Promise that resolves after ms milliseconds.
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+// Render the face of a playing card into the drawn-card element.
 function renderCardContent(card) {
     const el = document.getElementById('drawn-card');
     if (card.isJoker) {
@@ -2703,6 +2886,7 @@ function renderCardContent(card) {
         el.innerHTML = `<div class="card-corner tl"><span class="rank">${card.rank}</span><span class="suit-small">${card.suit.sym}</span></div><div class="card-center">${card.suit.sym}</div><div class="card-corner br"><span class="rank">${card.rank}</span><span class="suit-small">${card.suit.sym}</span></div>`;
     }
 }
+// Restore the last drawn card display after a page reload without animation.
 function restoreCard() {
     const card = cardById(lastCardId); if (!card) return;
     const flipWrap = document.getElementById('flip-wrap');
@@ -2714,6 +2898,7 @@ function restoreCard() {
     flipWrap.getBoundingClientRect();
     flipWrap.style.transition = '';
 }
+// Play the card shuffle animation using ghost card elements.
 async function animateShuffle() {
     const overlay = document.getElementById('shuffle-overlay');
     const wrap = document.getElementById('deck-wrap');
@@ -2730,6 +2915,7 @@ async function animateShuffle() {
     wrap.classList.remove('shuffling'); wrap.getBoundingClientRect(); wrap.classList.add('shuffling');
     await delay(680); ghosts.forEach(g => g.remove()); wrap.classList.remove('shuffling');
 }
+// Animate a card flying from the deck position to the stage area.
 async function animateFly() {
     const stage = document.querySelector('.card-stage');
     const wrap = document.getElementById('deck-wrap');
@@ -2746,6 +2932,7 @@ async function animateFly() {
     flyEl.classList.remove('flying'); flyEl.getBoundingClientRect(); flyEl.classList.add('flying');
     await delay(430); flyEl.classList.remove('flying'); flyEl.style.opacity = '0';
 }
+// Render a card face and flip it into view with a CSS transition.
 async function revealCard(card) {
     const flipWrap = document.getElementById('flip-wrap');
     const drawnEl = document.getElementById('drawn-card');
@@ -2753,6 +2940,7 @@ async function revealCard(card) {
     flipWrap.classList.remove('hidden'); flipWrap.getBoundingClientRect();
     await delay(30); flipWrap.classList.add('flipped');
 }
+// Draw the top card from the deck with fly and flip animations, then publish to Ably.
 async function drawCard() {
     if (cardDrawing || cardDeck.length === 0) return;
     cardDrawing = true;
@@ -2768,6 +2956,7 @@ async function drawCard() {
     saveCardState(); publishCard('draw', { cardId: drawn.id, playerName: character.name });
     cardDrawing = false;
 }
+// Reshuffle all or remaining cards with shuffle animation and publish to Ably.
 async function manualReshuffle(remainingOnly) {
     if (cardDrawing) return;
     cardDrawing = true;
@@ -2788,9 +2977,11 @@ async function manualReshuffle(remainingOnly) {
 // ═══════════════════════════════════════════
 //  PLAYER FILES
 // ═══════════════════════════════════════════
+// Escape HTML special characters for safe injection into player file display.
 function _pfEscHtml(s) {
     return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+// Return an emoji icon string for a file MIME type.
 function _pfFileIcon(type) {
     if (!type) return '📄';
     if (type.startsWith('image/')) return '🖼';
@@ -2799,6 +2990,7 @@ function _pfFileIcon(type) {
     return '📄';
 }
 
+// Render the GM-granted files list in the Fichiers tab.
 function renderPlayerFiles() {
     const list = document.getElementById('player-files-list');
     const empty = document.getElementById('player-files-empty');
@@ -2820,6 +3012,7 @@ function renderPlayerFiles() {
     });
 }
 
+// Open the file viewer modal for a player file, rendering image/PDF/text inline.
 function openFileViewer(fileId) {
     const f = playerFiles.find(f => f.id === fileId);
     if (!f) return;
@@ -2857,6 +3050,7 @@ function openFileViewer(fileId) {
     document.getElementById('file-viewer-modal').classList.add('show');
 }
 
+// Close the file viewer modal and clear its body.
 function closeFileViewer() {
     document.getElementById('file-viewer-scrim').classList.remove('show');
     document.getElementById('file-viewer-modal').classList.remove('show');

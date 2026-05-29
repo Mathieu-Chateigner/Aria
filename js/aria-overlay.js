@@ -102,6 +102,7 @@ if (ABLY_KEY) {
 // ── DDDICE SDK ─────────────────────────────
 // Connects to the dddice room and renders incoming 3D dice rolls in the canvas.
 // Pass ?dddice_key=YOUR_KEY&dddice_room=YOUR_ROOM_SLUG in the overlay URL.
+// Extract the room slug from a full dddice/VDO.ninja URL or return the raw value.
 function extractRoomSlug(val) {
     if (!val) return '';
     const m = val.match(/\/room\/([^/?#]+)/);
@@ -139,12 +140,14 @@ if (DDDICE_KEY && DDDICE_ROOM) {
 // ══════════════════════════════════════════
 //  DICE ROLL DISPLAY
 // ══════════════════════════════════════════
+// Classify a d100 roll as success, fail, crit-success, or crit-fail.
 function classify(roll, threshold, success) {
     if (roll <= 10 && success) return 'crit-success';
     if (roll >= 91 && !success) return 'crit-fail';
     return success ? 'success' : 'fail';
 }
 
+// Display a roll result card on the overlay with verdict and particle effects.
 function showRoll(data) {
     // Hide card overlay if visible
     hideCard();
@@ -222,6 +225,7 @@ const SUITS_MAP = {
     joker: { sym: '★', cls: 'pc-purple' },
 };
 
+// Build the inner HTML and metadata for a playing card from its ID.
 function buildPlayingCard(cardId) {
     // Reconstruct card info from id
     const isJoker = cardId.startsWith('joker');
@@ -254,6 +258,7 @@ function buildPlayingCard(cardId) {
     return { html, label, colorCls };
 }
 
+// Display a drawn playing card on the overlay.
 function showDrawnCard(data) {
     // Hide dice roll if visible
     hideRoll();
@@ -280,11 +285,13 @@ function showDrawnCard(data) {
     }, 4000);
 }
 
+// Handle a deck reshuffle event by hiding any visible card.
 function showReshuffle() {
     // Just briefly flash something on overlay if you want — for now, just hide card
     hideCard();
 }
 
+// Hide and reset the roll result card.
 function hideRoll() {
     const rc = document.getElementById('roll-card');
     rc.className = '';
@@ -292,6 +299,7 @@ function hideRoll() {
     clearTimeout(rollDismiss);
 }
 
+// Hide the drawn card overlay.
 function hideCard() {
     document.getElementById('drawn-card-overlay').classList.remove('show');
     clearTimeout(cardDismiss);
@@ -304,10 +312,12 @@ const canvas = document.getElementById('particles');
 const ctx = canvas.getContext('2d');
 let particles = [], animFrame = null;
 
+// Resize the particle canvas to match the window dimensions.
 function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
 resize();
 window.addEventListener('resize', resize);
 
+// Spawn confetti particles from the center for crit success or fail.
 function spawnParticles(type) {
     particles = [];
     const cx = canvas.width / 2, cy = canvas.height / 2;
@@ -321,6 +331,7 @@ function spawnParticles(type) {
     if (animFrame) cancelAnimationFrame(animFrame);
     loopParticles();
 }
+// rAF loop that updates and draws the particle system each frame.
 function loopParticles() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     particles = particles.filter(p => p.alpha > 0.02);
@@ -333,7 +344,9 @@ function loopParticles() {
     if (particles.length) animFrame = requestAnimationFrame(loopParticles);
     else { ctx.clearRect(0, 0, canvas.width, canvas.height); animFrame = null; }
 }
+// Draw a 4-pointed star shape on a canvas context at the current transform.
 function drawStar(ctx, r) { const spikes = 4, out = r / 2, inn = r / 5; let rot = -Math.PI / 2; ctx.beginPath(); for (let i = 0; i < spikes * 2; i++) { const radius = i % 2 === 0 ? out : inn; ctx.lineTo(Math.cos(rot) * radius, Math.sin(rot) * radius); rot += Math.PI / spikes; } ctx.closePath(); ctx.fill(); }
+// Cancel the particle animation and clear the canvas.
 function stopParticles() { if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; } ctx.clearRect(0, 0, canvas.width, canvas.height); particles = []; }
 
 // ══════════════════════════════════════════
@@ -343,10 +356,12 @@ const dmgCanvas = document.getElementById('dmg-canvas');
 const dmgCtx = dmgCanvas.getContext('2d');
 let bloodParticles = [], bloodFrame = null;
 
+// Resize the blood particle canvas to the window dimensions.
 function resizeDmgCanvas() { dmgCanvas.width = window.innerWidth; dmgCanvas.height = window.innerHeight; }
 resizeDmgCanvas();
 window.addEventListener('resize', resizeDmgCanvas);
 
+// Spawn blood splatter particles at a random position on screen.
 function spawnBlood(count) {
     const cx = window.innerWidth * (0.3 + Math.random() * 0.4);
     const cy = window.innerHeight * (0.15 + Math.random() * 0.25);
@@ -373,6 +388,7 @@ function spawnBlood(count) {
     if (!bloodFrame) loopBlood();
 }
 
+// rAF loop that updates and draws the blood particle system each frame.
 function loopBlood() {
     dmgCtx.clearRect(0, 0, dmgCanvas.width, dmgCanvas.height);
     bloodParticles = bloodParticles.filter(p => p.alpha > 0.01);
@@ -404,6 +420,7 @@ function loopBlood() {
 // ══════════════════════════════════════════
 let dmgTimer = null;
 
+// Display damage VFX: screen shake, red vignette, blood, number, and HP bar drain.
 function showDamage(data) {
     clearTimeout(dmgTimer);
 
@@ -484,6 +501,7 @@ function showDamage(data) {
     }
 }
 
+// Display heal VFX: green number and HP bar fill animation.
 function showHeal(data) {
     clearTimeout(dmgTimer);
 
@@ -529,12 +547,14 @@ function showHeal(data) {
 }
 
 // ── OVERLAY CONFIG ────────────────────────────
+// Return CSS position/size for an event widget type from the overlay config.
 function getEventWidgetStyle(type) {
     const widget = overlayConfig.widgets.find(w => w.type === type && w.category === 'event');
     if (!widget) return null;
     return { left: widget.x + '%', top: widget.y + '%', width: widget.w + '%', height: widget.h + '%' };
 }
 
+// Apply an event widget's position from the overlay config to a DOM element.
 function applyEventWidgetPosition(elId, widgetType) {
     const style = getEventWidgetStyle(widgetType);
     if (!style) return;
@@ -543,6 +563,7 @@ function applyEventWidgetPosition(elId, widgetType) {
     Object.assign(el.style, style);
 }
 
+// Return the inner HTML for a given overlay widget based on live presence/roll data.
 function renderWidgetContent(widget) {
     const cfg = widget.config || {};
     switch (widget.type) {
@@ -633,6 +654,7 @@ function renderWidgetContent(widget) {
     }
 }
 
+// Rebuild all persistent overlay widget DOM elements and apply event widget positions.
 function renderWidgetLayer() {
     const container = document.getElementById('overlay-widgets');
     container.innerHTML = '';
@@ -659,6 +681,7 @@ function renderWidgetLayer() {
     applyEventWidgetPosition('dmg-mort', 'mort_screen');
 }
 
+// Refresh all widget inner HTML from the latest presence/roll data without rebuilding the layer.
 function updateWidgetData() {
     document.querySelectorAll('.overlay-widget').forEach(el => {
         const widget = overlayConfig.widgets.find(w => w.id === el.dataset.widgetId);
@@ -668,6 +691,7 @@ function updateWidgetData() {
     });
 }
 
+// Load the overlay layout config from Supabase on startup.
 async function loadOverlayConfig() {
     if (!OVERLAY_ID) return;
     const rows = await sbSelect('overlay_configs', 'id=eq.' + encodeURIComponent(OVERLAY_ID));
