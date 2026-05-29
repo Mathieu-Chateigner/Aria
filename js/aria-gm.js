@@ -69,10 +69,10 @@ function _supabaseReady() { return !!saveKey; }
 // Return the current UTC time as an ISO 8601 string.
 function _nowISO() { return new Date().toISOString(); }
 
-// Upsert campaign metadata (name, join code, VDO room) to Supabase.
+// Upsert campaign metadata (name, join code, VDO room) to Supabase. Returns true if successful.
 async function syncCampaign(camp) {
-    if (!_supabaseReady()) return;
-    await sbUpsert('campaigns', { id: camp.id, save_key: saveKey, name: camp.name, join_code: camp.joinCode || null, vdo_room: camp.vdoRoom || null, vdo_room_password: camp.vdoRoomPassword || null, aria_type: camp.ariaType || 'ancient', updated_at: _nowISO() });
+    if (!_supabaseReady()) return false;
+    return await sbUpsert('campaigns', { id: camp.id, save_key: saveKey, name: camp.name, join_code: camp.joinCode || null, vdo_room: camp.vdoRoom || null, vdo_room_password: camp.vdoRoomPassword || null, aria_type: camp.ariaType || 'ancient', updated_at: _nowISO() });
 }
 
 // Upsert a single monster's stats and attacks to Supabase.
@@ -173,7 +173,10 @@ async function deleteGMNoteFromDB(id) {
 async function syncKnownPlayer(charId, data) {
     if (!_supabaseReady() || !currentCampaignId) return;
     const camp = getCampaigns().find(c => c.id === currentCampaignId);
-    if (camp) await syncCampaign(camp);
+    if (camp) {
+        const ok = await syncCampaign(camp);
+        if (!ok) return; // campaign FK must exist first; skip to avoid cascade error
+    }
     await sbUpsert('campaign_known_players', { id: charId + ':' + currentCampaignId, campaign_id: currentCampaignId, char_id: charId, data, updated_at: _nowISO() }, 'campaign_id,char_id');
 }
 

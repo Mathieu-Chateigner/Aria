@@ -28,7 +28,8 @@ async function sbUpsert(table, row, onConflict) {
             body: JSON.stringify(row),
         });
         if (!res.ok) console.warn('[ARIA] sbUpsert failed:', table, await res.text());
-    } catch(e) { console.warn('[ARIA] sbUpsert error:', table, e); }
+        return res.ok;
+    } catch(e) { console.warn('[ARIA] sbUpsert error:', table, e); return false; }
 }
 
 // Delete rows from a Supabase table matching a filter string.
