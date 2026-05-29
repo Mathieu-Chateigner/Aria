@@ -118,16 +118,32 @@ function derivedStreamId() {
     console.log('[VDO] derivedStreamId() →', sid, '| currentCharId:', currentCharId);
     return sid;
 }
-// Trigger cameras grid update when vdoRoom changes — push iframe lives in the visible self-view cell.
+// Manage the persistent sidebar push iframe — always visible so browser grants camera access.
 function updatePushIframe() {
-    const pushFrame = document.getElementById('vdo-push-frame');
-    if (pushFrame) pushFrame.src = '';
-    if (!vdoRoom) {
-        console.log('[VDO] updatePushIframe: vdoRoom empty');
+    const wrap = document.getElementById('player-push-wrap');
+    const panel = document.getElementById('player-push-panel');
+    if (!wrap || !panel) return;
+    if (!vdoRoom || !currentCharId) {
+        console.log('[VDO] updatePushIframe: vdoRoom empty → hiding push panel');
+        const existing = wrap.querySelector('iframe');
+        if (existing) existing.src = '';
+        panel.style.display = 'none';
         updateCamerasTabVisibility();
         return;
     }
-    console.log('[VDO] updatePushIframe: vdoRoom=', vdoRoom, '| triggering cameras update');
+    const sid = derivedStreamId();
+    let src = `https://vdo.ninja/?push=${sid}&room=${encodeURIComponent(vdoRoom)}&autostart&webcam&noaudio&cleanoutput`;
+    if (vdoRoomPassword) src += `&password=${encodeURIComponent(vdoRoomPassword)}`;
+    console.log('[VDO] updatePushIframe: setting push iframe →', src);
+    let iframe = wrap.querySelector('iframe');
+    if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.allow = 'camera; microphone; autoplay; fullscreen; display-capture; picture-in-picture; screen-wake-lock; encrypted-media';
+        iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;';
+        wrap.appendChild(iframe);
+    }
+    if (iframe.src !== src) iframe.src = src;
+    panel.style.display = '';
     stopSelfView();
     updateCamerasTabVisibility();
 }
@@ -871,12 +887,12 @@ function renderCamerasTab() {
     startSelfView();
     const grid = document.getElementById('cameras-grid');
     if (!grid) { console.warn('[VDO] renderCamerasTab: #cameras-grid not found'); return; }
-    // Self-view: push iframe when VDO room is active, native video otherwise
+    // Self-view: viewer of own stream when VDO room active (push is in #player-push-panel), native otherwise
     let selfCell = grid.querySelector('.camera-cell[data-self]');
     if (vdoRoom && currentCharId) {
         const sid = derivedStreamId();
-        let pushSrc = `https://vdo.ninja/?push=${sid}&room=${encodeURIComponent(vdoRoom)}&autostart&webcam&noaudio&cleanoutput`;
-        if (vdoRoomPassword) pushSrc += `&password=${encodeURIComponent(vdoRoomPassword)}`;
+        let viewSrc = `https://vdo.ninja/?view=${encodeURIComponent(sid)}&room=${encodeURIComponent(vdoRoom)}&autoplay&cleanoutput&muted`;
+        if (vdoRoomPassword) viewSrc += `&password=${encodeURIComponent(vdoRoomPassword)}`;
         if (!selfCell) {
             selfCell = document.createElement('div');
             selfCell.className = 'camera-cell';
@@ -884,9 +900,9 @@ function renderCamerasTab() {
             const wrap = document.createElement('div');
             wrap.className = 'camera-iframe-wrap';
             const iframe = document.createElement('iframe');
-            iframe.allow = 'camera; microphone; autoplay; fullscreen; display-capture; picture-in-picture; screen-wake-lock; encrypted-media';
+            iframe.allow = 'autoplay; fullscreen';
             iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;';
-            iframe.src = pushSrc;
+            iframe.src = viewSrc;
             wrap.appendChild(iframe);
             const labelEl = document.createElement('div');
             labelEl.className = 'camera-label';
@@ -901,12 +917,12 @@ function renderCamerasTab() {
                 if (wrap) wrap.innerHTML = '';
                 const targetWrap = wrap || (() => { const w = document.createElement('div'); w.className = 'camera-iframe-wrap'; selfCell.insertBefore(w, selfCell.firstChild); return w; })();
                 const iframe = document.createElement('iframe');
-                iframe.allow = 'camera; microphone; autoplay; fullscreen; display-capture; picture-in-picture; screen-wake-lock; encrypted-media';
+                iframe.allow = 'autoplay; fullscreen';
                 iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;';
-                iframe.src = pushSrc;
+                iframe.src = viewSrc;
                 targetWrap.appendChild(iframe);
-            } else if (existingIframe.src !== pushSrc) {
-                existingIframe.src = pushSrc;
+            } else if (existingIframe.src !== viewSrc) {
+                existingIframe.src = viewSrc;
             }
             const lbl = selfCell.querySelector('.camera-label');
             if (lbl) lbl.textContent = character.name || 'Vous';
