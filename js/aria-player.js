@@ -180,7 +180,11 @@ function _charToRow(char) {
         skills: char.skills || null, specials: char.specials || null,
         weapons: char.weapons || null, protection: char.protection || null,
         inventory: char.inventory || null, potion_recipes: char.potionRecipes || null,
-        vials: char.vials || 0, updated_at: _nowISO(),
+        vials: char.vials || 0,
+        potions: char.potions || null,
+        money: char.money || null,
+        karma: char.karma ?? 0,
+        updated_at: _nowISO(),
     };
 }
 
@@ -285,6 +289,9 @@ async function loadFromSupabase() {
             inventory: row.inventory || [],
             potionRecipes: row.potion_recipes || [],
             vials: row.vials || 0,
+            potions: row.potions || [],
+            money: row.money || null,
+            karma: row.karma ?? 0,
         }));
         localStorage.setItem('aria-characters', JSON.stringify(dbChars));
 
