@@ -1781,6 +1781,12 @@ function monsterInlineHeal(id) {
 function applyTheme(light) {
     document.body.classList.toggle('light-mode', !!light);
 }
+window.addEventListener('storage', e => {
+    if (e.key !== 'aria-config') return;
+    const newCfg = JSON.parse(e.newValue || '{}');
+    config = { ...config, ...newCfg };
+    applyTheme(!!config.lightMode);
+});
 // Populate the config modal inputs from the current config and campaign.
 function loadConfigInputs() {
     document.getElementById('cfg-light-mode').checked = !!config.lightMode;

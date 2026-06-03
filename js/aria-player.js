@@ -2440,6 +2440,12 @@ function setAblyStatus(ok) {
 function applyTheme(light) {
     document.body.classList.toggle('light-mode', !!light);
 }
+window.addEventListener('storage', e => {
+    if (e.key !== 'aria-config') return;
+    const newCfg = JSON.parse(e.newValue || '{}');
+    config = { ...config, ...newCfg };
+    applyTheme(!!config.lightMode);
+});
 // Populate the config modal inputs from the current config and character.
 function loadConfigInputs() {
     const idEl = document.getElementById('cfg-identity-display');
