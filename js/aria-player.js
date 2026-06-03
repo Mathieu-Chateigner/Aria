@@ -202,14 +202,24 @@ async function _syncAllPlayerData() {
     })));
     const now = _nowISO();
     for (const c of chars) {
-        const raw = localStorage.getItem('aria-notes-' + c.id);
-        if (!raw) continue;
-        let notes = [];
-        try { const p = JSON.parse(raw); notes = Array.isArray(p) ? p : []; } catch(e) {}
-        await Promise.all(notes.map((n, i) => sbUpsert('character_notes', {
-            id: n.id, character_id: c.id, name: n.name || '',
-            content: n.content || '', position: i, updated_at: now,
-        })));
+        const rawNotes = localStorage.getItem('aria-notes-' + c.id);
+        if (rawNotes) {
+            let notes = [];
+            try { const p = JSON.parse(rawNotes); notes = Array.isArray(p) ? p : []; } catch(e) {}
+            await Promise.all(notes.map((n, i) => sbUpsert('character_notes', {
+                id: n.id, character_id: c.id, name: n.name || '',
+                content: n.content || '', position: i, updated_at: now,
+            })));
+        }
+        const rawFiles = localStorage.getItem('aria-player-files-' + c.id);
+        if (rawFiles) {
+            let files = [];
+            try { files = JSON.parse(rawFiles) || []; } catch(e) {}
+            await Promise.all(files.map(f => sbUpsert('character_files', {
+                id: f.id, character_id: c.id, file_id: f.id,
+                name: f.name || '', type: f.type || '', url: f.url || '', updated_at: now,
+            })));
+        }
     }
 }
 
