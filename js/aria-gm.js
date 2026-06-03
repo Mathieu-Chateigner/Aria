@@ -180,23 +180,51 @@ async function syncKnownPlayer(charId, data) {
     await sbUpsert('campaign_known_players', { id: charId + ':' + currentCampaignId, campaign_id: currentCampaignId, char_id: charId, data, updated_at: _nowISO() }, 'campaign_id,char_id');
 }
 
-// Full sync of all GM data (campaigns, monsters, potions, files, music, notes) to Supabase.
+// Full sync of ALL GM data across every campaign to Supabase.
 async function _syncAllGMData() {
     if (!_supabaseReady()) return;
     await sbUpsert('saves', { save_key: saveKey, type: 'gm' });
     const campaigns = getCampaigns();
     await Promise.all(campaigns.map(c => syncCampaign(c)));
-    if (currentCampaignId) {
-        const now = _nowISO();
-        await Promise.all(monsters.map(m => syncMonster(m)));
-        await Promise.all(gmPotions.map(p => syncPotion(p)));
-        await Promise.all(gmFiles.map(f => syncFile(f)));
-        await Promise.all(gmMusic.map(t => syncMusicTrack(t)));
-        for (const [charId, p] of players) {
-            await sbUpsert('campaign_known_players', { id: charId + ':' + currentCampaignId, campaign_id: currentCampaignId, char_id: charId, data: p, updated_at: now }, 'campaign_id,char_id');
-        }
-        const notes = gmNotesList;
-        await Promise.all(notes.map((n, i) => sbUpsert('campaign_notes', { id: n.id, campaign_id: currentCampaignId, name: n.name || 'Note', content: n.content || '', position: i, updated_at: now })));
+    const now = _nowISO();
+    for (const c of campaigns) {
+        const cid = c.id;
+        const mons = JSON.parse(localStorage.getItem('aria-gm-monsters-' + cid) || '[]');
+        await Promise.all(mons.map(m => sbUpsert('monsters', {
+            id: String(m.id), campaign_id: cid, name: m.name, pv: m.pv, max_pv: m.maxPV,
+            armor: m.armor || 0, stats: m.stats || null, attacks: m.attacks || null, updated_at: now,
+        })));
+        const pots = JSON.parse(localStorage.getItem('aria-gm-potions-' + cid) || '[]');
+        await Promise.all(pots.map(p => sbUpsert('campaign_potions', {
+            id: p.id, campaign_id: cid, name: p.name, description: p.desc || '',
+            ingredients: p.ingredients || null, success_chance: p.successChance || 0, updated_at: now,
+        })));
+        const files = JSON.parse(localStorage.getItem('aria-gm-files-' + cid) || '[]');
+        await Promise.all(files.map(f => sbUpsert('campaign_files', {
+            id: f.id, campaign_id: cid, name: f.name, type: f.type || '',
+            url: f.url || '', path: f.path || '', granted_to: f.grantedTo || [], updated_at: now,
+        })));
+        const music = JSON.parse(localStorage.getItem('aria-gm-music-' + cid) || '[]');
+        await Promise.all(music.map((t, i) => sbUpsert('campaign_music', {
+            id: t.id, campaign_id: cid, name: t.name, type: t.type,
+            url: t.url || null, youtube_id: t.youtubeId || null, path: t.path || null,
+            position: i, updated_at: now,
+        })));
+        const rawNotes = localStorage.getItem('aria-gm-notes-' + cid);
+        let notes = [];
+        if (rawNotes) { try { const p = JSON.parse(rawNotes); notes = Array.isArray(p) ? p : []; } catch(e) {} }
+        await Promise.all(notes.map((n, i) => sbUpsert('campaign_notes', {
+            id: n.id, campaign_id: cid, name: n.name || 'Note',
+            content: n.content || '', position: i, updated_at: now,
+        })));
+        const kp = JSON.parse(localStorage.getItem('aria-gm-known-players-' + cid) || '{}');
+        await Promise.all(Object.values(kp).map(p => {
+            if (!p?.charId) return Promise.resolve();
+            return sbUpsert('campaign_known_players', {
+                id: p.charId + ':' + cid, campaign_id: cid, char_id: p.charId,
+                data: p, updated_at: now,
+            }, 'campaign_id,char_id');
+        }));
     }
 }
 
@@ -321,6 +349,7 @@ async function tryRestoreSupabase() {
     await loadFromSupabase();
     hideGateway();
     showSelectionScreen();
+    _syncAllGMData();
 }
 
 // ═══════════════════════════════════════════
@@ -459,7 +488,15 @@ function selectCampaign(id) {
 // Delete a campaign and all its scoped localStorage data and Supabase rows.
 function deleteCampaign(id) {
     if (!confirm('Supprimer cette campagne ? Tous les monstres et données seront perdus.')) return;
-    sbDelete('campaigns', 'id=eq.' + encodeURIComponent(id));
+    sbDelete('campaigns',                'id=eq.'          + encodeURIComponent(id));
+    sbDelete('monsters',                 'campaign_id=eq.' + encodeURIComponent(id));
+    sbDelete('campaign_potions',         'campaign_id=eq.' + encodeURIComponent(id));
+    sbDelete('campaign_files',           'campaign_id=eq.' + encodeURIComponent(id));
+    sbDelete('campaign_music',           'campaign_id=eq.' + encodeURIComponent(id));
+    sbDelete('campaign_notes',           'campaign_id=eq.' + encodeURIComponent(id));
+    sbDelete('campaign_known_players',   'campaign_id=eq.' + encodeURIComponent(id));
+    sbDelete('campaign_rolls',           'campaign_id=eq.' + encodeURIComponent(id));
+    sbDelete('campaign_card_history',    'campaign_id=eq.' + encodeURIComponent(id));
     const campaigns = getCampaigns().filter(c => c.id !== id);
     saveCampaigns(campaigns);
     localStorage.removeItem('aria-gm-monsters-' + id);

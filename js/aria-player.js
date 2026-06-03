@@ -188,7 +188,7 @@ function _charToRow(char) {
     };
 }
 
-// Full sync of all characters and their states to Supabase.
+// Full sync of all characters, states, and notes to Supabase.
 async function _syncAllPlayerData() {
     if (!_supabaseReady()) return;
     const chars = getCharacters();
@@ -200,6 +200,17 @@ async function _syncAllPlayerData() {
         tabs:  (() => { const v = localStorage.getItem('aria-player-tabs-'  + c.id); return v ? JSON.parse(v) : null; })(),
         updated_at: _nowISO(),
     })));
+    const now = _nowISO();
+    for (const c of chars) {
+        const raw = localStorage.getItem('aria-notes-' + c.id);
+        if (!raw) continue;
+        let notes = [];
+        try { const p = JSON.parse(raw); notes = Array.isArray(p) ? p : []; } catch(e) {}
+        await Promise.all(notes.map((n, i) => sbUpsert('character_notes', {
+            id: n.id, character_id: c.id, name: n.name || '',
+            content: n.content || '', position: i, updated_at: now,
+        })));
+    }
 }
 
 let _charTimer = null;
@@ -414,6 +425,7 @@ async function tryRestoreSupabase() {
     await loadFromSupabase();
     hideGateway();
     showSelectionScreen();
+    _syncAllPlayerData();
 }
 
 // ═══════════════════════════════════════════
@@ -554,7 +566,10 @@ async function selectCharacter(id) {
 // Delete a character from localStorage and Supabase, then re-render the selection screen.
 function deleteCharacter(id) {
     if (!confirm('Supprimer ce personnage ? Cette action est irréversible.')) return;
-    sbDelete('characters', 'id=eq.' + encodeURIComponent(id));
+    sbDelete('characters',      'id=eq.'           + encodeURIComponent(id));
+    sbDelete('character_state', 'character_id=eq.' + encodeURIComponent(id));
+    sbDelete('character_notes', 'character_id=eq.' + encodeURIComponent(id));
+    sbDelete('character_files', 'character_id=eq.' + encodeURIComponent(id));
     const chars = getCharacters().filter(c => c.id !== id);
     saveCharacters(chars);
     localStorage.removeItem('aria-current-hp-' + id);
