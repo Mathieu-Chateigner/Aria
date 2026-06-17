@@ -47,6 +47,10 @@
             <div class="sel-grid" id="campaign-grid"></div>
             <div class="sel-new-form" id="new-campaign-form" style="display:none;">
                 <input class="sel-new-input" id="new-campaign-name" placeholder="Nom de la campagne" onkeydown="if(event.key==='Enter')confirmCreateCampaign()" />
+                <div class="sel-type-row">
+                    <label class="sel-type-label"><input type="radio" name="new-campaign-type" value="ancient" checked> ⚔ Médiéval</label>
+                    <label class="sel-type-label"><input type="radio" name="new-campaign-type" value="contemporary"> 🕵 Contemporain</label>
+                </div>
                 <div class="sel-new-btns">
                     <button class="sel-confirm-btn" onclick="confirmCreateCampaign()">Créer</button>
                     <button class="sel-cancel-btn" onclick="cancelCreateCampaign()">Annuler</button>
@@ -474,9 +478,6 @@
 
 
     </div><!-- /#app-wrapper -->
-
-    <!-- VDO.ninja push iframe — hidden, publishes GM camera -->
-    <iframe id="vdo-gm-push-frame" style="position:fixed;top:-9999px;left:-9999px;width:320px;height:180px;pointer-events:none;" allow="camera; microphone; autoplay; fullscreen; display-capture; picture-in-picture; screen-wake-lock; encrypted-media" allowfullscreen></iframe>
 
     <!-- GM FILE VIEWER MODAL -->
     <div class="modal-scrim" id="gm-file-viewer-scrim" onclick="closeGmFileViewer()"></div>

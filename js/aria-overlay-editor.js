@@ -49,6 +49,7 @@ const WIDGET_LABELS = Object.fromEntries(
     [...WIDGET_DEFS.persistent, ...WIDGET_DEFS.event].map(d => [d.type, d.label])
 );
 
+// Load overlay config from Supabase, connect Ably, and initialize the editor canvas.
 async function init() {
     if (!OWNER_ID) {
         document.getElementById('editor-owner-label').textContent = 'Aucun personnage/campagne sélectionné';
@@ -87,6 +88,7 @@ async function init() {
     });
 }
 
+// Resize the editor canvas to maintain 16:9 aspect ratio within its wrapper.
 function resizeCanvas() {
     const wrap = document.getElementById('editor-canvas-wrap');
     const canvas = document.getElementById('editor-canvas');
@@ -95,6 +97,7 @@ function resizeCanvas() {
     canvas.style.height = (w * 9 / 16) + 'px';
 }
 
+// Bind click handlers for the Save and Grid Snap topbar buttons.
 function bindTopbarButtons() {
     document.getElementById('btn-save').addEventListener('click', saveConfig);
     document.getElementById('btn-grid-snap').addEventListener('click', () => {
@@ -104,6 +107,7 @@ function bindTopbarButtons() {
     });
 }
 
+// Populate the widget palette sidebar from WIDGET_DEFS.
 function renderPalette() {
     const persistentEl = document.getElementById('palette-persistent');
     const eventEl      = document.getElementById('palette-event');
@@ -132,6 +136,7 @@ function renderPalette() {
     }
 }
 
+// Create and add a new widget of the given type at (x, y) on the canvas.
 function addWidget(type, x, y) {
     const allDefs = [...WIDGET_DEFS.persistent, ...WIDGET_DEFS.event];
     const def = allDefs.find(d => d.type === type);
@@ -154,10 +159,12 @@ function addWidget(type, x, y) {
     scheduleAutoSave();
 }
 
+// Snap a percentage value to the nearest grid step when grid snap is enabled.
 function snapVal(v) {
     return gridSnap ? Math.round(v / 5) * 5 : Math.round(v * 10) / 10;
 }
 
+// Rebuild all widget DOM elements on the editor canvas from the widgets array.
 function renderCanvas() {
     const canvas = document.getElementById('editor-canvas');
     [...canvas.children].forEach(c => c.remove());
@@ -192,6 +199,7 @@ function renderCanvas() {
     }
 }
 
+// Begin dragging a widget, tracking mouse movement relative to the canvas.
 function startDrag(e, widgetId) {
     const canvas = document.getElementById('editor-canvas');
     const rect = canvas.getBoundingClientRect();
@@ -211,6 +219,7 @@ function startDrag(e, widgetId) {
     e.preventDefault();
 }
 
+// Begin resizing a widget using a named handle direction (n/s/e/w corners).
 function startResize(e, widgetId, handle) {
     const canvas = document.getElementById('editor-canvas');
     const rect = canvas.getBoundingClientRect();
@@ -236,12 +245,14 @@ function startResize(e, widgetId, handle) {
     e.preventDefault();
 }
 
+// Set the selected widget by ID and sync the properties panel.
 function selectWidget(id) {
     selectedId = id;
     document.querySelectorAll('.editor-widget').forEach(el => el.classList.toggle('selected', el.dataset.id === id));
     syncPropsPanel();
 }
 
+// Reflect the selected widget's current properties into the right panel inputs.
 function syncPropsPanel() {
     const panel = document.getElementById('props-panel');
     const empty = document.getElementById('props-empty');
@@ -267,6 +278,7 @@ function syncPropsPanel() {
     if (hasStreamId) document.getElementById('prop-stream-id').value = widget.config?.streamId || '';
 }
 
+// Bind change and input events on all properties panel fields.
 function bindPropsPanel() {
     function applyNum(fieldId, apply) {
         document.getElementById(fieldId).addEventListener('change', () => {
@@ -314,11 +326,13 @@ document.addEventListener('keydown', e => {
     selectedId = null; renderCanvas(); syncPropsPanel(); scheduleAutoSave();
 });
 
+// Debounce auto-save: saves 1.5s after the last widget change.
 function scheduleAutoSave() {
     clearTimeout(autoSaveTimer);
     autoSaveTimer = setTimeout(saveConfig, 1500);
 }
 
+// Save the widget layout to Supabase and broadcast a layout-update via Ably.
 async function saveConfig() {
     clearTimeout(autoSaveTimer);
     const config = { widgets };

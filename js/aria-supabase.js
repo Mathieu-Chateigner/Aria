@@ -5,6 +5,7 @@
 const SUPABASE_URL      = 'https://npybuksklkvdmbhyzdjs.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_hUkdwmlgNNhLXn6t38GHHg_N7XXVOn4';
 
+// Internal Supabase REST fetch with API key auth headers.
 function _sbFetch(path, options = {}) {
     return fetch(SUPABASE_URL + path, {
         ...options,
@@ -17,6 +18,7 @@ function _sbFetch(path, options = {}) {
     });
 }
 
+// Upsert a row into a Supabase table, merging on conflict.
 async function sbUpsert(table, row, onConflict) {
     const qs = onConflict ? '?on_conflict=' + onConflict : '';
     try {
@@ -26,9 +28,11 @@ async function sbUpsert(table, row, onConflict) {
             body: JSON.stringify(row),
         });
         if (!res.ok) console.warn('[ARIA] sbUpsert failed:', table, await res.text());
-    } catch(e) { console.warn('[ARIA] sbUpsert error:', table, e); }
+        return res.ok;
+    } catch(e) { console.warn('[ARIA] sbUpsert error:', table, e); return false; }
 }
 
+// Delete rows from a Supabase table matching a filter string.
 async function sbDelete(table, filterStr) {
     try {
         const res = await _sbFetch('/rest/v1/' + table + '?' + filterStr, { method: 'DELETE' });
@@ -36,6 +40,7 @@ async function sbDelete(table, filterStr) {
     } catch(e) { console.warn('[ARIA] sbDelete error:', table, e); }
 }
 
+// Fetch rows from a Supabase table matching a filter string.
 async function sbSelect(table, filterStr) {
     try {
         const res = await _sbFetch('/rest/v1/' + table + '?' + filterStr);
@@ -44,6 +49,7 @@ async function sbSelect(table, filterStr) {
     } catch(e) { console.warn('[ARIA] sbSelect error:', table, e); return []; }
 }
 
+// Insert a new row into a Supabase table.
 async function sbInsert(table, row) {
     try {
         const res = await _sbFetch('/rest/v1/' + table, {
@@ -54,6 +60,7 @@ async function sbInsert(table, row) {
     } catch(e) { console.warn('[ARIA] sbInsert error:', table, e); }
 }
 
+// Partially update rows in a Supabase table matching a filter.
 async function sbPatch(table, row, filterStr) {
     try {
         const res = await _sbFetch('/rest/v1/' + table + '?' + filterStr, {
@@ -67,6 +74,7 @@ async function sbPatch(table, row, filterStr) {
 // ═══════════════════════════════════════════
 //  MIGRATION — one-time blob → relational
 // ═══════════════════════════════════════════
+// One-time migration: moves old JSON blob data into the relational schema.
 async function runMigration(saveKey, type) {
     try {
         if (type === 'player') {
@@ -213,6 +221,7 @@ async function runMigration(saveKey, type) {
     }
 }
 
+// Load the 100 most recent rolls for a character from Supabase.
 async function loadCharacterRolls(charId) {
     return await sbSelect('character_rolls',
         'character_id=eq.' + encodeURIComponent(charId) + '&order=ts.desc&limit=100'

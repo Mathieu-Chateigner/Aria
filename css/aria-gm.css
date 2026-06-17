@@ -1634,6 +1634,23 @@ body {
    FLOAT ROLL CARD + DDDICE CANVAS
    ════════════════════════════════════════════ */
 
+/* ── SELECTION SCREEN TYPE TOGGLE ── */
+.sel-type-row { display: flex; gap: 16px; font-family: 'EB Garamond', serif; font-size: 14px; color: var(--parchment-dim); }
+.sel-type-label { cursor: pointer; }
+
+/* ── SELECTION SCREEN BADGE ── */
+.sel-card-type {
+    display: inline-block;
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    letter-spacing: .08em;
+    color: var(--gold-dim);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1px 6px;
+    margin-top: 4px;
+}
+.sel-card-type.contemporary { color: #7b8fc0; border-color: rgba(123,143,192,.3); }
 
 /* ════════════════════════════════════════════
    LIGHT MODE
