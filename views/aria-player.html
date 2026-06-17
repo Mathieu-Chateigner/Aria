@@ -105,7 +105,7 @@
     <div class="music-bar" id="music-bar" style="visibility:hidden;">
         <span class="music-bar-note">♪</span>
         <span class="music-bar-title" id="music-bar-title">—</span>
-        <span class="music-bar-vol-icon">🔊</span>
+        <span class="music-bar-vol-icon" id="music-bar-vol-icon" onclick="toggleMusicMute()" title="Couper le son" style="cursor:pointer;user-select:none;">🔊</span>
         <input class="music-bar-slider" id="music-bar-volume" type="range" min="0" max="100" value="80"
             oninput="onMusicVolumeChange(this.value)" />
     </div>

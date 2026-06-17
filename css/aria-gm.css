@@ -1465,6 +1465,8 @@ body {
 .music-track-row.active .music-track-name { color: var(--gm-accent-light); }
 .music-track-name:hover { color: var(--gm-accent-light); }
 .music-track-badge { font-family: 'Cinzel', serif; font-size: 9px; letter-spacing: .08em; color: var(--parchment-dim); background: var(--bg3); border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; flex-shrink: 0; }
+.music-track-rename { background: none; border: none; color: var(--parchment-dim); cursor: pointer; font-size: 11px; padding: 2px 4px; opacity: .5; flex-shrink: 0; line-height: 1; }
+.music-track-rename:hover { color: var(--gm-accent-light); opacity: 1; }
 .music-track-delete { background: none; border: none; color: var(--parchment-dim); cursor: pointer; font-size: 11px; padding: 2px 4px; opacity: .5; flex-shrink: 0; line-height: 1; }
 .music-track-delete:hover { color: var(--fail); opacity: 1; }
 .music-empty { font-family: 'EB Garamond', serif; font-size: 13px; color: var(--parchment-dim); padding: 10px 8px; font-style: italic; }

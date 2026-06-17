@@ -1714,6 +1714,11 @@ let musicCurrentIndex = -1;
 let musicIsPlaying    = false;
 let _musicCurrentSlot = 'A';
 let _musicFadeRaf     = null;
+let _musicMuted       = false;
+
+// Effective output volume: 0 when muted, otherwise the master volume.
+// Mute silences playback without moving the volume slider.
+function _musicEffVol() { return _musicMuted ? 0 : musicMasterVolume; }
 
 const _musicSlots = {
     A: { audio: null, ytEndedCb: null },
@@ -1819,11 +1824,11 @@ function _loadSlotAtZeroVol(track, slot, onStarted) {
 function _runCrossfade(fromSlot, toSlot, onDone) {
     if (_musicFadeRaf) { cancelAnimationFrame(_musicFadeRaf); _musicFadeRaf = null; }
     const start = performance.now();
-    const fromStart = musicMasterVolume;
+    const fromStart = _musicEffVol();
     function tick(now) {
         const t = Math.min(1, (now - start) / musicFadeDuration);
         _setSlotVol(fromSlot, (1 - t) * fromStart);
-        _setSlotVol(toSlot, t * musicMasterVolume);
+        _setSlotVol(toSlot, t * _musicEffVol());
         if (t < 1) { _musicFadeRaf = requestAnimationFrame(tick); }
         else { _musicFadeRaf = null; _stopSlot(fromSlot); onDone(); }
     }
@@ -1890,7 +1895,23 @@ function _updatePlayerMusicBar(track) {
 function onMusicVolumeChange(val) {
     musicMasterVolume = parseInt(val);
     localStorage.setItem('aria-music-volume', String(musicMasterVolume));
-    _setSlotVol(_musicCurrentSlot, musicMasterVolume);
+    _musicMuted = false;            // moving the slider unmutes
+    _updateMusicMuteIcon();
+    _setSlotVol(_musicCurrentSlot, _musicEffVol());
+}
+
+// Toggle mute from the speaker icon — silences audio but leaves the slider untouched.
+function toggleMusicMute() {
+    _musicMuted = !_musicMuted;
+    _setSlotVol(_musicCurrentSlot, _musicEffVol());
+    _updateMusicMuteIcon();
+}
+function _updateMusicMuteIcon() {
+    const ic = document.getElementById('music-bar-vol-icon');
+    if (ic) {
+        ic.textContent = _musicMuted ? '🔇' : '🔊';
+        ic.title = _musicMuted ? 'Réactiver le son' : 'Couper le son';
+    }
 }
 
 // ═══════════════════════════════════════════

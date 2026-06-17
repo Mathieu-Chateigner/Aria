@@ -579,6 +579,21 @@ function extractRoomSlug(val) {
     const m = val.match(/\/room\/([^/?#]+)/);
     return m ? m[1] : val.trim();
 }
+function copyOverlayUrl() {
+    const base = window.location.href.replace(/aria-gm\.html.*$/, 'aria-overlay.html');
+    const params = new URLSearchParams({ mode: 'gm', ably: config.ablyKey || '' });
+    if (config.dddiceKey)  params.set('dddice_key', config.dddiceKey);
+    if (config.dddiceRoom) params.set('dddice_room', extractRoomSlug(config.dddiceRoom));
+    if (currentCampaignId) params.set('overlay', 'gm_' + currentCampaignId);  // scopes layout + monster widget to this campaign
+    const url = `${base}?${params}`;
+    navigator.clipboard.writeText(url).then(() => {
+        const btn = document.querySelector('.config-modal button[onclick="copyOverlayUrl()"]');
+        if (!btn) return;
+        const orig = btn.textContent;
+        btn.textContent = '✓ Copié !';
+        setTimeout(() => btn.textContent = orig, 2000);
+    });
+}
 async function initDddice() {
     const slug = extractRoomSlug(config.dddiceRoom);
     if (!config.dddiceKey || !slug) return;
@@ -803,8 +818,8 @@ function renderPlayerCards() {
               <div class="pc-header">
                 <div class="pc-online-dot ${isOnline ? 'online' : ''}"></div>
                 <div style="flex:1;min-width:0;">
-                  <div class="pc-name">${p.name || playerId}</div>
-                  <div class="pc-class">${p.charClass || ''}</div>
+                  <div class="pc-name">${_escHtml(p.name || playerId)}</div>
+                  <div class="pc-class">${_escHtml(p.charClass || '')}</div>
                 </div>
                 <button class="pc-btn details" onclick="openPlayerDetails('${playerId}')" title="Voir la fiche">📋</button>
               </div>
@@ -816,9 +831,9 @@ function renderPlayerCards() {
                   </div>
                   <div class="pc-hp-bar-wrap"><div class="pc-hp-bar" style="width:${Math.round(pct * 100)}%;background:${hpColor};"></div></div>
                 </div>
-                ${p.protection ? `<div class="pc-prot" title="Protection">🛡 <span style="color:var(--parchment-dim)">${p.protection.nom || ''}</span>${p.protection.valeur ? ` <span style="color:var(--gold);font-weight:600;">${p.protection.valeur}</span>` : ''}</div>` : ''}
+                ${p.protection ? `<div class="pc-prot" title="Protection">🛡 <span style="color:var(--parchment-dim)">${_escHtml(p.protection.nom || '')}</span>${p.protection.valeur ? ` <span style="color:var(--gold);font-weight:600;">${_escHtml(p.protection.valeur)}</span>` : ''}</div>` : ''}
                 <div class="pc-stats">
-                  ${Object.entries(stats).filter(([k]) => k !== 'PV').map(([k, v]) => `<span class="pc-stat">${k} <span>${v}</span></span>`).join('')}
+                  ${Object.entries(stats).filter(([k]) => k !== 'PV').map(([k, v]) => `<span class="pc-stat">${_escHtml(k)} <span>${_escHtml(v)}</span></span>`).join('')}
                 </div>
                 <div class="pc-actions">
                   <input class="pc-dmg-input" id="dmg-${playerId}" type="text" inputmode="numeric"
@@ -867,10 +882,10 @@ function renderPlayerCards() {
             const hpBar = card.querySelector('.pc-hp-bar');
             if (hpBar) { hpBar.style.width = `${Math.round(pct * 100)}%`; hpBar.style.background = hpColor; }
             const statsEl = card.querySelector('.pc-stats');
-            if (statsEl) statsEl.innerHTML = Object.entries(stats).filter(([sk]) => sk !== 'PV').map(([sk, v]) => `<span class="pc-stat">${sk} <span>${v}</span></span>`).join('');
+            if (statsEl) statsEl.innerHTML = Object.entries(stats).filter(([sk]) => sk !== 'PV').map(([sk, v]) => `<span class="pc-stat">${_escHtml(sk)} <span>${_escHtml(v)}</span></span>`).join('');
             let protEl = card.querySelector('.pc-prot');
             if (p.protection) {
-                const protHtml = `🛡 <span style="color:var(--parchment-dim)">${p.protection.nom || ''}</span>${p.protection.valeur ? ` <span style="color:var(--gold);font-weight:600;">${p.protection.valeur}</span>` : ''}`;
+                const protHtml = `🛡 <span style="color:var(--parchment-dim)">${_escHtml(p.protection.nom || '')}</span>${p.protection.valeur ? ` <span style="color:var(--gold);font-weight:600;">${_escHtml(p.protection.valeur)}</span>` : ''}`;
                 if (!protEl) {
                     protEl = document.createElement('div');
                     protEl.className = 'pc-prot';
@@ -973,9 +988,9 @@ function openPlayerDetails(playerId) {
     html += `<div class="pdm-hp-block"><span class="pdm-hp-num" style="color:${hpColor}">${hp}</span><span class="pdm-hp-sep">/</span><span class="pdm-hp-max">${maxHP} PV</span></div>`;
     const statOrder = ['FOR','DEX','END','INT','CHA'];
     for (const k of statOrder) {
-        if (stats[k] !== undefined) html += `<div class="pdm-stat-block"><span class="pdm-stat-key">${k}</span><span class="pdm-stat-val">${stats[k]}</span></div>`;
+        if (stats[k] !== undefined) html += `<div class="pdm-stat-block"><span class="pdm-stat-key">${k}</span><span class="pdm-stat-val">${_escHtml(stats[k])}</span></div>`;
     }
-    if (p.protection?.nom) html += `<div class="pdm-stat-block"><span class="pdm-stat-key">Armure</span><span class="pdm-stat-val">${p.protection.nom}${p.protection.valeur ? ' '+p.protection.valeur : ''}</span></div>`;
+    if (p.protection?.nom) html += `<div class="pdm-stat-block"><span class="pdm-stat-key">Armure</span><span class="pdm-stat-val">${_escHtml(p.protection.nom)}${p.protection.valeur ? ' '+_escHtml(p.protection.valeur) : ''}</span></div>`;
     html += `</div></div>`;
 
     // Weapons
@@ -983,7 +998,7 @@ function openPlayerDetails(playerId) {
     if (realWeapons.length) {
         html += `<div class="pdm-section"><div class="pdm-section-title">Armes</div><div class="pdm-list">`;
         for (const w of realWeapons) {
-            html += `<div class="pdm-list-row"><span class="pdm-list-name">${w.nom}</span><span class="pdm-list-val">${w.degats || '—'}</span></div>`;
+            html += `<div class="pdm-list-row"><span class="pdm-list-name">${_escHtml(w.nom)}</span><span class="pdm-list-val">${w.degats ? _escHtml(w.degats) : '—'}</span></div>`;
         }
         html += `</div></div>`;
     }
@@ -992,7 +1007,7 @@ function openPlayerDetails(playerId) {
     if (skills.length) {
         html += `<div class="pdm-section"><div class="pdm-section-title">Compétences</div><div class="pdm-skills-grid">`;
         for (const s of skills) {
-            html += `<div class="pdm-skill-row"><span class="pdm-skill-name">${s.name}</span><span class="pdm-skill-pct">${s.pct ?? 0}%</span></div>`;
+            html += `<div class="pdm-skill-row"><span class="pdm-skill-name">${_escHtml(s.name)}</span><span class="pdm-skill-pct">${_escHtml(s.pct ?? 0)}%</span></div>`;
         }
         html += `</div></div>`;
     }
@@ -1001,7 +1016,7 @@ function openPlayerDetails(playerId) {
     if (specials.length) {
         html += `<div class="pdm-section"><div class="pdm-section-title">Compétences spéciales</div><div class="pdm-list">`;
         for (const s of specials) {
-            html += `<div class="pdm-special-row"><div class="pdm-special-header"><span class="pdm-skill-name">${s.name}</span><span class="pdm-skill-pct">${s.pct ?? 0}%</span></div>${s.desc ? `<div class="pdm-special-desc">${s.desc}</div>` : ''}</div>`;
+            html += `<div class="pdm-special-row"><div class="pdm-special-header"><span class="pdm-skill-name">${_escHtml(s.name)}</span><span class="pdm-skill-pct">${_escHtml(s.pct ?? 0)}%</span></div>${s.desc ? `<div class="pdm-special-desc">${_escHtml(s.desc)}</div>` : ''}</div>`;
         }
         html += `</div></div>`;
     }
@@ -1016,7 +1031,7 @@ function openPlayerDetails(playerId) {
     ];
     html += `<div class="pdm-section"><div class="pdm-section-title">Monnaie</div><div class="pdm-money-row">`;
     for (const c of MONEY_COINS) {
-        html += `<div class="pdm-coin-block"><span class="pdm-coin-dot" style="color:${c.color}">●</span><span class="pdm-coin-label">${c.label}</span><span class="pdm-coin-val">${money[c.key] ?? 0}</span></div>`;
+        html += `<div class="pdm-coin-block"><span class="pdm-coin-dot" style="color:${c.color}">●</span><span class="pdm-coin-label">${c.label}</span><span class="pdm-coin-val">${_escHtml(money[c.key] ?? 0)}</span></div>`;
     }
     html += `</div></div>`;
 
@@ -1028,7 +1043,7 @@ function openPlayerDetails(playerId) {
         html += `<div class="pdm-section"><div class="pdm-section-title">Inventaire</div><div class="pdm-list">`;
         if (showVials) html += `<div class="pdm-list-row"><span class="pdm-list-name" style="font-style:italic;">Fioles vides</span><span class="pdm-list-val">×${vials}</span></div>`;
         for (const i of realInv) {
-            html += `<div class="pdm-list-row"><span class="pdm-list-name">${i.name}</span><span class="pdm-list-val">×${i.qty ?? 1}</span></div>`;
+            html += `<div class="pdm-list-row"><span class="pdm-list-name">${_escHtml(i.name)}</span><span class="pdm-list-val">×${_escHtml(i.qty ?? 1)}</span></div>`;
         }
         html += `</div></div>`;
     }
@@ -1038,7 +1053,7 @@ function openPlayerDetails(playerId) {
     if (realPotions.length) {
         html += `<div class="pdm-section"><div class="pdm-section-title">Potions</div><div class="pdm-list">`;
         for (const p of realPotions) {
-            html += `<div class="pdm-list-row"><span class="pdm-list-name">${p.name}${p.desc ? ` <span class="pdm-list-desc">— ${p.desc}</span>` : ''}${p.ingredients ? ` <span class="pdm-list-desc pdm-list-ing">⚗ ${p.ingredients}</span>` : ''}</span><span class="pdm-list-val">×${p.qty ?? 1}</span></div>`;
+            html += `<div class="pdm-list-row"><span class="pdm-list-name">${_escHtml(p.name)}${p.desc ? ` <span class="pdm-list-desc">— ${_escHtml(p.desc)}</span>` : ''}${p.ingredients ? ` <span class="pdm-list-desc pdm-list-ing">⚗ ${_escHtml(p.ingredients)}</span>` : ''}</span><span class="pdm-list-val">×${_escHtml(p.qty ?? 1)}</span></div>`;
         }
         html += `</div></div>`;
     }
@@ -1382,9 +1397,9 @@ function renderRollFeed() {
             const type = isDie ? 'die' : classify(d.roll, d.threshold, d.success);
             const row = document.createElement('div'); row.className = `roll-entry ${type}`;
             row.innerHTML = `
-              <div class="re-char">${d.char || d.playerId || '?'}</div>
+              <div class="re-char">${_escHtml(d.char || d.playerId || '?')}</div>
               <div class="re-context">
-                <div class="re-skill">${d.skillName}</div>
+                <div class="re-skill">${_escHtml(d.skillName)}</div>
                 ${isDie ? '' : `<div class="re-threshold">Seuil : ${d.threshold}%${d.bonusMalus ? ` · BM : ${d.bonusMalus > 0 ? '+' : ''}${d.bonusMalus}` : ''}</div>`}
               </div>
               <div class="re-result">
@@ -1485,7 +1500,7 @@ function showGMRollResult(name, threshold, roll, success, dmgResult) {
     if (dmgResult) {
         const online = [...players.entries()].filter(([, p]) => p.online !== false && Date.now() - p.ts < PRESENCE_TIMEOUT);
         if (online.length) {
-            const btns = online.map(([id, p]) => `<button class="gm-target-btn" data-pid="${id}" onclick="applyDamageToPlayer('${id}',${dmgResult.total})">${p.name || id.slice(-4)}</button>`).join('');
+            const btns = online.map(([id, p]) => `<button class="gm-target-btn" data-pid="${id}" onclick="applyDamageToPlayer('${id}',${dmgResult.total})">${_escHtml(p.name || id.slice(-4))}</button>`).join('');
             targetHtml = `<div class="gm-target-section"><div class="gm-target-label">Appliquer à :</div><div class="gm-target-btns">${btns}</div></div>`;
         }
     }
@@ -1653,7 +1668,7 @@ function renderCardHistory() {
         const row = document.createElement('div');
         row.className = 'card-history-row';
         row.innerHTML = `
-          <div class="chr-player">${entry.playerName || '?'}</div>
+          <div class="chr-player">${_escHtml(entry.playerName || '?')}</div>
           <div class="chr-card ${colorCls}">${sym} ${label}</div>
           <div class="chr-time">${new Date(entry.ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</div>`;
         feed.appendChild(row);
@@ -2033,7 +2048,7 @@ function sendVialGrant(playerId, qty) {
 //  GM FILES
 // ═══════════════════════════════════════════
 function _escHtml(s) {
-    return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function _fileIcon(type) {
     if (!type) return '📄';
@@ -2282,6 +2297,7 @@ function renderMusicTab() {
             `<span class="music-track-indicator">${indicator}</span>` +
             `<span class="music-track-name" onclick="musicSelectTrack(${i})">${_escHtml(t.name)}</span>` +
             `<span class="music-track-badge">${badge}</span>` +
+            `<button class="music-track-rename" onclick="musicRenameTrack(${i})" title="Renommer">✎</button>` +
             `<button class="music-track-delete" onclick="musicDeleteTrack(${i})">✕</button>`;
         playlist.appendChild(row);
     });
@@ -2360,6 +2376,19 @@ function onGMMusicVolumeChange(val) {
     if (musicIsPlaying && !_musicFadeRaf) _setSlotVol(_musicCurrentSlot, musicMasterVolume);
     const volVal = document.getElementById('music-gm-vol-val');
     if (volVal) volVal.textContent = String(musicMasterVolume);
+}
+
+function musicRenameTrack(index) {
+    const track = gmMusic[index];
+    if (!track) return;
+    const name = prompt('Nouveau nom de la piste :', track.name);
+    if (name === null) return;                 // cancelled
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === track.name) return;
+    track.name = trimmed;
+    saveGMMusic();
+    syncMusicTrack(track);
+    renderMusicTab();   // refreshes the playlist row and the now-playing title
 }
 
 function musicDeleteTrack(index) {

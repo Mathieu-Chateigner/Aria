@@ -5,6 +5,11 @@ const DDDICE_KEY = params.get('dddice_key') || '';
 const DDDICE_ROOM = params.get('dddice_room') || '';
 const OVERLAY_ID = params.get('overlay') || '';
 
+// Escape any value before inserting into innerHTML. Presence/roll/monster data is
+// remote-controlled (players broadcast their own character data over Ably), so every
+// interpolated field below must be escaped to prevent on-stream XSS in OBS.
+function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
 let overlayConfig = { widgets: [] };
 const presenceCache = new Map();
 const rollHistory = [];
@@ -549,66 +554,66 @@ function renderWidgetContent(widget) {
         case 'character_name': {
             const p = [...presenceCache.values()][0];
             if (!p) return '<div class="ow-char-name">—</div>';
-            return `<div class="ow-char-name">${p.name}${p.charClass ? ' — ' + p.charClass : ''}</div>`;
+            return `<div class="ow-char-name">${esc(p.name)}${p.charClass ? ' — ' + esc(p.charClass) : ''}</div>`;
         }
         case 'hp_bar': {
             const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
             if (!p) return '<div class="ow-hp-wrap"><div class="ow-hp-label">—</div><div class="ow-hp-track"><div class="ow-hp-fill" style="width:0%"></div><div class="ow-hp-text">— PV</div></div></div>';
             const pct = Math.max(0, Math.min(100, (p.hp / (p.maxHP || 1)) * 100));
             const colorCls = pct > 60 ? '' : pct > 30 ? ' yellow' : ' red';
-            return `<div class="ow-hp-wrap"><div class="ow-hp-label">${p.name}</div><div class="ow-hp-track"><div class="ow-hp-fill${colorCls}" style="width:${pct}%"></div><div class="ow-hp-text">${p.hp} / ${p.maxHP} PV</div></div></div>`;
+            return `<div class="ow-hp-wrap"><div class="ow-hp-label">${esc(p.name)}</div><div class="ow-hp-track"><div class="ow-hp-fill${colorCls}" style="width:${pct}%"></div><div class="ow-hp-text">${esc(p.hp)} / ${esc(p.maxHP)} PV</div></div></div>`;
         }
         case 'stats': {
             const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
             if (!p?.stats) return '<div class="ow-stats">—</div>';
-            return `<div class="ow-stats">${['FOR','DEX','END','INT','CHA'].map(s => `<div class="ow-stat"><span class="ow-stat-label">${s}</span><span class="ow-stat-value">${p.stats[s] ?? '—'}</span></div>`).join('')}</div>`;
+            return `<div class="ow-stats">${['FOR','DEX','END','INT','CHA'].map(s => `<div class="ow-stat"><span class="ow-stat-label">${s}</span><span class="ow-stat-value">${esc(p.stats[s] ?? '—')}</span></div>`).join('')}</div>`;
         }
         case 'protection': {
             const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
             if (!p?.protection) return '<div class="ow-protection">—</div>';
-            return `<div class="ow-protection">⊞ ${p.protection.nom || '—'} — ${p.protection.valeur ?? 0}</div>`;
+            return `<div class="ow-protection">⊞ ${esc(p.protection.nom || '—')} — ${esc(p.protection.valeur ?? 0)}</div>`;
         }
         case 'skills': {
             const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
             if (!p?.skills?.length) return '<div class="ow-list">—</div>';
-            return `<div class="ow-list">${p.skills.slice(0, cfg.maxItems || 10).map(s => `<div class="ow-list-item"><span class="ow-list-name">${s.name}</span><span class="ow-list-value">${s.pct}%</span></div>`).join('')}</div>`;
+            return `<div class="ow-list">${p.skills.slice(0, cfg.maxItems || 10).map(s => `<div class="ow-list-item"><span class="ow-list-name">${esc(s.name)}</span><span class="ow-list-value">${esc(s.pct)}%</span></div>`).join('')}</div>`;
         }
         case 'weapons': {
             const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
             if (!p?.weapons?.length) return '<div class="ow-list">—</div>';
-            return `<div class="ow-list">${p.weapons.filter(w => w.nom).map(w => `<div class="ow-list-item"><span class="ow-list-name">${w.nom}</span><span class="ow-list-value">${w.degats}</span></div>`).join('')}</div>`;
+            return `<div class="ow-list">${p.weapons.filter(w => w.nom).map(w => `<div class="ow-list-item"><span class="ow-list-name">${esc(w.nom)}</span><span class="ow-list-value">${esc(w.degats)}</span></div>`).join('')}</div>`;
         }
         case 'inventory': {
             const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
             if (!p?.inventory?.length) return '<div class="ow-list">—</div>';
-            return `<div class="ow-list">${p.inventory.slice(0, cfg.maxItems || 10).map(i => `<div class="ow-list-item"><span class="ow-list-name">${i.name}</span><span class="ow-list-value">×${i.qty}</span></div>`).join('')}</div>`;
+            return `<div class="ow-list">${p.inventory.slice(0, cfg.maxItems || 10).map(i => `<div class="ow-list-item"><span class="ow-list-name">${esc(i.name)}</span><span class="ow-list-value">×${esc(i.qty)}</span></div>`).join('')}</div>`;
         }
         case 'potions': {
             const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
             if (!p?.potions?.length) return '<div class="ow-list">—</div>';
-            return `<div class="ow-list">${p.potions.slice(0, cfg.maxItems || 8).map(pt => `<div class="ow-list-item"><span class="ow-list-name">${pt.name}</span><span class="ow-list-value">×${pt.qty ?? 1}</span></div>`).join('')}</div>`;
+            return `<div class="ow-list">${p.potions.slice(0, cfg.maxItems || 8).map(pt => `<div class="ow-list-item"><span class="ow-list-name">${esc(pt.name)}</span><span class="ow-list-value">×${esc(pt.qty ?? 1)}</span></div>`).join('')}</div>`;
         }
-        case 'custom_text': return `<div class="ow-custom-text">${cfg.content || ''}</div>`;
-        case 'campaign_name': return `<div class="ow-campaign-name">${cfg.content || '—'}</div>`;
+        case 'custom_text': return `<div class="ow-custom-text">${esc(cfg.content || '')}</div>`;
+        case 'campaign_name': return `<div class="ow-campaign-name">${esc(cfg.content || '—')}</div>`;
         case 'player_hp_summary': {
             if (!presenceCache.size) return '<div class="ow-list">—</div>';
             return [...presenceCache.values()].map(p => {
                 const pct = Math.max(0, Math.min(100, (p.hp / (p.maxHP || 1)) * 100));
                 const colorCls = pct > 60 ? '' : pct > 30 ? ' yellow' : ' red';
-                return `<div class="ow-hp-wrap" style="margin-bottom:4px"><div class="ow-hp-label">${p.name}</div><div class="ow-hp-track"><div class="ow-hp-fill${colorCls}" style="width:${pct}%"></div><div class="ow-hp-text">${p.hp} / ${p.maxHP} PV</div></div></div>`;
+                return `<div class="ow-hp-wrap" style="margin-bottom:4px"><div class="ow-hp-label">${esc(p.name)}</div><div class="ow-hp-track"><div class="ow-hp-fill${colorCls}" style="width:${pct}%"></div><div class="ow-hp-text">${esc(p.hp)} / ${esc(p.maxHP)} PV</div></div></div>`;
             }).join('');
         }
         case 'player_stats': {
             if (!presenceCache.size) return '<div>—</div>';
-            return [...presenceCache.values()].map(p => `<div style="margin-bottom:6px"><div class="ow-char-name" style="font-size:0.8em">${p.name}</div><div class="ow-stats">${['FOR','DEX','END','INT','CHA'].map(s => `<div class="ow-stat"><span class="ow-stat-label">${s}</span><span class="ow-stat-value">${p.stats?.[s] ?? '—'}</span></div>`).join('')}</div></div>`).join('');
+            return [...presenceCache.values()].map(p => `<div style="margin-bottom:6px"><div class="ow-char-name" style="font-size:0.8em">${esc(p.name)}</div><div class="ow-stats">${['FOR','DEX','END','INT','CHA'].map(s => `<div class="ow-stat"><span class="ow-stat-label">${s}</span><span class="ow-stat-value">${esc(p.stats?.[s] ?? '—')}</span></div>`).join('')}</div></div>`).join('');
         }
         case 'player_inventory': {
             if (!presenceCache.size) return '<div class="ow-list">—</div>';
-            return [...presenceCache.values()].map(p => `<div style="margin-bottom:4px"><div style="font-family:'Cinzel',serif;font-size:0.7em;color:var(--parchment-dim)">${p.name}</div>${(p.inventory || []).slice(0, 5).map(i => `<div class="ow-list-item"><span class="ow-list-name">${i.name}</span><span class="ow-list-value">×${i.qty}</span></div>`).join('')}</div>`).join('');
+            return [...presenceCache.values()].map(p => `<div style="margin-bottom:4px"><div style="font-family:'Cinzel',serif;font-size:0.7em;color:var(--parchment-dim)">${esc(p.name)}</div>${(p.inventory || []).slice(0, 5).map(i => `<div class="ow-list-item"><span class="ow-list-name">${esc(i.name)}</span><span class="ow-list-value">×${esc(i.qty)}</span></div>`).join('')}</div>`).join('');
         }
         case 'player_skills': {
             if (!presenceCache.size) return '<div class="ow-list">—</div>';
-            return [...presenceCache.values()].map(p => `<div style="margin-bottom:4px"><div style="font-family:'Cinzel',serif;font-size:0.7em;color:var(--parchment-dim)">${p.name}</div>${(p.skills || []).slice(0, 5).map(s => `<div class="ow-list-item"><span class="ow-list-name">${s.name}</span><span class="ow-list-value">${s.pct}%</span></div>`).join('')}</div>`).join('');
+            return [...presenceCache.values()].map(p => `<div style="margin-bottom:4px"><div style="font-family:'Cinzel',serif;font-size:0.7em;color:var(--parchment-dim)">${esc(p.name)}</div>${(p.skills || []).slice(0, 5).map(s => `<div class="ow-list-item"><span class="ow-list-name">${esc(s.name)}</span><span class="ow-list-value">${esc(s.pct)}%</span></div>`).join('')}</div>`).join('');
         }
         case 'monster_list': {
             const monsters = cfg.monsters || [];
@@ -616,13 +621,13 @@ function renderWidgetContent(widget) {
             return monsters.map(m => {
                 const pct = Math.max(0, Math.min(100, (m.pv / (m.maxPV || 1)) * 100));
                 const colorCls = pct > 60 ? '' : pct > 30 ? ' yellow' : ' red';
-                return `<div class="ow-hp-wrap" style="margin-bottom:4px"><div class="ow-hp-label">${m.name}</div><div class="ow-hp-track"><div class="ow-hp-fill${colorCls}" style="width:${pct}%"></div><div class="ow-hp-text">${m.pv} / ${m.maxPV} PV</div></div></div>`;
+                return `<div class="ow-hp-wrap" style="margin-bottom:4px"><div class="ow-hp-label">${esc(m.name)}</div><div class="ow-hp-track"><div class="ow-hp-fill${colorCls}" style="width:${pct}%"></div><div class="ow-hp-text">${esc(m.pv)} / ${esc(m.maxPV)} PV</div></div></div>`;
             }).join('');
         }
         case 'roll_history': {
             if (!rollHistory.length) return '<div class="ow-list">—</div>';
             const shown = rollHistory.slice(-(cfg.maxItems || 8)).reverse();
-            return `<div class="ow-list">${shown.map(r => `<div class="ow-roll-row"><span class="ow-roll-char">${r.char || ''}</span><span class="ow-roll-skill">${r.skillName}</span><span class="ow-roll-result ${r.success ? 'success' : 'fail'}">${r.roll}</span></div>`).join('')}</div>`;
+            return `<div class="ow-list">${shown.map(r => `<div class="ow-roll-row"><span class="ow-roll-char">${esc(r.char || '')}</span><span class="ow-roll-skill">${esc(r.skillName)}</span><span class="ow-roll-result ${r.success ? 'success' : 'fail'}">${esc(r.roll)}</span></div>`).join('')}</div>`;
         }
         case 'camera': {
             const sid = cfg.streamId || '';
