@@ -4,6 +4,10 @@ const ABLY_KEY = params.get('ably') || '';
 const DDDICE_KEY = params.get('dddice_key') || '';
 const DDDICE_ROOM = params.get('dddice_room') || '';
 const OVERLAY_ID = params.get('overlay') || '';
+// Campaign join code from the overlay URL (?campaign=XXXXX). Scopes the rolls/cards/damage
+// channels so this overlay only shows events from its campaign. Empty → global channels.
+const CAMPAIGN = (params.get('campaign') || '').trim().toUpperCase();
+function campaignChannel(base) { return CAMPAIGN ? `${base}-${CAMPAIGN}` : base; }
 
 // Escape any value before inserting into innerHTML. Presence/roll/monster data is
 // remote-controlled (players broadcast their own character data over Ably), so every
@@ -30,7 +34,7 @@ if (ABLY_KEY) {
     const ably = new Ably.Realtime({ key: ABLY_KEY, transports: ['web_socket'] });
 
     // Dice rolls
-    const rollCh = ably.channels.get('aria-rolls');
+    const rollCh = ably.channels.get(campaignChannel('aria-rolls'));
     rollCh.subscribe('roll', msg => {
         rollHistory.push(msg.data);
         if (rollHistory.length > ROLL_HISTORY_MAX) rollHistory.shift();
@@ -61,12 +65,12 @@ if (ABLY_KEY) {
     });
 
     // Card draws
-    const cardCh = ably.channels.get('aria-cards');
+    const cardCh = ably.channels.get(campaignChannel('aria-cards'));
     cardCh.subscribe('draw', msg => showDrawnCard(msg.data));
     cardCh.subscribe('reshuffle', msg => showReshuffle());
 
     // Damage
-    const dmgCh = ably.channels.get('aria-damage');
+    const dmgCh = ably.channels.get(campaignChannel('aria-damage'));
     dmgCh.subscribe('damage', msg => showDamage(msg.data));
     dmgCh.subscribe('heal', msg => showHeal(msg.data));
     dmgCh.subscribe('presence', msg => {
@@ -75,6 +79,15 @@ if (ABLY_KEY) {
             presenceCache.set(d.charId, d);
             updateWidgetData();
         }
+    });
+    // Live monster HP — the GM publishes monster-state on the (campaign-scoped) damage
+    // channel, so it must be received here, not on aria-overlay-config.
+    dmgCh.subscribe('monster-state', msg => {
+        if (!OVERLAY_ID || msg.data.overlayId !== OVERLAY_ID) return;
+        const widget = overlayConfig.widgets.find(w => w.type === 'monster_list');
+        if (!widget) return;
+        widget.config = { ...widget.config, monsters: msg.data.monsters };
+        updateWidgetData();
     });
 
     if (OVERLAY_ID) {
@@ -91,13 +104,6 @@ if (ABLY_KEY) {
             widget.config = { ...widget.config, content: msg.data.content };
             const el = document.querySelector(`.overlay-widget[data-widget-id="${msg.data.widgetId}"]`);
             if (el) el.innerHTML = renderWidgetContent(widget);
-        });
-        cfgCh.subscribe('monster-state', msg => {
-            if (msg.data.overlayId !== OVERLAY_ID) return;
-            const widget = overlayConfig.widgets.find(w => w.type === 'monster_list');
-            if (!widget) return;
-            widget.config = { ...widget.config, monsters: msg.data.monsters };
-            updateWidgetData();
         });
     }
 } else {

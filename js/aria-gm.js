@@ -704,6 +704,7 @@ function copyOverlayUrl() {
     if (config.dddiceKey)  params.set('dddice_key', config.dddiceKey);
     if (config.dddiceRoom) params.set('dddice_room', extractRoomSlug(config.dddiceRoom));
     if (currentCampaignId) params.set('overlay', 'gm_' + currentCampaignId);  // scopes layout + monster widget to this campaign
+    if (currentJoinCode)   params.set('campaign', currentJoinCode);            // scopes the rolls/cards/damage channels to this campaign
     const url = `${base}?${params}`;
     navigator.clipboard.writeText(url).then(() => {
         const btn = document.querySelector('.config-modal button[onclick="copyOverlayUrl()"]');
@@ -770,15 +771,23 @@ function setDddiceStatus(ok, detail) {
 // ═══════════════════════════════════════════
 //  ABLY
 // ═══════════════════════════════════════════
+// Suffix a base Ably channel name with the active campaign's join code so each
+// campaign runs on its own isolated channels (rolls/cards/damage/music). Empty join
+// code → global channel (backward compatible). Players and the overlay derive the
+// same suffix from the join code, so all three apps land on the same channel.
+function campaignChannel(base) {
+    const t = (currentJoinCode || '').trim().toUpperCase();
+    return t ? `${base}-${t}` : base;
+}
 // Initialize Ably channels and subscribe to all game events (rolls, cards, presence).
 function initAbly() {
-    console.log('[GM] initAbly: connecting with key', config.ablyKey?.slice(0, 8) + '...');
+    console.log('[GM] initAbly: connecting with key', config.ablyKey?.slice(0, 8) + '...', '| campaign channel suffix:', currentJoinCode || '(global)');
     try {
         ablyInstance = new Ably.Realtime({ key: config.ablyKey, transports: ['web_socket'] });
-        ablyRolls = ablyInstance.channels.get('aria-rolls');
-        ablyCards = ablyInstance.channels.get('aria-cards');
-        ablyDamage = ablyInstance.channels.get('aria-damage');
-        ablyMusic = ablyInstance.channels.get('aria-music');
+        ablyRolls = ablyInstance.channels.get(campaignChannel('aria-rolls'));
+        ablyCards = ablyInstance.channels.get(campaignChannel('aria-cards'));
+        ablyDamage = ablyInstance.channels.get(campaignChannel('aria-damage'));
+        ablyMusic = ablyInstance.channels.get(campaignChannel('aria-music'));
         ablyInstance.connection.on('connected', () => { console.log('[GM] Ably connected'); setAblyStatus(true); });
         ablyInstance.connection.on('failed',    () => { console.error('[GM] Ably connection FAILED'); setAblyStatus(false); });
         ablyInstance.connection.on('disconnected', () => console.warn('[GM] Ably disconnected'));

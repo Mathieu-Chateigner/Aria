@@ -80,9 +80,22 @@ All three apps share **one Ably key** (entered on `index.html`) and use four cha
 |---|---|---|
 | `aria-rolls` | `aria-player` (per roll) | `aria-gm` (roll feed) + other `aria-player` instances (toast) + `aria-overlay` |
 | `aria-cards` | `aria-player` or `aria-gm` | `aria-overlay` |
-| `aria-damage` | `aria-gm` (damage/heal/gm-presence) + `aria-player` (presence heartbeat every 5s) | `aria-player` (receives GM damage + gm-presence) + `aria-gm` (receives presence) |
+| `aria-damage` | `aria-gm` (damage/heal/gm-presence/monster-state) + `aria-player` (presence heartbeat every 5s) | `aria-player` (receives GM damage + gm-presence) + `aria-gm` (receives presence) + `aria-overlay` (presence + monster-state) |
 | `aria-music` | `aria-gm` (play/stop commands) | `aria-player` (subscribe only) — GM does **not** subscribe to its own commands |
 | `aria-overlay-config` | overlay editor (layout/content updates) | `aria-overlay` (receives layout changes in real time) |
+
+#### Per-campaign channel scoping
+
+The four game channels (`aria-rolls`, `aria-cards`, `aria-damage`, `aria-music`) are **scoped per campaign** by suffixing the campaign join code: `aria-rolls-{JOINCODE}`, etc. Each app derives the suffix the same way via a `campaignChannel(base)` helper:
+- GM: `currentJoinCode`
+- Player: `character.campaignKey`
+- Overlay: `?campaign=JOINCODE` URL param
+
+The join code is uppercased/trimmed in all three. An **empty** token falls back to the bare global channel (backward compatible; unlinked players). This isolates concurrent campaigns sharing one Ably key — rolls/cards/HP/music no longer bleed across campaigns or overlays.
+
+`aria-overlay-config` stays **global** — it is already isolated by `overlayId` (`gm_{campaignId}` or `player_{charId}`).
+
+> **`monster-state`** is published by the GM on `aria-damage` (scoped) and consumed by `aria-overlay` on the same channel (filtered by `overlayId`). It is **not** on `aria-overlay-config`.
 
 ### Supabase credentials
 
@@ -443,9 +456,13 @@ Always escape track names (and any other user-supplied content) before injecting
 
 ## OBS setup
 
+Don't hand-build these — use the **📋 Copier URL Overlay (OBS)** button in the player/GM ⚙ config modal, which fills in the right `campaign` (join code) and `overlay` (layout id) params for the active campaign/character.
+
 ```
-https://mathieu-chateigner.github.io/Aria/views/aria-overlay.html?mode=player&ably=KEY&dddice_key=KEY&dddice_room=SLUG
-https://mathieu-chateigner.github.io/Aria/views/aria-overlay.html?mode=gm&ably=KEY&dddice_key=KEY&dddice_room=SLUG
+https://mathieu-chateigner.github.io/Aria/views/aria-overlay.html?mode=player&ably=KEY&dddice_key=KEY&dddice_room=SLUG&campaign=JOINCODE
+https://mathieu-chateigner.github.io/Aria/views/aria-overlay.html?mode=gm&ably=KEY&dddice_key=KEY&dddice_room=SLUG&overlay=gm_CAMPAIGNID&campaign=JOINCODE
 ```
+
+`campaign=JOINCODE` scopes the rolls/cards/damage channels to one campaign (see *Per-campaign channel scoping*). Omitting it falls back to the global channels — an overlay URL **without** `campaign` will receive nothing once players/GM are on a join code, so always re-copy the URL after this change.
 
 Browser source size: 1920×1080, transparent background.

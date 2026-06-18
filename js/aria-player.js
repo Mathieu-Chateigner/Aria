@@ -2226,15 +2226,22 @@ function _updateMusicMuteIcon() {
 // ═══════════════════════════════════════════
 //  ABLY
 // ═══════════════════════════════════════════
+// Suffix a base Ably channel name with this character's campaign join code so each
+// campaign runs on its own isolated channels (rolls/cards/damage/music). Empty key →
+// global channel (backward compatible). The GM and overlay derive the same suffix.
+function campaignChannel(base) {
+    const t = (character.campaignKey || '').trim().toUpperCase();
+    return t ? `${base}-${t}` : base;
+}
 // Initialize Ably channels and subscribe to all game events (rolls, damage, music, cards).
 function initAbly() {
-    console.log('[PLAYER] initAbly: connecting with key', config.ablyKey?.slice(0, 8) + '...');
+    console.log('[PLAYER] initAbly: connecting with key', config.ablyKey?.slice(0, 8) + '...', '| campaign channel suffix:', character.campaignKey || '(global)');
     try {
         ablyInstance = new Ably.Realtime({ key: config.ablyKey, transports: ['web_socket'] });
-        ablyRolls = ablyInstance.channels.get('aria-rolls');
-        ablyCards = ablyInstance.channels.get('aria-cards');
-        ablyDamage = ablyInstance.channels.get('aria-damage');
-        ablyMusic = ablyInstance.channels.get('aria-music');
+        ablyRolls = ablyInstance.channels.get(campaignChannel('aria-rolls'));
+        ablyCards = ablyInstance.channels.get(campaignChannel('aria-cards'));
+        ablyDamage = ablyInstance.channels.get(campaignChannel('aria-damage'));
+        ablyMusic = ablyInstance.channels.get(campaignChannel('aria-music'));
         ablyMusic.subscribe('music', msg => {
             const d = msg.data;
             if (!d) return;
@@ -2445,6 +2452,7 @@ function copyOverlayUrl() {
     const params = new URLSearchParams({ mode: 'player', ably: config.ablyKey || '' });
     if (config.dddiceKey) params.set('dddice_key', config.dddiceKey);
     if (config.dddiceRoom) params.set('dddice_room', extractRoomSlug(config.dddiceRoom));
+    if (character.campaignKey) params.set('campaign', character.campaignKey);  // scopes the rolls/cards/damage channels to this campaign
     const url = `${base}?${params}`;
     navigator.clipboard.writeText(url).then(() => {
         const btn = document.querySelector('.config-modal button[onclick="copyOverlayUrl()"]');
