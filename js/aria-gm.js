@@ -1266,7 +1266,7 @@ function openPlayerDetails(playerId) {
     if (skills.length) {
         html += `<div class="pdm-section"><div class="pdm-section-title">Compétences</div><div class="pdm-skills-grid">`;
         for (const s of skills) {
-            html += `<div class="pdm-skill-row"><span class="pdm-skill-name">${_escHtml(s.name)}</span><span class="pdm-skill-pct">${_escHtml(s.pct ?? 0)}%</span></div>`;
+            html += `<div class="pdm-skill-row"><span class="pdm-skill-name">${_escHtml(s.name)}</span><span class="pdm-skill-pct">${_pdmSkillPct(s)}</span></div>`;
         }
         html += `</div></div>`;
     }
@@ -1275,7 +1275,7 @@ function openPlayerDetails(playerId) {
     if (specials.length) {
         html += `<div class="pdm-section"><div class="pdm-section-title">Compétences spéciales</div><div class="pdm-list">`;
         for (const s of specials) {
-            html += `<div class="pdm-special-row"><div class="pdm-special-header"><span class="pdm-skill-name">${_escHtml(s.name)}</span><span class="pdm-skill-pct">${_escHtml(s.pct ?? 0)}%</span></div>${s.desc ? `<div class="pdm-special-desc">${_escHtml(s.desc)}</div>` : ''}</div>`;
+            html += `<div class="pdm-special-row"><div class="pdm-special-header"><span class="pdm-skill-name">${_escHtml(s.name)}</span><span class="pdm-skill-pct">${_pdmSkillPct(s)}</span></div>${s.desc ? `<div class="pdm-special-desc">${_escHtml(s.desc)}</div>` : ''}</div>`;
         }
         html += `</div></div>`;
     }
@@ -2582,6 +2582,14 @@ function sendVialGrant(playerId, qty) {
 // Escape HTML special characters for safe injection into innerHTML.
 function _escHtml(s) {
     return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+// Render a skill/special percentage for the player-details modal, folding in the
+// player's per-skill permanent modifier (s.bonus) and annotating it when non-zero.
+function _pdmSkillPct(s) {
+    const pct = +s.pct || 0;
+    const b = +s.bonus || 0;
+    if (!b) return _escHtml(pct) + '%';
+    return `${_escHtml(pct + b)}% <span class="pdm-skill-mod" title="Modificateur permanent">${b > 0 ? '+' : ''}${b}</span>`;
 }
 // Return an emoji icon string for a file MIME type.
 function _fileIcon(type) {

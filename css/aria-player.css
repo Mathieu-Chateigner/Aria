@@ -701,6 +701,18 @@ body {
     border-radius: 1px;
     flex-shrink: 0;
 }
+/* Per-skill permanent modifier badge in the Compétences list (#12) */
+.skill-mod {
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--gold-light);
+    background: var(--gold-wash-md);
+    border: 1px solid var(--gold-dim);
+    border-radius: 10px;
+    padding: 1px 7px;
+    flex-shrink: 0;
+}
 
 /* Soigner skill highlight */
 .soigner-skill {
@@ -1005,7 +1017,7 @@ body {
 }
 .cs-weapons-hdr { display: grid; grid-template-columns: 1fr 80px 28px 24px; gap: 6px; }
 .cs-inv-hdr     { display: grid; grid-template-columns: 1fr 52px 28px;  gap: 6px; }
-.cs-specials-hdr { display: grid; grid-template-columns: 1.2fr 52px 2fr auto; gap: 6px; }
+.cs-specials-hdr { display: grid; grid-template-columns: 1.2fr 52px 48px 2fr auto; gap: 6px; }
 .editor-label {
     font-family: 'Cinzel', serif;
     font-size: 10px;
@@ -1307,8 +1319,8 @@ body {
 .cs-skills-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 24px; padding: 8px 14px 14px; }
 .skill-editor-row {
     display: grid;
-    grid-template-columns: 1fr 64px;
-    gap: 8px;
+    grid-template-columns: 1fr 56px 50px;
+    gap: 6px;
     align-items: center;
     padding: 6px 0;
     border-bottom: 1px solid rgba(201,168,76,0.06);
@@ -1327,10 +1339,24 @@ body {
     width: 100%;
 }
 .skill-editor-row .spct:focus { outline: none; border-color: var(--gold-dim); }
+/* Per-skill permanent modifier input (#12) */
+.smod {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border);
+    color: var(--parchment-dim);
+    font-family: 'Cinzel', serif;
+    font-size: 13px;
+    padding: 4px 4px;
+    border-radius: var(--radius);
+    text-align: center;
+    width: 100%;
+}
+.smod:focus { outline: none; border-color: var(--gold-dim); color: var(--gold); }
+.smod::placeholder { color: var(--parchment-dim); opacity: .4; font-style: italic; }
 /* Specials rows */
 .specials-row {
     display: grid;
-    grid-template-columns: 1.2fr 52px 2fr auto;
+    grid-template-columns: 1.2fr 52px 48px 2fr auto;
     gap: 6px;
     align-items: center;
     padding: 5px 0;
@@ -2229,6 +2255,7 @@ body.light-mode .bm-custom-row input {
     background: rgba(255,255,255,0.6);
 }
 body.light-mode .bm-next-input { background: rgba(255,255,255,0.6); }
+body.light-mode .smod { background: rgba(255,255,255,0.6); }
 body.light-mode .notes-area { background: rgba(255,255,255,0.6); }
 body.light-mode .notes-name-input { color: var(--parchment); }
 body.light-mode .hp-bar-wrap { background: rgba(0,0,0,0.1); }

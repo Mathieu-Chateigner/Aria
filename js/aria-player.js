@@ -1274,11 +1274,11 @@ function updateBMDisplay() {
     // Update only the percentage text in existing skill elements — no DOM rebuild
     document.getElementById('skill-list').querySelectorAll('.skill-item').forEach(div => {
         const skill = (character.skills || []).find(s => s.name === div.dataset.skillName);
-        if (skill) div.querySelector('.skill-pct').textContent = Math.max(1, Math.min(100, skill.pct + bm + (character?.karma ?? 0))) + '%';
+        if (skill) div.querySelector('.skill-pct').textContent = Math.max(1, Math.min(100, skill.pct + (+skill.bonus || 0) + bm + (character?.karma ?? 0))) + '%';
     });
     document.getElementById('special-list').querySelectorAll('.skill-item').forEach(div => {
         const sp = (character.specials || []).find(s => s.name === div.dataset.skillName);
-        if (sp) div.querySelector('.skill-pct').textContent = Math.max(1, Math.min(100, sp.pct + bm + (character?.karma ?? 0))) + '%';
+        if (sp) div.querySelector('.skill-pct').textContent = Math.max(1, Math.min(100, sp.pct + (+sp.bonus || 0) + bm + (character?.karma ?? 0))) + '%';
     });
     document.getElementById('potion-list')?.querySelectorAll('.recipe-row').forEach((div, i) => {
         const r = (character.potionRecipes || [])[i];
@@ -1311,29 +1311,33 @@ function renderSkills() {
     const list = document.getElementById('skill-list');
     list.innerHTML = '';
     [...(character.skills || [])].sort((a, b) => a.name.localeCompare(b.name, 'fr')).forEach(skill => {
-        const eff = Math.max(1, Math.min(100, skill.pct + liveBM() + (character.karma ?? 0)));
+        const bonus = +skill.bonus || 0;
+        const eff = Math.max(1, Math.min(100, skill.pct + bonus + liveBM() + (character.karma ?? 0)));
         const div = document.createElement('div');
         const isSoigner = skill.name === 'Soigner';
         div.className = 'skill-item' + (isSoigner ? ' soigner-skill' : '');
         div.dataset.skillName = skill.name;
-        div.innerHTML = `${skill.link ? `<span class="skill-link">${skill.link}</span>` : ''}<span class="skill-name">${skill.name}</span><span class="skill-pct">${eff}%</span>`;
+        const modBadge = bonus ? `<span class="skill-mod" title="Modificateur permanent">${bonus > 0 ? '+' : ''}${bonus}</span>` : '';
+        div.innerHTML = `${skill.link ? `<span class="skill-link">${skill.link}</span>` : ''}<span class="skill-name">${skill.name}</span>${modBadge}<span class="skill-pct">${eff}%</span>`;
         if (isSoigner) {
-            div.addEventListener('click', () => openSoignerTargetPicker(skill.pct));
+            div.addEventListener('click', () => openSoignerTargetPicker(skill.pct + bonus));
         } else {
-            div.addEventListener('click', () => doRoll(skill.name, skill.pct));
+            div.addEventListener('click', () => doRoll(skill.name, skill.pct + bonus));
         }
         list.appendChild(div);
     });
     const slist = document.getElementById('special-list');
     slist.innerHTML = '';
     [...(character.specials || [])].sort((a, b) => a.name.localeCompare(b.name, 'fr')).forEach(sp => {
-        const eff = Math.max(1, Math.min(100, sp.pct + liveBM() + (character.karma ?? 0)));
+        const bonus = +sp.bonus || 0;
+        const eff = Math.max(1, Math.min(100, sp.pct + bonus + liveBM() + (character.karma ?? 0)));
         const div = document.createElement('div');
         div.className = 'skill-item';
         div.dataset.skillName = sp.name;
         div.style.borderColor = 'rgba(123,63,160,.3)';
-        div.innerHTML = `<span class="skill-link" style="color:var(--card-purple)">Spéciale</span><span class="skill-name">${sp.name}${sp.desc ? ` <span style="font-size:12px;color:var(--parchment-dim)">— ${sp.desc}</span>` : ''}</span><span class="skill-pct" style="color:var(--card-purple)">${eff}%</span>`;
-        div.addEventListener('click', () => doRoll(sp.name, sp.pct));
+        const modBadge = bonus ? `<span class="skill-mod" style="color:var(--card-purple)" title="Modificateur permanent">${bonus > 0 ? '+' : ''}${bonus}</span>` : '';
+        div.innerHTML = `<span class="skill-link" style="color:var(--card-purple)">Spéciale</span><span class="skill-name">${sp.name}${sp.desc ? ` <span style="font-size:12px;color:var(--parchment-dim)">— ${sp.desc}</span>` : ''}</span>${modBadge}<span class="skill-pct" style="color:var(--card-purple)">${eff}%</span>`;
+        div.addEventListener('click', () => doRoll(sp.name, sp.pct + bonus));
         slist.appendChild(div);
     });
 }
@@ -1438,12 +1442,14 @@ function renderCombatSidebar() {
         html += `<div style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:6px;">Réactions</div>`;
         html += `<div class="react-btns">`;
         if (parrySkill) {
-            const eff = Math.max(1, Math.min(100, parrySkill.pct + liveBM() + (character.karma ?? 0)));
-            html += `<button class="react-btn" onclick="doRoll('${parrySkill.name.replace(/'/g, "\\'")}',${parrySkill.pct})">🛡 Parer<br><span class="react-pct">${eff}%</span></button>`;
+            const pb = +parrySkill.bonus || 0;
+            const eff = Math.max(1, Math.min(100, parrySkill.pct + pb + liveBM() + (character.karma ?? 0)));
+            html += `<button class="react-btn" onclick="doRoll('${parrySkill.name.replace(/'/g, "\\'")}',${parrySkill.pct + pb})">🛡 Parer<br><span class="react-pct">${eff}%</span></button>`;
         }
         if (dodgeSkill) {
-            const eff = Math.max(1, Math.min(100, dodgeSkill.pct + liveBM() + (character.karma ?? 0)));
-            html += `<button class="react-btn" onclick="doRoll('${dodgeSkill.name.replace(/'/g, "\\'")}',${dodgeSkill.pct})">⚡ ${dodgeSkill.name}<br><span class="react-pct">${eff}%</span></button>`;
+            const db = +dodgeSkill.bonus || 0;
+            const eff = Math.max(1, Math.min(100, dodgeSkill.pct + db + liveBM() + (character.karma ?? 0)));
+            html += `<button class="react-btn" onclick="doRoll('${dodgeSkill.name.replace(/'/g, "\\'")}',${dodgeSkill.pct + db})">⚡ ${dodgeSkill.name}<br><span class="react-pct">${eff}%</span></button>`;
         }
         html += `</div>`;
     }
@@ -2880,7 +2886,7 @@ function renderSkillsEditor() {
         .forEach(({ sk, i }) => {
             const row = document.createElement('div');
             row.className = 'skill-editor-row';
-            row.innerHTML = `<span class="sname">${sk.name}</span><input class="spct" type="text" inputmode="numeric" value="${sk.pct}" oninput="this.value=this.value.replace(/[^0-9]/g,'');character.skills[${i}].pct=+this.value||0" />`;
+            row.innerHTML = `<span class="sname">${sk.name}</span><input class="spct" type="text" inputmode="numeric" value="${sk.pct}" title="Seuil de base (%)" oninput="this.value=this.value.replace(/[^0-9]/g,'');character.skills[${i}].pct=+this.value||0" /><input class="smod" type="text" inputmode="numeric" value="${sk.bonus ? sk.bonus : ''}" placeholder="mod" title="Modificateur permanent (±)" oninput="this.value=this.value.replace(/[^0-9-]/g,'').replace(/(?!^)-/g,'');character.skills[${i}].bonus=parseInt(this.value)||0" />`;
             list.appendChild(row);
         });
 }
@@ -2892,7 +2898,7 @@ function renderSpecialsEditor() {
     (character.specials || []).forEach((sp, i) => {
         const row = document.createElement('div');
         row.className = 'specials-row';
-        row.innerHTML = `<input value="${sp.name || ''}" placeholder="Nom" oninput="character.specials[${i}].name=this.value" /><input type="text" inputmode="numeric" value="${sp.pct || 0}" oninput="this.value=this.value.replace(/[^0-9]/g,'');character.specials[${i}].pct=+this.value||0" /><input value="${sp.desc || ''}" placeholder="Description" oninput="character.specials[${i}].desc=this.value" /><button class="del-btn" onclick="removeSpecial(${i})">✕</button>`;
+        row.innerHTML = `<input value="${sp.name || ''}" placeholder="Nom" oninput="character.specials[${i}].name=this.value" /><input type="text" inputmode="numeric" value="${sp.pct || 0}" oninput="this.value=this.value.replace(/[^0-9]/g,'');character.specials[${i}].pct=+this.value||0" /><input type="text" inputmode="numeric" value="${sp.bonus ? sp.bonus : ''}" placeholder="mod" title="Modificateur permanent (±)" oninput="this.value=this.value.replace(/[^0-9-]/g,'').replace(/(?!^)-/g,'');character.specials[${i}].bonus=parseInt(this.value)||0" /><input value="${sp.desc || ''}" placeholder="Description" oninput="character.specials[${i}].desc=this.value" /><button class="del-btn" onclick="removeSpecial(${i})">✕</button>`;
         list.appendChild(row);
     });
 }

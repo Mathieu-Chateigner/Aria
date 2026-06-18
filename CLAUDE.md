@@ -248,8 +248,8 @@ The **empty vials counter** in the Inventaire tab (`#inv-vials-section`) is only
   inventory: [{ name, qty }],
   weapons: [{ nom, degats }, ...],           // always 3 slots; degats = dice formula
   protection: { nom, valeur },
-  skills: [{ name, link, pct }],             // link = "FOR/DEX" etc
-  specials: [{ name, desc, pct }],           // fully editable
+  skills: [{ name, link, pct, bonus? }],     // link = "FOR/DEX"; bonus = optional per-skill permanent modifier (#12)
+  specials: [{ name, desc, pct, bonus? }],   // fully editable; bonus = optional per-skill permanent modifier
   potions: [{ name, desc, ingredients, qty }],
   potionRecipes: [{ id, name, desc, ingredients, successChance }],
   vials: number,
@@ -367,6 +367,8 @@ The Joueurs tab shows a live player card per connected player. Each card display
 Persistent bar between topbar and content. Buttons: +10/+20/+30/−10/−20/−30 + custom ± + reset. The persistent `bonusMalus` applies to all BM-affected rolls (every `doRoll` with `skipBM=false`; the **Jet libre** free roll passes `skipBM=true` and is unaffected).
 
 **Temporary modifier (next N rolls)** — the `Prochains jets` control arms a one-off modifier (`bmNextValue`) that applies to the next `bmNextCount` BM-affected rolls then auto-expires. `bmNextActive()` returns the value while charges remain; `liveBM() = bonusMalus + bmNextActive()` is used for **all live percentage previews** (skills, specials, stat thresholds, combat reactions, potion chance). `doRoll` stamps the total applied modifier into `_appliedBM` (= `bonusMalus + tempBM`, karma excluded) so the roll payload's `bonusMalus` field, the float card, and the GM/overlay feed report what was actually applied; it then consumes one charge (decrement `bmNextCount`, clearing `bmNextValue` at 0). The armed state shows as a pill (`#bm-next-status`) with a ✕ to cancel (`clearBMNext`). All temp state resets on character switch. This is **player-side only** — no payload/protocol change.
+
+**Per-skill permanent modifier (#12)** — each skill/special carries an optional `bonus` (set via a `mod` input in the **Personnage** editor, next to the `%`). It is part of the character object (a JSON column on the `characters` table, so it round-trips cross-device — no migration). The modifier is **baked into `basePct`** at the roll call site (`doRoll(name, skill.pct + bonus)` for skills/specials/Soigner/parade/esquive), so the rolled threshold already includes it; `bonus` is therefore distinct from `bonusMalus`, the temp modifier, and `karma`. Live previews (`renderSkills`, `updateBMDisplay`, combat sidebar) add it; a `.skill-mod` badge marks non-zero values in the Compétences list. The GM player-details modal folds it in via `_pdmSkillPct(s)` (shows `pct+bonus` with a `+N` note). Because it is baked into the threshold, no Ably payload changes.
 
 ### Player presence (GM — Joueurs tab)
 - Players send heartbeat every 5s on `aria-damage` channel

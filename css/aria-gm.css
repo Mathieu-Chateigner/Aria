@@ -640,6 +640,7 @@ body {
 .pdm-skill-row { display: flex; justify-content: space-between; align-items: baseline; padding: 3px 0; border-bottom: 1px solid rgba(123,63,160,0.08); }
 .pdm-skill-name { font-family: 'EB Garamond', serif; font-size: 14px; color: var(--parchment); }
 .pdm-skill-pct { font-family: 'Cinzel', serif; font-size: 12px; color: var(--gm-accent-dim); white-space: nowrap; margin-left: 8px; }
+.pdm-skill-mod { font-family: 'Cinzel', serif; font-size: 10px; font-weight: 600; color: var(--gm-accent-light); background: rgba(123,63,160,0.14); border: 1px solid var(--gm-accent-dim); border-radius: 8px; padding: 0 5px; margin-left: 3px; }
 .pdm-special-row { padding: 5px 0; border-bottom: 1px solid rgba(123,63,160,0.08); }
 .pdm-special-header { display: flex; justify-content: space-between; align-items: baseline; }
 .pdm-special-desc { font-family: 'EB Garamond', serif; font-style: italic; font-size: 13px; color: var(--parchment-dim); margin-top: 2px; }
