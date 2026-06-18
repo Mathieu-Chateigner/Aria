@@ -55,7 +55,13 @@ let renderPlayerCardsTimer = null;
 let renderMonstersTimer = null;
 let gmPotions = [];
 let gmFiles = [];
-let gmMusic = [];
+// Music is organized into named playlists. gmPlaylists is the source of truth;
+// activePlaylistId is the playlist shown/edited in the UI, musicPlayingPlaylistId
+// is the playlist the now-playing track belongs to (playback can continue from one
+// playlist while the GM browses another). See the MUSIC AUDIO ENGINE section.
+let gmPlaylists = [];          // [{ id, name, tracks: [{id,name,type,url,youtubeId,path}] }]
+let activePlaylistId = null;   // playlist currently shown/edited in the Musique tab
+let musicPlayingPlaylistId = null; // playlist the now-playing track belongs to
 let ablyMusic = null;
 const filesGrantedSessions = new Set();
 let saveKey        = localStorage.getItem('aria-save-key') || null;
@@ -129,7 +135,7 @@ function debouncedSyncFiles() {
 // Upsert a music track record to the campaign_music table.
 async function syncMusicTrack(t) {
     if (!_supabaseReady() || !currentCampaignId) return;
-    const pos = gmMusic.findIndex(x => x.id === t.id);
+    const pos = _allTracks().findIndex(x => x.id === t.id);
     await sbUpsert('campaign_music', {
         id: t.id, campaign_id: currentCampaignId, name: t.name,
         type: t.type, url: t.url || null, youtube_id: t.youtubeId || null,
@@ -142,7 +148,7 @@ let _musicSyncTimer = null;
 function debouncedSyncMusic() {
     clearTimeout(_musicSyncTimer);
     _musicSyncTimer = setTimeout(() => {
-        if (_supabaseReady() && currentCampaignId) Promise.all(gmMusic.map(t => syncMusicTrack(t)));
+        if (_supabaseReady() && currentCampaignId) Promise.all(_allTracks().map(t => syncMusicTrack(t)));
     }, 800);
 }
 
@@ -150,6 +156,29 @@ function debouncedSyncMusic() {
 async function deleteMusicTrackFromDB(id) {
     if (!_supabaseReady()) return;
     await sbDelete('campaign_music', 'id=eq.' + encodeURIComponent(id));
+}
+
+// Reconcile flat DB tracks into the existing local playlist grouping for a campaign.
+// campaign_music has no playlist column, so playlist grouping lives only in
+// localStorage. On load we keep the local grouping but sync membership with the DB:
+// drop tracks deleted elsewhere, and append tracks added elsewhere to the first
+// playlist. On a fresh device (no local grouping) everything lands in one default
+// playlist. `lsKey` is the aria-gm-music-{campaignId} localStorage key.
+function _mergeMusicGrouping(lsKey, dbTracks) {
+    const playlists = _normalizeMusicData(localStorage.getItem(lsKey));
+    const dbIds = new Set(dbTracks.map(t => t.id));
+    const localIds = new Set();
+    // Keep only tracks that still exist in the DB; collect their ids.
+    playlists.forEach(pl => {
+        pl.tracks = pl.tracks.filter(t => {
+            if (dbIds.has(t.id)) { localIds.add(t.id); return true; }
+            return false;
+        });
+    });
+    // Append DB tracks not present in any local playlist (added on another device).
+    const orphans = dbTracks.filter(t => !localIds.has(t.id));
+    if (orphans.length) playlists[0].tracks.push(...orphans);
+    return playlists;
 }
 
 // Upsert a GM note to the campaign_notes table.
@@ -204,8 +233,11 @@ async function _syncAllGMData() {
             id: f.id, campaign_id: cid, name: f.name, type: f.type || '',
             url: f.url || '', path: f.path || '', granted_to: f.grantedTo || [], updated_at: now,
         })));
-        const music = JSON.parse(localStorage.getItem('aria-gm-music-' + cid) || '[]');
-        await Promise.all(music.map((t, i) => sbUpsert('campaign_music', {
+        // Music is stored as playlists locally but synced flat (campaign_music has no
+        // playlist column); flatten across playlists, preserving order.
+        const musicPlaylists = _normalizeMusicData(localStorage.getItem('aria-gm-music-' + cid));
+        const musicTracks = musicPlaylists.flatMap(p => p.tracks);
+        await Promise.all(musicTracks.map((t, i) => sbUpsert('campaign_music', {
             id: t.id, campaign_id: cid, name: t.name, type: t.type,
             url: t.url || null, youtube_id: t.youtubeId || null, path: t.path || null,
             position: i, updated_at: now,
@@ -255,9 +287,10 @@ async function loadFromSupabase() {
                 localStorage.setItem('aria-gm-known-players-' + c.id, JSON.stringify(obj));
             }
             if (notes.length) localStorage.setItem('aria-gm-notes-' + c.id, JSON.stringify(notes.map(n => ({ id: n.id, name: n.name, content: n.content }))));
-            if (music.length) localStorage.setItem('aria-gm-music-' + c.id, JSON.stringify(
-                music.map(t => ({ id: t.id, name: t.name, type: t.type, url: t.url, youtubeId: t.youtube_id, path: t.path }))
-            ));
+            if (music.length) {
+                const dbTracks = music.map(t => ({ id: t.id, name: t.name, type: t.type, url: t.url, youtubeId: t.youtube_id, path: t.path }));
+                localStorage.setItem('aria-gm-music-' + c.id, JSON.stringify(_mergeMusicGrouping('aria-gm-music-' + c.id, dbTracks)));
+            }
         }
     } catch(e) { console.warn('[ARIA] GM load failed:', e); }
 }
@@ -422,14 +455,17 @@ function loadCampaignState(id) {
     cardHistory = JSON.parse(localStorage.getItem(cardHistKey()) || '[]');
     gmPotions   = JSON.parse(localStorage.getItem(potionsKey())  || '[]');
     gmFiles     = JSON.parse(localStorage.getItem(filesKey())    || '[]');
-    gmMusic     = JSON.parse(localStorage.getItem(musicKey())    || '[]');
+    gmPlaylists = _normalizeMusicData(localStorage.getItem(musicKey()));
+    activePlaylistId = gmPlaylists[0] ? gmPlaylists[0].id : null;
+    musicPlayingPlaylistId = null;
+    musicCurrentIndex = -1;
     players.clear();
     const knownRaw = JSON.parse(localStorage.getItem(knownPlayersKey()) || '{}');
     Object.entries(knownRaw).forEach(([, p]) => {
         if (!p.charId) return;
         players.set(p.charId, { ...p, online: false });
     });
-    console.log('[GM] loadCampaignState:', camp.name, '| joinCode:', currentJoinCode, '| type:', currentCampaignType, '| vdoRoom:', currentVdoRoom || '(none)', '| monsters:', monsters.length, '| knownPlayers:', players.size, '| music tracks:', gmMusic.length, '| files:', gmFiles.length);
+    console.log('[GM] loadCampaignState:', camp.name, '| joinCode:', currentJoinCode, '| type:', currentCampaignType, '| vdoRoom:', currentVdoRoom || '(none)', '| monsters:', monsters.length, '| knownPlayers:', players.size, '| playlists:', gmPlaylists.length, '| music tracks:', _allTracks().length, '| files:', gmFiles.length);
     return true;
 }
 
@@ -556,7 +592,10 @@ function switchCampaign() {
     gmPotions = [];
     gmFiles = [];
     musicStop();
-    gmMusic = [];
+    gmPlaylists = [];
+    activePlaylistId = null;
+    musicPlayingPlaylistId = null;
+    musicCurrentIndex = -1;
     ablyMusic = null;
     filesGrantedSessions.clear();
     if (sweepIntervalId) { clearInterval(sweepIntervalId); sweepIntervalId = null; }
@@ -942,8 +981,8 @@ function handlePresence(data) {
     if (!filesGrantedSessions.has(data.playerId)) {
         filesGrantedSessions.add(data.playerId);
         sendFileGrantsToPlayer(data);
-        if (musicIsPlaying && gmMusic[musicCurrentIndex]) {
-            publishMusicPlay(gmMusic[musicCurrentIndex]);
+        if (musicIsPlaying && _currentTrack()) {
+            publishMusicPlay(_currentTrack());
         }
         if (currentVdoRoom && ablyDamage) {
             const gmStreamId = 'aria-gm-' + currentCampaignId.slice(0, 8);
@@ -2341,10 +2380,10 @@ function _fileIcon(type) {
 // Persist GM files to localStorage and debounce Supabase sync.
 function saveGmFiles() { localStorage.setItem(filesKey(), JSON.stringify(gmFiles)); debouncedSyncFiles(); }
 
-// Persist the GM music playlist to localStorage and debounce Supabase sync.
+// Persist the GM music playlists to localStorage and debounce Supabase sync.
 function saveGMMusic() {
     if (!currentCampaignId) return;
-    localStorage.setItem(musicKey(), JSON.stringify(gmMusic));
+    localStorage.setItem(musicKey(), JSON.stringify(gmPlaylists));
     debouncedSyncMusic();
 }
 
@@ -2359,6 +2398,56 @@ let musicIsPlaying    = false;
 let _musicCurrentSlot = 'A'; // 'A' or 'B'
 let _musicFadeRaf     = null;
 let _musicProgressRaf = null;
+
+// ─── Playlist accessors ───
+// gmPlaylists holds named playlists; the UI shows one (activePlaylistId) while
+// playback tracks its own playlist (musicPlayingPlaylistId) + index. These helpers
+// resolve the right track array for view vs. playback operations.
+function _newPlaylist(name) {
+    return { id: (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)),
+             name: name || 'Playlist', tracks: [] };
+}
+function _activePlaylist()  { return gmPlaylists.find(p => p.id === activePlaylistId) || gmPlaylists[0] || null; }
+function _playingPlaylist() { return gmPlaylists.find(p => p.id === musicPlayingPlaylistId) || null; }
+function _activeTracks()    { const p = _activePlaylist();  return p ? p.tracks : []; }
+function _playingTracks()   { const p = _playingPlaylist(); return p ? p.tracks : []; }
+function _currentTrack()    { const t = _playingTracks(); return (musicCurrentIndex >= 0 && musicCurrentIndex < t.length) ? t[musicCurrentIndex] : null; }
+// Flatten every track across all playlists, preserving order (used for flat Supabase sync).
+function _allTracks()       { return gmPlaylists.flatMap(p => p.tracks); }
+// Guarantee an active playlist exists (creating a default one if needed) and return
+// its tracks array — used by the add-track paths so a push never lands nowhere.
+function _ensureActivePlaylist() {
+    if (!gmPlaylists.length) gmPlaylists.push(_newPlaylist('Playlist'));
+    if (!_activePlaylist()) activePlaylistId = gmPlaylists[0].id;
+    return _activePlaylist().tracks;
+}
+// True when the playlist on screen is also the one currently playing.
+function _viewingPlayingPlaylist() { return activePlaylistId === musicPlayingPlaylistId; }
+
+// Normalize raw localStorage music data into the playlist shape. Accepts the new
+// format (array of {id,name,tracks}) or the legacy flat array of tracks (wraps it
+// into a single default playlist). Always returns at least one playlist.
+function _normalizeMusicData(raw) {
+    let parsed = [];
+    try { parsed = JSON.parse(raw || '[]'); } catch(_) { parsed = []; }
+    if (!Array.isArray(parsed)) parsed = [];
+    let playlists;
+    if (parsed.length && parsed[0] && Array.isArray(parsed[0].tracks)) {
+        // already playlist format
+        playlists = parsed.map(p => ({
+            id: p.id || _newPlaylist().id,
+            name: p.name || 'Playlist',
+            tracks: Array.isArray(p.tracks) ? p.tracks : [],
+        }));
+    } else {
+        // legacy flat track array → one default playlist
+        const pl = _newPlaylist('Playlist');
+        pl.tracks = parsed.filter(t => t && t.id);
+        playlists = [pl];
+    }
+    if (!playlists.length) playlists = [_newPlaylist('Playlist')];
+    return playlists;
+}
 
 // Slot descriptors
 const _musicSlots = {
@@ -2499,9 +2588,11 @@ function _showMusicUnlockPrompt(onUnlock) {
 }
 
 // Advance to the next track when the current ends; loops or stops based on musicLoop flag.
+// Operates on the PLAYING playlist (not whichever the GM is currently viewing).
 function _musicAutoAdvance() {
-    if (!gmMusic.length) return;
-    const nextIdx = (musicCurrentIndex + 1 < gmMusic.length)
+    const tracks = _playingTracks();
+    if (!tracks.length) return;
+    const nextIdx = (musicCurrentIndex + 1 < tracks.length)
         ? musicCurrentIndex + 1
         : (musicLoop ? 0 : -1);
     if (nextIdx === -1) {
@@ -2510,8 +2601,8 @@ function _musicAutoAdvance() {
         renderMusicTab();
         return;
     }
-    _musicTriggerPlay(gmMusic[nextIdx], nextIdx);
-    publishMusicPlay(gmMusic[nextIdx]);
+    _musicTriggerPlay(tracks[nextIdx], nextIdx);
+    publishMusicPlay(tracks[nextIdx]);
 }
 
 // Start playing a track on the inactive slot and cross-fade in from the current slot.
@@ -2541,7 +2632,7 @@ function _musicTriggerPlay(track, index) {
 function _startMusicProgress() {
     if (_musicProgressRaf) cancelAnimationFrame(_musicProgressRaf);
     function tick() {
-        const track = gmMusic[musicCurrentIndex];
+        const track = _currentTrack();
         const progressFill = document.getElementById('music-progress-fill');
         const progressWrap = document.getElementById('music-progress-wrap');
         if (track?.type === 'file') {
@@ -2556,12 +2647,20 @@ function _startMusicProgress() {
     _musicProgressRaf = requestAnimationFrame(tick);
 }
 
-// Render the music tab: now-playing label, play/loop buttons, volume, and playlist rows.
+// Render the music tab: now-playing label, play/loop buttons, volume, playlist chips
+// bar, and the rows of the active playlist.
 function renderMusicTab() {
-    const track = gmMusic[musicCurrentIndex] || null;
+    const track = _currentTrack();
 
     const titleEl = document.getElementById('music-np-title');
     if (titleEl) titleEl.textContent = track ? track.name : 'Aucune piste';
+
+    // Subtitle showing which playlist the now-playing track belongs to.
+    const npPl = document.getElementById('music-np-playlist');
+    if (npPl) {
+        const playing = _playingPlaylist();
+        npPl.textContent = (track && playing) ? '♪ ' + playing.name : '';
+    }
 
     const playBtn = document.getElementById('music-play-btn');
     if (playBtn) playBtn.textContent = musicIsPlaying ? '⏸' : '▶';
@@ -2574,19 +2673,25 @@ function renderMusicTab() {
     const volVal = document.getElementById('music-gm-vol-val');
     if (volVal) volVal.textContent = String(musicMasterVolume);
 
+    renderPlaylistBar();
+
     const playlist = document.getElementById('music-playlist');
     if (!playlist) return;
 
-    if (!gmMusic.length) {
-        playlist.innerHTML = '<div class="music-empty">Aucune piste. Ajoutez des fichiers ou des URLs YouTube.</div>';
+    const tracks = _activeTracks();
+    const viewingPlaying = _viewingPlayingPlaylist();
+
+    if (!tracks.length) {
+        playlist.innerHTML = '<div class="music-empty">Playlist vide. Ajoutez des fichiers ou des URLs YouTube ci-dessous.</div>';
         return;
     }
 
     playlist.innerHTML = '';
-    gmMusic.forEach((t, i) => {
+    tracks.forEach((t, i) => {
+        const isCurrent = viewingPlaying && i === musicCurrentIndex;
         const row = document.createElement('div');
-        row.className = 'music-track-row' + (i === musicCurrentIndex ? ' active' : '');
-        const indicator = (i === musicCurrentIndex && musicIsPlaying) ? '▶' : '○';
+        row.className = 'music-track-row' + (isCurrent ? ' active' : '');
+        const indicator = (isCurrent && musicIsPlaying) ? '▶' : '○';
         const badge = t.type === 'youtube' ? 'youtube' : 'fichier';
         row.innerHTML =
             `<span class="music-track-indicator">${indicator}</span>` +
@@ -2598,10 +2703,106 @@ function renderMusicTab() {
     });
 }
 
-// Select and play a track by index locally and broadcast to players via Ably.
+// ─── Playlist management ───
+// Create a new (empty) playlist, make it active, and focus the add field.
+function musicAddPlaylist() {
+    const name = prompt('Nom de la nouvelle playlist :', 'Playlist ' + (gmPlaylists.length + 1));
+    if (name === null) return;
+    const pl = _newPlaylist(name.trim() || ('Playlist ' + (gmPlaylists.length + 1)));
+    gmPlaylists.push(pl);
+    activePlaylistId = pl.id;
+    saveGMMusic();
+    renderMusicTab();
+}
+
+// Switch the playlist shown/edited in the tab (does not affect playback).
+function musicSelectPlaylist(id) {
+    if (!gmPlaylists.some(p => p.id === id)) return;
+    activePlaylistId = id;
+    renderMusicTab();
+}
+
+// Rename a playlist by id.
+function musicRenamePlaylist(id) {
+    const pl = gmPlaylists.find(p => p.id === id);
+    if (!pl) return;
+    const name = prompt('Nouveau nom de la playlist :', pl.name);
+    if (name === null) return;
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === pl.name) return;
+    pl.name = trimmed;
+    saveGMMusic();
+    renderMusicTab();
+}
+
+// Delete a playlist (and its tracks) by id. Always keeps at least one playlist.
+// If the deleted playlist is the one playing, playback stops.
+function musicDeletePlaylist(id) {
+    if (gmPlaylists.length <= 1) return;
+    const idx = gmPlaylists.findIndex(p => p.id === id);
+    if (idx === -1) return;
+    const pl = gmPlaylists[idx];
+    if (!confirm(`Supprimer la playlist « ${pl.name} » et ses ${pl.tracks.length} piste(s) ?`)) return;
+    if (id === musicPlayingPlaylistId) { musicStop(); musicCurrentIndex = -1; musicPlayingPlaylistId = null; }
+    // Clean up each track from Supabase + storage.
+    pl.tracks.forEach(t => {
+        deleteMusicTrackFromDB(t.id);
+        if (t.type === 'file' && t.path) deleteMusicFileFromStorage(t.path);
+    });
+    gmPlaylists.splice(idx, 1);
+    if (activePlaylistId === id) activePlaylistId = gmPlaylists[0].id;
+    saveGMMusic();
+    renderMusicTab();
+}
+
+// Launch a playlist: make it active and start it from its first track (local +
+// broadcast). This is the "choisir quelle queue lancer" entry point.
+function musicLaunchPlaylist(id) {
+    const pl = gmPlaylists.find(p => p.id === id);
+    if (!pl) return;
+    activePlaylistId = id;
+    if (!pl.tracks.length) { renderMusicTab(); return; }
+    musicSelectTrack(0);   // active == this playlist, so it becomes the playing one
+}
+
+// Render the row of playlist chips. The active chip is highlighted and carries
+// launch/rename/delete controls; a trailing ＋ button creates a new playlist.
+function renderPlaylistBar() {
+    const bar = document.getElementById('music-playlist-bar');
+    if (!bar) return;
+    bar.innerHTML = '';
+    gmPlaylists.forEach(pl => {
+        const isActive  = pl.id === activePlaylistId;
+        const isPlaying = pl.id === musicPlayingPlaylistId && musicIsPlaying;
+        const chip = document.createElement('div');
+        chip.className = 'music-pl-chip' + (isActive ? ' active' : '') + (isPlaying ? ' playing' : '');
+        let html =
+            `<span class="music-pl-launch" onclick="musicLaunchPlaylist('${pl.id}')" title="Lancer cette playlist">▶</span>` +
+            `<span class="music-pl-name" onclick="musicSelectPlaylist('${pl.id}')">${_escHtml(pl.name)}</span>` +
+            `<span class="music-pl-count">${pl.tracks.length}</span>`;
+        if (isActive) {
+            html +=
+                `<button class="music-pl-edit" onclick="musicRenamePlaylist('${pl.id}')" title="Renommer">✎</button>` +
+                `<button class="music-pl-del" onclick="musicDeletePlaylist('${pl.id}')" title="Supprimer"${gmPlaylists.length <= 1 ? ' disabled' : ''}>✕</button>`;
+        }
+        chip.innerHTML = html;
+        bar.appendChild(chip);
+    });
+    const add = document.createElement('button');
+    add.className = 'music-pl-add';
+    add.title = 'Nouvelle playlist';
+    add.textContent = '＋';
+    add.onclick = musicAddPlaylist;
+    bar.appendChild(add);
+}
+
+// Select and play a track (by index within the ACTIVE playlist) locally and
+// broadcast to players via Ably. The active playlist becomes the playing playlist.
 function musicSelectTrack(index) {
-    const track = gmMusic[index];
+    const tracks = _activeTracks();
+    const track = tracks[index];
     if (!track) return;
+    musicPlayingPlaylistId = activePlaylistId;
     _musicTriggerPlay(track, index);  // immediate local playback
     publishMusicPlay(track);          // broadcast to players via Ably
 }
@@ -2609,8 +2810,9 @@ function musicSelectTrack(index) {
 // Toggle music playback (play/pause) and broadcast the command to players.
 function musicTogglePlay() {
     if (!musicIsPlaying) {
-        const track = gmMusic[musicCurrentIndex];
-        if (!track) { if (gmMusic.length) musicSelectTrack(0); return; }
+        const track = _currentTrack();
+        // Nothing cued: start the active playlist from its first track.
+        if (!track) { if (_activeTracks().length) musicSelectTrack(0); return; }
         const slot = _musicCurrentSlot;
         if (_musicSlots[slot].audio) _musicSlots[slot].audio.play().catch(() => {});
         const yt = slot === 'A' ? _ytSlotA : _ytSlotB;
@@ -2641,23 +2843,35 @@ function musicStop() {
     publishMusicStop();
 }
 
-// Skip to the next track (wraps if loop is on).
+// Skip to the next track in the PLAYING playlist (wraps if loop is on).
 function musicNext() {
-    if (!gmMusic.length) return;
-    const next = musicCurrentIndex + 1 < gmMusic.length
+    const tracks = _playingTracks();
+    if (!tracks.length) return;
+    const next = musicCurrentIndex + 1 < tracks.length
         ? musicCurrentIndex + 1
         : (musicLoop ? 0 : musicCurrentIndex);
-    if (next === musicCurrentIndex && !musicLoop && musicCurrentIndex === gmMusic.length - 1) return;
-    musicSelectTrack(next);
+    if (next === musicCurrentIndex && !musicLoop && musicCurrentIndex === tracks.length - 1) return;
+    _playFromPlayingPlaylist(next);
 }
 
-// Skip to the previous track (wraps if loop is on).
+// Skip to the previous track in the PLAYING playlist (wraps if loop is on).
 function musicPrev() {
-    if (!gmMusic.length) return;
+    const tracks = _playingTracks();
+    if (!tracks.length) return;
     const prev = musicCurrentIndex > 0
         ? musicCurrentIndex - 1
-        : (musicLoop ? gmMusic.length - 1 : 0);
-    musicSelectTrack(prev);
+        : (musicLoop ? tracks.length - 1 : 0);
+    _playFromPlayingPlaylist(prev);
+}
+
+// Play a track by index within the currently PLAYING playlist (used by next/prev,
+// which must stay on the playing playlist even if the GM is viewing another one).
+function _playFromPlayingPlaylist(index) {
+    const tracks = _playingTracks();
+    const track = tracks[index];
+    if (!track) return;
+    _musicTriggerPlay(track, index);
+    publishMusicPlay(track);
 }
 
 // Toggle the music loop flag and refresh the tab UI.
@@ -2681,8 +2895,9 @@ function onGMMusicVolumeChange(val) {
     if (volVal) volVal.textContent = String(musicMasterVolume);
 }
 
+// Rename a track in the ACTIVE playlist.
 function musicRenameTrack(index) {
-    const track = gmMusic[index];
+    const track = _activeTracks()[index];
     if (!track) return;
     const name = prompt('Nouveau nom de la piste :', track.name);
     if (name === null) return;                 // cancelled
@@ -2694,15 +2909,19 @@ function musicRenameTrack(index) {
     renderMusicTab();   // refreshes the playlist row and the now-playing title
 }
 
-// Delete a track from the playlist, stopping it if it is playing, and clean up storage.
+// Delete a track from the ACTIVE playlist, stopping it if it is the now-playing
+// track, and clean up storage. The musicCurrentIndex only shifts when the playlist
+// being edited is also the one currently playing.
 function musicDeleteTrack(index) {
-    const track = gmMusic[index];
+    const track = _activeTracks()[index];
     if (!track) return;
-    if (index === musicCurrentIndex) { musicStop(); musicCurrentIndex = -1; }
-    else if (index < musicCurrentIndex) musicCurrentIndex--;
+    if (_viewingPlayingPlaylist()) {
+        if (index === musicCurrentIndex) { musicStop(); musicCurrentIndex = -1; }
+        else if (index < musicCurrentIndex) musicCurrentIndex--;
+    }
     deleteMusicTrackFromDB(track.id);
     if (track.type === 'file' && track.path) deleteMusicFileFromStorage(track.path);
-    gmMusic.splice(index, 1);
+    _activeTracks().splice(index, 1);
     saveGMMusic();
     renderMusicTab();
 }
@@ -2779,13 +2998,14 @@ async function musicAddYoutube() {
     if (!raw) return;
 
     statusEl.textContent = 'Chargement…';
+    const dest = _ensureActivePlaylist();   // tracks added to the active playlist
 
     const playlistId = _parseYTPlaylistId(raw);
     if (playlistId && playlistId.startsWith('RD')) {
         const videoId = _parseYTVideoId(raw);
         if (!videoId) { statusEl.textContent = '⚠ URL invalide.'; return; }
         const name = await _fetchYTTitle(videoId, config.youtubeApiKey);
-        gmMusic.push({ id: crypto.randomUUID(), name, type: 'youtube', url: null, youtubeId: videoId, path: null });
+        dest.push({ id: crypto.randomUUID(), name, type: 'youtube', url: null, youtubeId: videoId, path: null });
         statusEl.textContent = '✓ Piste ajoutée. (Les Mix YouTube ne peuvent pas être importés en entier — seule cette vidéo a été ajoutée.)';
     } else if (playlistId) {
         const apiKey = config.youtubeApiKey;
@@ -2795,13 +3015,13 @@ async function musicAddYoutube() {
         }
         const tracks = await _fetchYTPlaylist(playlistId, apiKey);
         if (!tracks.length) { statusEl.textContent = '⚠ Playlist introuvable ou vide.'; return; }
-        tracks.forEach(t => gmMusic.push(t));
+        tracks.forEach(t => dest.push(t));
         statusEl.textContent = `✓ ${tracks.length} piste(s) ajoutée(s).`;
     } else {
         const videoId = _parseYTVideoId(raw);
         if (!videoId) { statusEl.textContent = '⚠ URL ou ID invalide.'; return; }
         const name = await _fetchYTTitle(videoId, config.youtubeApiKey);
-        gmMusic.push({ id: crypto.randomUUID(), name, type: 'youtube', url: null, youtubeId: videoId, path: null });
+        dest.push({ id: crypto.randomUUID(), name, type: 'youtube', url: null, youtubeId: videoId, path: null });
         statusEl.textContent = '✓ Piste ajoutée.';
     }
 
@@ -2838,7 +3058,7 @@ async function musicUploadFile(input) {
         });
         if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.message || `Erreur ${res.status}`); }
         const url = `${SUPABASE_URL}/storage/v1/object/public/campaign-music/${path}`;
-        gmMusic.push({ id, name, type: 'file', url, youtubeId: null, path });
+        _ensureActivePlaylist().push({ id, name, type: 'file', url, youtubeId: null, path });
         saveGMMusic();
         renderMusicTab();
         statusEl.textContent = '✓ Fichier ajouté.';
