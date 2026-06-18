@@ -1485,6 +1485,41 @@ body {
 }
 .music-pl-add:hover { background: var(--bg3); border-color: var(--gm-accent); }
 
+/* ─── Monster / file group chip bar (shared) ─── */
+.group-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.group-chip {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 14px;
+    padding: 3px 6px 3px 11px; transition: border-color .12s, background .12s;
+}
+.group-chip:hover { border-color: var(--gm-accent-dim); }
+.group-chip.active { background: rgba(123,63,160,0.10); border-color: var(--gm-accent); }
+.group-chip.drop-hover { border-color: var(--gm-accent); background: rgba(123,63,160,0.22); box-shadow: 0 0 0 1px var(--gm-accent) inset; }
+.group-chip-name { font-family: 'EB Garamond', serif; font-size: 13px; color: var(--parchment); cursor: pointer; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.group-chip.active .group-chip-name { color: var(--gm-accent-light); }
+.group-chip-count { font-family: 'Cinzel', serif; font-size: 9px; color: var(--parchment-dim); background: var(--bg3); border-radius: 8px; padding: 0 6px; flex-shrink: 0; }
+.group-chip-edit, .group-chip-del { background: none; border: none; color: var(--parchment-dim); cursor: pointer; font-size: 10px; padding: 0 2px; opacity: .6; line-height: 1; flex-shrink: 0; }
+.group-chip-edit:hover { color: var(--gm-accent-light); opacity: 1; }
+.group-chip-del:hover { color: var(--fail); opacity: 1; }
+.group-chip-add {
+    background: var(--bg2); border: 1px dashed var(--border); border-radius: 14px;
+    color: var(--gm-accent-light); cursor: pointer; font-size: 14px; line-height: 1;
+    padding: 3px 10px; transition: background .12s, border-color .15s;
+}
+.group-chip-add:hover { background: var(--bg3); border-color: var(--gm-accent); }
+/* Drag handle on each card; the rest of the card is not draggable. */
+.group-grip { cursor: grab; color: var(--gm-accent-dim); font-size: 13px; line-height: 1; flex-shrink: 0; opacity: .55; user-select: none; transition: opacity .12s, color .12s; }
+.group-grip:hover { opacity: 1; color: var(--gm-accent-light); }
+.group-grip:active { cursor: grabbing; }
+.monster-card.dragging, .gm-file-card.dragging { opacity: .45; }
+/* Small pill showing a card's current group. */
+.group-badge {
+    font-family: 'Cinzel', serif; font-size: 9px; letter-spacing: .06em;
+    color: var(--gm-accent-light); background: rgba(123,63,160,0.14);
+    border: 1px solid var(--gm-accent-dim); border-radius: 8px;
+    padding: 1px 7px; flex-shrink: 0; white-space: nowrap; vertical-align: middle;
+}
+
 .music-playlist { display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; }
 .music-track-row {
     display: flex;
@@ -1784,6 +1819,11 @@ body.light-mode .music-pl-chip.active { background: #ede5f5; border-color: var(-
 body.light-mode .music-pl-launch { background: #ede5f5; }
 body.light-mode .music-pl-count { background: #ede5f5; }
 body.light-mode .music-pl-add { background: #fff; border-color: rgba(98,40,160,0.25); }
+body.light-mode .group-chip { background: #fff; border-color: rgba(98,40,160,0.2); }
+body.light-mode .group-chip.active { background: #ede5f5; border-color: var(--gm-accent); }
+body.light-mode .group-chip-count { background: #ede5f5; }
+body.light-mode .group-chip-add { background: #fff; border-color: rgba(98,40,160,0.25); }
+body.light-mode .group-badge { background: #ede5f5; color: var(--gm-accent); }
 body.light-mode .notes-area { background: rgba(255,255,255,0.6); }
 body.light-mode .notes-name-input { color: var(--parchment); }
 body.light-mode .file-viewer-modal { background: rgba(250,245,240,0.97); border-color: rgba(98,40,160,0.25); }

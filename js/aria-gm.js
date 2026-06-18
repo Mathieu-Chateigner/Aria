@@ -55,6 +55,18 @@ let renderPlayerCardsTimer = null;
 let renderMonstersTimer = null;
 let gmPotions = [];
 let gmFiles = [];
+// Monster and file grouping (navigation aid). Groups are a campaign-scoped list
+// of { id, name }; membership is a flat { entityId: groupId } map. Both live in a
+// separate localStorage key (NOT in the synced monsters/campaign_files tables), so
+// grouping is durable same-device and simply collapses to "Tous" on a fresh device.
+// activeXGroupId is the chip currently filtered in the tab (null = "Tous").
+let monsterGroups = [];        // [{ id, name }]
+let monsterGroupAssign = {};   // { monsterId: groupId }
+let activeMonsterGroupId = null;
+let fileGroups = [];
+let fileGroupAssign = {};
+let activeFileGroupId = null;
+let _groupDrag = null;         // { id, type } during a chip drag-assign
 // Music is organized into named playlists. gmPlaylists is the source of truth;
 // activePlaylistId is the playlist shown/edited in the UI, musicPlayingPlaylistId
 // is the playlist the now-playing track belongs to (playback can continue from one
@@ -408,6 +420,10 @@ function potionsKey()       { return 'aria-gm-potions-'        + currentCampaign
 function knownPlayersKey()  { return 'aria-gm-known-players-'  + currentCampaignId; }
 // Return the campaign-scoped localStorage key for files.
 function filesKey()         { return 'aria-gm-files-'          + currentCampaignId; }
+// Return the campaign-scoped localStorage key for monster groups.
+function monsterGroupsKey() { return 'aria-gm-monster-groups-' + currentCampaignId; }
+// Return the campaign-scoped localStorage key for file groups.
+function fileGroupsKey()    { return 'aria-gm-file-groups-'    + currentCampaignId; }
 // Return the campaign-scoped localStorage key for GM notes.
 function gmNotesKey()       { return 'aria-gm-notes-'          + currentCampaignId; }
 // Return the campaign-scoped localStorage key for the music playlist.
@@ -455,6 +471,8 @@ function loadCampaignState(id) {
     cardHistory = JSON.parse(localStorage.getItem(cardHistKey()) || '[]');
     gmPotions   = JSON.parse(localStorage.getItem(potionsKey())  || '[]');
     gmFiles     = JSON.parse(localStorage.getItem(filesKey())    || '[]');
+    loadMonsterGroups();
+    loadFileGroups();
     gmPlaylists = _normalizeMusicData(localStorage.getItem(musicKey()));
     activePlaylistId = gmPlaylists[0] ? gmPlaylists[0].id : null;
     musicPlayingPlaylistId = null;
@@ -543,6 +561,8 @@ function deleteCampaign(id) {
     localStorage.removeItem('aria-gm-files-' + id);
     localStorage.removeItem('aria-gm-notes-' + id);
     localStorage.removeItem('aria-gm-music-' + id);
+    localStorage.removeItem('aria-gm-monster-groups-' + id);
+    localStorage.removeItem('aria-gm-file-groups-' + id);
     renderCampaignScreen();
 }
 
@@ -591,6 +611,13 @@ function switchCampaign() {
     }
     gmPotions = [];
     gmFiles = [];
+    monsterGroups = [];
+    monsterGroupAssign = {};
+    activeMonsterGroupId = null;
+    fileGroups = [];
+    fileGroupAssign = {};
+    activeFileGroupId = null;
+    _groupDrag = null;
     musicStop();
     gmPlaylists = [];
     activePlaylistId = null;
@@ -1367,12 +1394,16 @@ function addMonster() {
         INT: parseInt(document.getElementById('amf-int').value) || 10,
         CHA: parseInt(document.getElementById('amf-cha').value) || 10,
     };
+    const added = [];
     for (let n = 0; n < count; n++) {
         const label = count > 1 ? ` ${n + 1}` : '';
         const monster = { id: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2), name: name + label, pv, maxPV: pv, armor, stats, attacks: [...newMonsterAttacks.map(a => ({ ...a }))] };
         monsters.push(monster);
+        added.push(monster.id);
     }
     saveMonsters();
+    // When a group filter is active, new monsters join that group.
+    if (activeMonsterGroupId) { added.forEach(id => { monsterGroupAssign[id] = activeMonsterGroupId; }); saveMonsterGroups(); }
     // Reset form
     ['amf-name', 'amf-pv', 'amf-armor', 'amf-for', 'amf-dex', 'amf-end', 'amf-int', 'amf-cha'].forEach(id => { document.getElementById(id).value = ''; });
     const countEl = document.getElementById('amf-count'); if (countEl) countEl.value = '';
@@ -1385,6 +1416,7 @@ function addMonster() {
 function removeMonster(id) {
     sbDelete('monsters', 'id=eq.' + encodeURIComponent(String(id)));
     monsters = monsters.filter(m => String(m.id) !== String(id));
+    if (monsterGroupAssign[id]) { delete monsterGroupAssign[id]; saveMonsterGroups(); }
     saveMonsters();
     renderMonsters();
     refreshMonsterSelect();
@@ -1482,24 +1514,207 @@ function onAttackSelectChange() {
     const atk = m.attacks[parseInt(atkIdx)];
     if (atk) document.getElementById('gm-monster-threshold').value = atk.pct;
 }
+// ═══════════════════════════════════════════
+//  MONSTER / FILE GROUPING (navigation aid)
+// ═══════════════════════════════════════════
+// Grouping is purely a GM-side filter for navigating long lists. Groups and the
+// flat membership map are persisted in a dedicated localStorage key per campaign,
+// separate from the synced monsters / campaign_files tables (no schema change).
+// See the comment on the state declarations near the top of this file.
+
+function _uid() { return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2); }
+
+// Load monster groups + membership from localStorage into module state.
+function loadMonsterGroups() {
+    let p = {};
+    try { p = JSON.parse(localStorage.getItem(monsterGroupsKey()) || 'null') || {}; } catch (e) { p = {}; }
+    monsterGroups = Array.isArray(p.groups) ? p.groups : [];
+    monsterGroupAssign = (p.assign && typeof p.assign === 'object') ? p.assign : {};
+    activeMonsterGroupId = null;
+}
+// Persist monster groups + membership to localStorage (not synced to Supabase).
+function saveMonsterGroups() {
+    localStorage.setItem(monsterGroupsKey(), JSON.stringify({ groups: monsterGroups, assign: monsterGroupAssign }));
+}
+// Load file groups + membership from localStorage into module state.
+function loadFileGroups() {
+    let p = {};
+    try { p = JSON.parse(localStorage.getItem(fileGroupsKey()) || 'null') || {}; } catch (e) { p = {}; }
+    fileGroups = Array.isArray(p.groups) ? p.groups : [];
+    fileGroupAssign = (p.assign && typeof p.assign === 'object') ? p.assign : {};
+    activeFileGroupId = null;
+}
+// Persist file groups + membership to localStorage (not synced to Supabase).
+function saveFileGroups() {
+    localStorage.setItem(fileGroupsKey(), JSON.stringify({ groups: fileGroups, assign: fileGroupAssign }));
+}
+
+// ─── Drag-to-assign (shared by both chip bars) ───
+// A grip on each card starts the drag; chips are drop targets.
+function _groupDragStart(ev, id, type) {
+    _groupDrag = { id, type };
+    if (ev.dataTransfer) { ev.dataTransfer.effectAllowed = 'move'; try { ev.dataTransfer.setData('text/plain', id); } catch (e) {} }
+    const card = ev.currentTarget.closest('.monster-card, .gm-file-card');
+    if (card) card.classList.add('dragging');
+}
+function _groupDragEnd(ev) {
+    const card = ev.currentTarget.closest('.monster-card, .gm-file-card');
+    if (card) card.classList.remove('dragging');
+}
+function _groupDragOver(ev) { ev.preventDefault(); if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move'; ev.currentTarget.classList.add('drop-hover'); }
+function _groupDragLeave(ev) { ev.currentTarget.classList.remove('drop-hover'); }
+function _groupDrop(ev, groupId, type) {
+    ev.preventDefault();
+    ev.currentTarget.classList.remove('drop-hover');
+    if (!_groupDrag || _groupDrag.type !== type) return;
+    if (type === 'monster') assignMonsterToGroup(_groupDrag.id, groupId);
+    else assignFileToGroup(_groupDrag.id, groupId);
+    _groupDrag = null;
+}
+
+// Build one chip element. `id` empty string === the "Tous" chip (no edit/del).
+function _groupChip(o) {
+    const chip = document.createElement('div');
+    chip.className = 'group-chip' + (o.active ? ' active' : '') + (o.isTous ? ' tous' : '');
+    chip.addEventListener('dragover', _groupDragOver);
+    chip.addEventListener('dragleave', _groupDragLeave);
+    chip.addEventListener('drop', (ev) => _groupDrop(ev, o.id, o.type));
+    const name = document.createElement('span');
+    name.className = 'group-chip-name';
+    name.textContent = o.name;                         // textContent → no XSS
+    name.addEventListener('click', () => o.cfg.select(o.isTous ? null : o.id));
+    chip.appendChild(name);
+    const count = document.createElement('span');
+    count.className = 'group-chip-count';
+    count.textContent = o.count;
+    chip.appendChild(count);
+    if (!o.isTous && o.active) {
+        const edit = document.createElement('button');
+        edit.className = 'group-chip-edit'; edit.title = 'Renommer'; edit.textContent = '✎';
+        edit.addEventListener('click', () => o.cfg.rename(o.id));
+        chip.appendChild(edit);
+        const del = document.createElement('button');
+        del.className = 'group-chip-del'; del.title = 'Supprimer le groupe'; del.textContent = '✕';
+        del.addEventListener('click', () => o.cfg.del(o.id));
+        chip.appendChild(del);
+    }
+    return chip;
+}
+
+// Render a chip bar (monster or file). "Tous" first, then groups, then ＋.
+function _renderGroupBar(type) {
+    const cfg = type === 'monster'
+        ? { barId: 'monster-group-bar', groups: monsterGroups, activeId: activeMonsterGroupId, total: monsters.length,
+            countOf: id => monsters.reduce((n, m) => n + (monsterGroupAssign[m.id] === id ? 1 : 0), 0),
+            select: selectMonsterGroup, add: addMonsterGroup, rename: renameMonsterGroup, del: deleteMonsterGroup }
+        : { barId: 'file-group-bar', groups: fileGroups, activeId: activeFileGroupId, total: gmFiles.length,
+            countOf: id => gmFiles.reduce((n, f) => n + (fileGroupAssign[f.id] === id ? 1 : 0), 0),
+            select: selectFileGroup, add: addFileGroup, rename: renameFileGroup, del: deleteFileGroup };
+    const bar = document.getElementById(cfg.barId);
+    if (!bar) return;
+    bar.innerHTML = '';
+    bar.appendChild(_groupChip({ id: '', name: 'Tous', count: cfg.total, isTous: true, active: cfg.activeId === null, type, cfg }));
+    cfg.groups.forEach(g => bar.appendChild(_groupChip({ id: g.id, name: g.name, count: cfg.countOf(g.id), isTous: false, active: cfg.activeId === g.id, type, cfg })));
+    const add = document.createElement('button');
+    add.className = 'group-chip-add'; add.title = 'Nouveau groupe'; add.textContent = '＋';
+    add.addEventListener('click', cfg.add);
+    bar.appendChild(add);
+}
+
+// ─── Monster group management ───
+function addMonsterGroup() {
+    const name = prompt('Nom du nouveau groupe :', 'Groupe ' + (monsterGroups.length + 1));
+    if (name === null) return;
+    const g = { id: _uid(), name: name.trim() || ('Groupe ' + (monsterGroups.length + 1)) };
+    monsterGroups.push(g);
+    activeMonsterGroupId = g.id;
+    saveMonsterGroups();
+    renderMonsters();
+}
+function selectMonsterGroup(id) { activeMonsterGroupId = id; renderMonsters(); }
+function renameMonsterGroup(id) {
+    const g = monsterGroups.find(g => g.id === id); if (!g) return;
+    const name = prompt('Nouveau nom du groupe :', g.name);
+    if (name === null) return;
+    const t = name.trim(); if (!t || t === g.name) return;
+    g.name = t; saveMonsterGroups(); renderMonsters();
+}
+function deleteMonsterGroup(id) {
+    const g = monsterGroups.find(g => g.id === id); if (!g) return;
+    const n = monsters.reduce((c, m) => c + (monsterGroupAssign[m.id] === id ? 1 : 0), 0);
+    if (!confirm(`Supprimer le groupe « ${g.name} » ? Les ${n} monstre(s) ne sont pas supprimés (déplacés vers « Tous »).`)) return;
+    monsterGroups = monsterGroups.filter(x => x.id !== id);
+    Object.keys(monsterGroupAssign).forEach(k => { if (monsterGroupAssign[k] === id) delete monsterGroupAssign[k]; });
+    if (activeMonsterGroupId === id) activeMonsterGroupId = null;
+    saveMonsterGroups(); renderMonsters();
+}
+function assignMonsterToGroup(mId, groupId) {
+    if (groupId) monsterGroupAssign[mId] = groupId; else delete monsterGroupAssign[mId];
+    saveMonsterGroups(); renderMonsters();
+}
+
+// ─── File group management ───
+function addFileGroup() {
+    const name = prompt('Nom du nouveau groupe :', 'Groupe ' + (fileGroups.length + 1));
+    if (name === null) return;
+    const g = { id: _uid(), name: name.trim() || ('Groupe ' + (fileGroups.length + 1)) };
+    fileGroups.push(g);
+    activeFileGroupId = g.id;
+    saveFileGroups();
+    renderGmFiles();
+}
+function selectFileGroup(id) { activeFileGroupId = id; renderGmFiles(); }
+function renameFileGroup(id) {
+    const g = fileGroups.find(g => g.id === id); if (!g) return;
+    const name = prompt('Nouveau nom du groupe :', g.name);
+    if (name === null) return;
+    const t = name.trim(); if (!t || t === g.name) return;
+    g.name = t; saveFileGroups(); renderGmFiles();
+}
+function deleteFileGroup(id) {
+    const g = fileGroups.find(g => g.id === id); if (!g) return;
+    const n = gmFiles.reduce((c, f) => c + (fileGroupAssign[f.id] === id ? 1 : 0), 0);
+    if (!confirm(`Supprimer le groupe « ${g.name} » ? Les ${n} fichier(s) ne sont pas supprimés (déplacés vers « Tous »).`)) return;
+    fileGroups = fileGroups.filter(x => x.id !== id);
+    Object.keys(fileGroupAssign).forEach(k => { if (fileGroupAssign[k] === id) delete fileGroupAssign[k]; });
+    if (activeFileGroupId === id) activeFileGroupId = null;
+    saveFileGroups(); renderGmFiles();
+}
+function assignFileToGroup(fId, groupId) {
+    if (groupId) fileGroupAssign[fId] = groupId; else delete fileGroupAssign[fId];
+    saveFileGroups(); renderGmFiles();
+}
+
 // Render all monster cards with inline damage/heal inputs and attack editing rows.
 function renderMonsters() {
     const grid = document.getElementById('monsters-grid');
     const noM = document.getElementById('no-monsters');
     grid.innerHTML = '';
-    if (!monsters.length) {
-        if (noM) { noM.style.display = ''; grid.appendChild(noM); }
+    // Drop a stale active filter (e.g. group deleted elsewhere), then render chips.
+    if (activeMonsterGroupId && !monsterGroups.some(g => g.id === activeMonsterGroupId)) activeMonsterGroupId = null;
+    _renderGroupBar('monster');
+    const list = activeMonsterGroupId
+        ? monsters.filter(m => monsterGroupAssign[m.id] === activeMonsterGroupId)
+        : monsters;
+    if (!list.length) {
+        if (noM) {
+            noM.textContent = monsters.length ? 'Aucun monstre dans ce groupe' : 'Aucun monstre actif';
+            noM.style.display = ''; grid.appendChild(noM);
+        }
         return;
     }
     if (noM) noM.style.display = 'none';
-    monsters.forEach(m => {
+    list.forEach(m => {
         const pct = m.maxPV > 0 ? m.pv / m.maxPV : 0;
         const hpColor = pct > 0.5 ? 'var(--fail)' : pct > 0.25 ? '#e85020' : '#ff4444';
         const safeId = String(m.id).replace(/[^a-zA-Z0-9_-]/g, '-');
         const card = document.createElement('div'); card.className = 'monster-card';
+        const gName = monsterGroupAssign[m.id] ? (monsterGroups.find(g => g.id === monsterGroupAssign[m.id]) || {}).name : '';
         card.innerHTML = `
           <div class="mc-header">
+            <span class="group-grip" draggable="true" title="Glisser vers un groupe" ondragstart="_groupDragStart(event,'${m.id}','monster')" ondragend="_groupDragEnd(event)">⠿</span>
             <div class="mc-name">${m.name}</div>
+            ${gName ? `<span class="group-badge">${_escHtml(gName)}</span>` : ''}
             <button class="mc-del" onclick="removeMonster('${m.id}')">✕</button>
           </div>
           <div class="mc-body">
@@ -3241,6 +3456,8 @@ async function handleFileUpload(input) {
     try {
         const { fileId, path, url } = await uploadFileToStorage(file);
         gmFiles.push({ id: fileId, name: file.name, type: file.type || 'application/octet-stream', path, url, grantedTo: [] });
+        // When a group filter is active, the new file joins that group.
+        if (activeFileGroupId) { fileGroupAssign[fileId] = activeFileGroupId; saveFileGroups(); }
         saveGmFiles();
         renderGmFiles();
         if (progress) { progress.textContent = '✓ Fichier ajouté.'; setTimeout(() => { progress.style.display = 'none'; }, 2500); }
@@ -3260,6 +3477,7 @@ async function removeGmFile(fileId) {
     await deleteFileFromStorage(f.path);
     sbDelete('campaign_files', 'id=eq.' + encodeURIComponent(fileId));
     gmFiles = gmFiles.filter(f => f.id !== fileId);
+    if (fileGroupAssign[fileId]) { delete fileGroupAssign[fileId]; saveFileGroups(); }
     saveGmFiles();
     renderGmFiles();
 }
@@ -3327,22 +3545,34 @@ function renderGmFiles() {
     const empty = document.getElementById('gm-files-empty');
     if (!list) return;
     list.innerHTML = '';
-    if (!gmFiles.length) {
-        if (empty) { empty.style.display = ''; list.appendChild(empty); }
+    if (activeFileGroupId && !fileGroups.some(g => g.id === activeFileGroupId)) activeFileGroupId = null;
+    _renderGroupBar('file');
+    const files = activeFileGroupId
+        ? gmFiles.filter(f => fileGroupAssign[f.id] === activeFileGroupId)
+        : gmFiles;
+    if (!files.length) {
+        if (empty) {
+            empty.textContent = gmFiles.length
+                ? 'Aucun fichier dans ce groupe.'
+                : 'Aucun fichier. Ajoutez des documents pour les partager avec vos joueurs.';
+            empty.style.display = ''; list.appendChild(empty);
+        }
         return;
     }
     if (empty) empty.style.display = 'none';
-    gmFiles.forEach(f => {
+    files.forEach(f => {
         const isAll = f.grantedTo === 'all';
         const count = isAll ? 'Tous' : (Array.isArray(f.grantedTo) ? f.grantedTo.length : 0);
         const grantLabel = isAll ? 'Tous les joueurs' : (count > 0 ? `${count} joueur(s)` : 'Aucun accès');
         const card = document.createElement('div');
         card.className = 'gm-file-card';
+        const gName = fileGroupAssign[f.id] ? (fileGroups.find(g => g.id === fileGroupAssign[f.id]) || {}).name : '';
         card.innerHTML = `
+            <span class="group-grip" draggable="true" title="Glisser vers un groupe" ondragstart="_groupDragStart(event,'${f.id}','file')" ondragend="_groupDragEnd(event)">⠿</span>
             <div class="gm-file-icon">${_fileIcon(f.type)}</div>
             <div class="gm-file-info">
                 <div class="gm-file-name">${_escHtml(f.name)}</div>
-                <div class="gm-file-grant-status">${grantLabel}</div>
+                <div class="gm-file-grant-status">${grantLabel}${gName ? ` <span class="group-badge">${_escHtml(gName)}</span>` : ''}</div>
             </div>
             <div class="gm-file-actions">
                 <button class="gm-file-open-btn" onclick="openGmFileViewer('${f.id}')" title="Ouvrir">Ouvrir</button>

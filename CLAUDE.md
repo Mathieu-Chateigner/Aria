@@ -153,8 +153,10 @@ All campaign-scoped data uses keys suffixed with `currentCampaignId`:
 | `aria-gm-potions-{id}` | alchemy recipes |
 | `aria-gm-files-{id}` | files uploaded by GM for this campaign |
 | `aria-gm-music-{id}` | named music playlists for this campaign (`[{ id, name, tracks: [{ id, name, type, url, youtubeId, path }] }]`) |
+| `aria-gm-monster-groups-{id}` | monster grouping: `{ groups: [{ id, name }], assign: { monsterId: groupId } }` |
+| `aria-gm-file-groups-{id}` | file grouping: `{ groups: [{ id, name }], assign: { fileId: groupId } }` |
 
-Helper functions `monstersKey()`, `rollsKey()`, `cardHistKey()`, `potionsKey()`, `filesKey()`, `musicKey()` return the scoped key for the active campaign. Always use these — never hardcode the bare key.
+Helper functions `monstersKey()`, `rollsKey()`, `cardHistKey()`, `potionsKey()`, `filesKey()`, `musicKey()`, `monsterGroupsKey()`, `fileGroupsKey()` return the scoped key for the active campaign. Always use these — never hardcode the bare key.
 
 `generateJoinCode()` produces the join code. If a campaign loaded from storage lacks one, it is generated and saved on `loadCampaignState()`.
 
@@ -357,6 +359,8 @@ The GM Fichiers tab lets the GM upload files to Supabase Storage (`campaign-file
 
 The GM ♪ Musique tab holds **multiple named playlists** rendered as a chip bar (`#music-playlist-bar`): click a chip's ▶ to launch that playlist, click its name to view/edit it, ✎/✕ on the active chip rename/delete. New tracks are added to the active playlist. See *Music playlists: active vs. playing* under Known pitfalls.
 
+The **Monstres** and **Fichiers** tabs each have a **group chip bar** (`#monster-group-bar` / `#file-group-bar`) for navigating long lists — a `Tous` chip (always present) plus one chip per group, then `＋`. Clicking a chip name filters the grid to that group; the active group chip carries ✎/✕ (rename/delete). Each card has a `⠿` drag grip; drag a card onto a chip to assign it (drop on `Tous` un-assigns). Adding a monster/file while a group is filtered auto-assigns it to that group. Groups + membership live in a **separate, non-synced** localStorage key (`monsterGroupsKey()` / `fileGroupsKey()`) — see *Monster/file grouping is not synced* under Known pitfalls. The grouping engine is shared by both tabs (`_renderGroupBar(type)`, `_groupChip`, drag helpers `_groupDrag*`, and `assign{Monster,File}ToGroup`).
+
 The Joueurs tab shows a live player card per connected player. Each card displays a VDO.ninja viewer iframe (`?view=STREAMID`) above the HP bar when the player has an active stream. `renderPlayerCards()` does **in-place DOM updates** — it never clears the grid entirely — to preserve live camera iframes across presence heartbeats.
 
 ### Bonus/Malus bar
@@ -448,6 +452,9 @@ GM music is organized into **named playlists** (`gmPlaylists = [{ id, name, trac
 Use the accessor helpers (`_activePlaylist`/`_playingPlaylist`/`_activeTracks`/`_playingTracks`/`_currentTrack`/`_allTracks`) — never re-add a flat `gmMusic` variable. `musicSelectTrack(i)` plays index `i` of the **active** playlist and makes it the playing one; `musicLaunchPlaylist(id)` is the "choose which queue to launch" entry point.
 
 **Persistence:** localStorage (`aria-gm-music-{id}`) stores the full playlist structure. The Supabase `campaign_music` table stays **flat** (no playlist column) — `_syncAllGMData`/`debouncedSyncMusic` flatten via `_allTracks()` (global `position`), and `loadFromSupabase` calls `_mergeMusicGrouping()` to fold DB tracks back into the existing local grouping (drops tracks deleted elsewhere, appends new ones to the first playlist). `_normalizeMusicData()` migrates the legacy flat array into a single default playlist on read. Cross-device limitation: grouping is not persisted to the DB, so a fresh device collapses all tracks into one playlist.
+
+### Monster/file grouping is not synced
+Monster and file groups (`monsterGroups`/`fileGroups` + the `monsterGroupAssign`/`fileGroupAssign` membership maps) live **only** in `aria-gm-monster-groups-{id}` / `aria-gm-file-groups-{id}` localStorage — the synced `monsters` / `campaign_files` Supabase tables use **explicit column lists** (no group column) and `loadFromSupabase` rebuilds the local objects from those columns. So a `groupId` stored *on the entity* would be wiped on reload; keeping grouping in its own key makes it durable same-device. Like music grouping, it is **not** in the DB, so a fresh device shows everything under `Tous` (the entities themselves are never lost). The membership map is keyed by entity id; deleting a monster/file prunes its key (`removeMonster`/`removeGmFile`), and deleting a group clears all keys pointing to it (members fall back to `Tous`). A stale `activeXGroupId` (group removed elsewhere) is reset to `null` at the top of `renderMonsters`/`renderGmFiles`.
 
 ### innerHTML and user-supplied strings
 Always escape track names (and any other user-supplied content) before injecting into `innerHTML`. Use `_escHtml(str)` — defined in `aria-gm.js`. In `aria-player.js` use inline `.replace()` chains (no shared helper). Failure to escape is an XSS vector since track names come from YouTube API responses or user input.
