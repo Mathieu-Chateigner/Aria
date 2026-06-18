@@ -105,6 +105,15 @@
         <div class="bm-sep"></div>
         <button class="bm-btn reset-btn" onclick="resetBM()">↺ Reset</button>
         <div class="bm-sep"></div>
+        <div class="bm-next-group">
+            <span class="bm-bar-label">Prochains jets</span>
+            <input type="text" inputmode="numeric" id="bm-next-val" class="bm-next-input" placeholder="±X" oninput="this.value=this.value.replace(/[^0-9-]/g,'').replace(/(?!^)-/g,'')" onkeydown="if(event.key==='Enter')setBMNext()" />
+            <span class="bm-next-x">×</span>
+            <input type="text" inputmode="numeric" id="bm-next-count" class="bm-next-input bm-next-count-input" placeholder="N" oninput="this.value=this.value.replace(/[^0-9]/g,'')" onkeydown="if(event.key==='Enter')setBMNext()" />
+            <button class="bm-btn" onclick="setBMNext()" title="Appliquer aux N prochains jets">✓</button>
+            <div class="bm-next-status" id="bm-next-status" style="visibility:hidden;"></div>
+        </div>
+        <div class="bm-sep"></div>
         <span class="bm-bar-label">Karma</span>
         <div class="karma-display" id="karma-display">0</div>
     </div>

@@ -98,6 +98,13 @@ if (!playerId) { playerId = crypto.randomUUID ? crypto.randomUUID() : Date.now()
 let config = JSON.parse(localStorage.getItem('aria-config') || '{}');
 if (config.lightMode) document.body.classList.add('light-mode');
 let bonusMalus = 0;
+// Temporary bonus/malus that auto-expires after a set number of rolls (#11).
+// bmNextValue is the modifier; bmNextCount is how many upcoming threshold rolls it
+// still applies to. liveBM() = persistent + active temporary (used for live previews);
+// _appliedBM is the total BM stamped onto the most recent doRoll, for the roll payload.
+let bmNextValue = 0;
+let bmNextCount = 0;
+let _appliedBM = 0;
 let rollFilter = new Set();
 let multiplier = 1;
 let isRolling = false;
@@ -627,7 +634,7 @@ function switchCharacter() {
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch(_){} dddiceSDK = null; }
     clearTimeout(dddiceRollSafetyTimer);
     pendingDddiceRoll = null; pendingSecondaryRoll = null; dddiceAPI = null;
-    currentHP = null; bonusMalus = 0; rollFilter.clear();
+    currentHP = null; bonusMalus = 0; bmNextValue = 0; bmNextCount = 0; _appliedBM = 0; rollFilter.clear();
     if (_musicFadeRaf) { cancelAnimationFrame(_musicFadeRaf); _musicFadeRaf = null; }
     _stopSlot('A'); _stopSlot('B'); musicIsPlaying = false;
     const doCloseAbly = () => {
@@ -1215,6 +1222,23 @@ function showOtherRollToast(d) {
 function addBM(v) { bonusMalus += v; updateBMDisplay(); }
 // Reset the bonus/malus to 0 and refresh the display.
 function resetBM() { bonusMalus = 0; updateBMDisplay(); }
+// Active temporary modifier value (0 once it has expired).
+function bmNextActive() { return bmNextCount > 0 ? bmNextValue : 0; }
+// Persistent + active temporary modifier — for live percentage previews.
+function liveBM() { return bonusMalus + bmNextActive(); }
+// Arm a temporary modifier for the next N threshold rolls from the bar inputs.
+function setBMNext() {
+    const v = parseInt(document.getElementById('bm-next-val').value);
+    const n = parseInt(document.getElementById('bm-next-count').value);
+    if (isNaN(v) || v === 0 || isNaN(n) || n <= 0) return;
+    bmNextValue = v;
+    bmNextCount = Math.min(99, n);
+    document.getElementById('bm-next-val').value = '';
+    document.getElementById('bm-next-count').value = '';
+    updateBMDisplay();
+}
+// Cancel the armed temporary modifier.
+function clearBMNext() { bmNextValue = 0; bmNextCount = 0; updateBMDisplay(); }
 // Render the karma value display with appropriate positive/negative styling.
 function renderKarma() {
     const el = document.getElementById('karma-display');
@@ -1233,18 +1257,32 @@ function updateBMDisplay() {
     const el = document.getElementById('bm-display');
     el.textContent = (bonusMalus > 0 ? '+' : '') + bonusMalus;
     el.className = 'bm-display' + (bonusMalus > 0 ? ' positive' : bonusMalus < 0 ? ' negative' : '');
+    const bm = liveBM();
+    // Render the armed temporary modifier pill (next N rolls).
+    const ns = document.getElementById('bm-next-status');
+    if (ns) {
+        if (bmNextCount > 0) {
+            ns.innerHTML = `<span class="bm-next-mod">${bmNextValue > 0 ? '+' : ''}${bmNextValue}</span><span class="bm-next-cnt">${bmNextCount} jet${bmNextCount > 1 ? 's' : ''}</span><button class="bm-next-clear" onclick="clearBMNext()" title="Annuler">✕</button>`;
+            ns.className = 'bm-next-status ' + (bmNextValue > 0 ? 'positive' : 'negative');
+            ns.style.visibility = 'visible';
+        } else {
+            ns.innerHTML = '';
+            ns.className = 'bm-next-status';
+            ns.style.visibility = 'hidden';
+        }
+    }
     // Update only the percentage text in existing skill elements — no DOM rebuild
     document.getElementById('skill-list').querySelectorAll('.skill-item').forEach(div => {
         const skill = (character.skills || []).find(s => s.name === div.dataset.skillName);
-        if (skill) div.querySelector('.skill-pct').textContent = Math.max(1, Math.min(100, skill.pct + bonusMalus + (character?.karma ?? 0))) + '%';
+        if (skill) div.querySelector('.skill-pct').textContent = Math.max(1, Math.min(100, skill.pct + bm + (character?.karma ?? 0))) + '%';
     });
     document.getElementById('special-list').querySelectorAll('.skill-item').forEach(div => {
         const sp = (character.specials || []).find(s => s.name === div.dataset.skillName);
-        if (sp) div.querySelector('.skill-pct').textContent = Math.max(1, Math.min(100, sp.pct + bonusMalus + (character?.karma ?? 0))) + '%';
+        if (sp) div.querySelector('.skill-pct').textContent = Math.max(1, Math.min(100, sp.pct + bm + (character?.karma ?? 0))) + '%';
     });
     document.getElementById('potion-list')?.querySelectorAll('.recipe-row').forEach((div, i) => {
         const r = (character.potionRecipes || [])[i];
-        if (r) div.querySelector('.recipe-chance').textContent = Math.max(0, Math.min(100, (r.successChance || 0) + bonusMalus + (character?.karma ?? 0))) + '%';
+        if (r) div.querySelector('.recipe-chance').textContent = Math.max(0, Math.min(100, (r.successChance || 0) + bm + (character?.karma ?? 0))) + '%';
     });
     renderCombatSidebar();
 }
@@ -1265,6 +1303,7 @@ function renderAll() {
     renderEditorForm();
     renderPlayerFiles();
     renderKarma();
+    updateBMDisplay();
 }
 
 // Render the skills and specials lists (sorted) with effective percentages applied.
@@ -1272,7 +1311,7 @@ function renderSkills() {
     const list = document.getElementById('skill-list');
     list.innerHTML = '';
     [...(character.skills || [])].sort((a, b) => a.name.localeCompare(b.name, 'fr')).forEach(skill => {
-        const eff = Math.max(1, Math.min(100, skill.pct + bonusMalus + (character.karma ?? 0)));
+        const eff = Math.max(1, Math.min(100, skill.pct + liveBM() + (character.karma ?? 0)));
         const div = document.createElement('div');
         const isSoigner = skill.name === 'Soigner';
         div.className = 'skill-item' + (isSoigner ? ' soigner-skill' : '');
@@ -1288,7 +1327,7 @@ function renderSkills() {
     const slist = document.getElementById('special-list');
     slist.innerHTML = '';
     [...(character.specials || [])].sort((a, b) => a.name.localeCompare(b.name, 'fr')).forEach(sp => {
-        const eff = Math.max(1, Math.min(100, sp.pct + bonusMalus + (character.karma ?? 0)));
+        const eff = Math.max(1, Math.min(100, sp.pct + liveBM() + (character.karma ?? 0)));
         const div = document.createElement('div');
         div.className = 'skill-item';
         div.dataset.skillName = sp.name;
@@ -1314,7 +1353,7 @@ function renderStats() {
     grid.innerHTML = '';
     ['FOR', 'DEX', 'END', 'INT', 'CHA'].forEach(key => {
         const val = character.stats[key] || 0;
-        const threshold = Math.min(100, val * multiplier + bonusMalus);
+        const threshold = Math.min(100, val * multiplier + liveBM());
         const showThreshold = multiplier > 1;
         const div = document.createElement('div');
         div.className = 'stat-card';
@@ -1399,11 +1438,11 @@ function renderCombatSidebar() {
         html += `<div style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:6px;">Réactions</div>`;
         html += `<div class="react-btns">`;
         if (parrySkill) {
-            const eff = Math.max(1, Math.min(100, parrySkill.pct + bonusMalus + (character.karma ?? 0)));
+            const eff = Math.max(1, Math.min(100, parrySkill.pct + liveBM() + (character.karma ?? 0)));
             html += `<button class="react-btn" onclick="doRoll('${parrySkill.name.replace(/'/g, "\\'")}',${parrySkill.pct})">🛡 Parer<br><span class="react-pct">${eff}%</span></button>`;
         }
         if (dodgeSkill) {
-            const eff = Math.max(1, Math.min(100, dodgeSkill.pct + bonusMalus + (character.karma ?? 0)));
+            const eff = Math.max(1, Math.min(100, dodgeSkill.pct + liveBM() + (character.karma ?? 0)));
             html += `<button class="react-btn" onclick="doRoll('${dodgeSkill.name.replace(/'/g, "\\'")}',${dodgeSkill.pct})">⚡ ${dodgeSkill.name}<br><span class="react-pct">${eff}%</span></button>`;
         }
         html += `</div>`;
@@ -1587,9 +1626,17 @@ function showDieCard(diceName, result) {
 function doRoll(skillName, basePct, skipBM = false) {
     if (isRolling) return;
     const karma = character?.karma ?? 0;
-    const threshold = skipBM ? Math.max(1, Math.min(100, basePct)) : Math.max(1, Math.min(100, basePct + bonusMalus + karma));
-    console.log('[PLAYER] doRoll:', skillName, '| base:', basePct, '| BM:', bonusMalus, '| karma:', karma, '| threshold:', threshold, '| via:', dddiceAPI ? 'dddice' : 'local');
+    const tempBM = skipBM ? 0 : bmNextActive();
+    _appliedBM = skipBM ? 0 : (bonusMalus + tempBM);
+    const threshold = skipBM ? Math.max(1, Math.min(100, basePct)) : Math.max(1, Math.min(100, basePct + bonusMalus + tempBM + karma));
+    console.log('[PLAYER] doRoll:', skillName, '| base:', basePct, '| BM:', bonusMalus, '| temp:', tempBM, '| karma:', karma, '| threshold:', threshold, '| via:', dddiceAPI ? 'dddice' : 'local');
     setRolling(true);
+    // Consume one charge of the armed temporary modifier (BM-affected rolls only).
+    if (!skipBM && bmNextCount > 0) {
+        bmNextCount--;
+        if (bmNextCount === 0) bmNextValue = 0;
+        updateBMDisplay();
+    }
     if (dddiceAPI) rollViaDddice(skillName, threshold);
     else setTimeout(() => handleResult(skillName, threshold, Math.floor(Math.random() * 100) + 1), 600);
 }
@@ -1709,7 +1756,7 @@ function toggleRollFilter(key) {
 function handleResult(skillName, threshold, roll) {
     const success = roll <= threshold;
     console.log('[PLAYER] handleResult:', skillName, '| roll:', roll, '| threshold:', threshold, '|', success ? 'SUCCÈS' : 'ÉCHEC', roll <= 10 && success ? '(CRITIQUE)' : roll >= 91 && !success ? '(CRITIQUE)' : '');
-    const data = { skillName, threshold, roll, success, char: character.name, bonusMalus, playerId };
+    const data = { skillName, threshold, roll, success, char: character.name, bonusMalus: _appliedBM, playerId };
     setRolling(false);
     showFloatCard(data);
     publishRoll(data);
@@ -2701,7 +2748,7 @@ function renderPotions() {
             row.innerHTML = `
                 <span class="recipe-name">${r.name}</span>
                 ${meta ? `<span class="recipe-meta">${meta}</span>` : '<span class="recipe-meta"></span>'}
-                <span class="recipe-chance">${Math.max(0, Math.min(100, (r.successChance || 0) + bonusMalus))}%</span>
+                <span class="recipe-chance">${Math.max(0, Math.min(100, (r.successChance || 0) + liveBM()))}%</span>
                 <button class="recipe-craft-btn" onclick="craftPotion(${i})" ${vials <= 0 || isRolling ? 'disabled' : ''}>Créer</button>`;
             container.appendChild(row);
         });

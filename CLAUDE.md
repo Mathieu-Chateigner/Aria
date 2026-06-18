@@ -363,8 +363,10 @@ The **Monstres** and **Fichiers** tabs each have a **group chip bar** (`#monster
 
 The Joueurs tab shows a live player card per connected player. Each card displays a VDO.ninja viewer iframe (`?view=STREAMID`) above the HP bar when the player has an active stream. `renderPlayerCards()` does **in-place DOM updates** — it never clears the grid entirely — to preserve live camera iframes across presence heartbeats.
 
-### Bonus/Malus bar
-Persistent bar between topbar and content. Buttons: +10/+20/+30/−10/−20/−30 + custom ± + reset. Applied to all rolls.
+### Bonus/Malus bar (player)
+Persistent bar between topbar and content. Buttons: +10/+20/+30/−10/−20/−30 + custom ± + reset. The persistent `bonusMalus` applies to all BM-affected rolls (every `doRoll` with `skipBM=false`; the **Jet libre** free roll passes `skipBM=true` and is unaffected).
+
+**Temporary modifier (next N rolls)** — the `Prochains jets` control arms a one-off modifier (`bmNextValue`) that applies to the next `bmNextCount` BM-affected rolls then auto-expires. `bmNextActive()` returns the value while charges remain; `liveBM() = bonusMalus + bmNextActive()` is used for **all live percentage previews** (skills, specials, stat thresholds, combat reactions, potion chance). `doRoll` stamps the total applied modifier into `_appliedBM` (= `bonusMalus + tempBM`, karma excluded) so the roll payload's `bonusMalus` field, the float card, and the GM/overlay feed report what was actually applied; it then consumes one charge (decrement `bmNextCount`, clearing `bmNextValue` at 0). The armed state shows as a pill (`#bm-next-status`) with a ✕ to cancel (`clearBMNext`). All temp state resets on character switch. This is **player-side only** — no payload/protocol change.
 
 ### Player presence (GM — Joueurs tab)
 - Players send heartbeat every 5s on `aria-damage` channel

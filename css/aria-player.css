@@ -213,6 +213,37 @@ body {
 .karma-display.positive { color: var(--success); border-color: rgba(76,175,119,0.3); }
 .karma-display.negative { color: var(--fail); border-color: rgba(192,57,43,0.3); }
 
+/* Temporary modifier — applies to the next N rolls then auto-expires (#11). */
+.bm-next-group { display: flex; align-items: center; gap: 5px; }
+.bm-next-input {
+    width: 44px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--parchment);
+    font-family: 'Cinzel', serif;
+    font-size: 12px;
+    padding: 4px 6px;
+    border-radius: var(--radius);
+    text-align: center;
+    outline: none;
+}
+.bm-next-input:focus { border-color: var(--gold-dim); }
+.bm-next-count-input { width: 36px; }
+.bm-next-x { color: var(--parchment-dim); font-family: 'Cinzel', serif; font-size: 12px; }
+.bm-next-status {
+    display: flex; align-items: center; gap: 6px;
+    border: 1px solid var(--gold-dim); border-radius: 12px;
+    padding: 2px 4px 2px 9px; background: rgba(201,168,76,0.08);
+}
+.bm-next-status.positive { border-color: rgba(76,175,119,0.4); background: rgba(76,175,119,0.08); }
+.bm-next-status.negative { border-color: rgba(192,57,43,0.4); background: rgba(192,57,43,0.08); }
+.bm-next-mod { font-family: 'Cinzel', serif; font-size: 12px; font-weight: 700; color: var(--gold-light); }
+.bm-next-status.positive .bm-next-mod { color: var(--success); }
+.bm-next-status.negative .bm-next-mod { color: var(--fail); }
+.bm-next-cnt { font-family: 'EB Garamond', serif; font-size: 11px; font-style: italic; color: var(--parchment-dim); }
+.bm-next-clear { background: none; border: none; color: var(--parchment-dim); cursor: pointer; font-size: 11px; line-height: 1; padding: 0 2px; opacity: .7; }
+.bm-next-clear:hover { color: var(--fail); opacity: 1; }
+
 /* ── MUSIC BAR ── */
 .music-bar {
     flex-shrink: 0;
@@ -2197,6 +2228,7 @@ body.light-mode .editor-input,
 body.light-mode .bm-custom-row input {
     background: rgba(255,255,255,0.6);
 }
+body.light-mode .bm-next-input { background: rgba(255,255,255,0.6); }
 body.light-mode .notes-area { background: rgba(255,255,255,0.6); }
 body.light-mode .notes-name-input { color: var(--parchment); }
 body.light-mode .hp-bar-wrap { background: rgba(0,0,0,0.1); }
