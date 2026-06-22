@@ -168,15 +168,22 @@ body {
 .bm-btn.minus { color: var(--fail); border-color: rgba(192,57,43,0.25); }
 .bm-btn.minus:hover { color: var(--fail); border-color: rgba(192,57,43,0.6); background: var(--bg4); }
 .bm-btn.reset-btn { color: var(--parchment-dim); }
+.bm-btn.hidden-roll-btn.active {
+    background: var(--gold);
+    border-color: var(--gold);
+    color: var(--bg);
+    font-weight: 700;
+    box-shadow: 0 0 8px rgba(201,168,76,0.45);
+}
 .bm-display {
     font-family: 'Cinzel', serif;
     font-size: 16px;
     font-weight: 700;
-    width: 64px;
+    min-width: 64px;
+    width: auto;
     box-sizing: border-box;
     text-align: center;
     white-space: nowrap;
-    overflow: hidden;
     color: var(--gold);
     padding: 4px 8px;
     border: 1px solid var(--border);
@@ -304,6 +311,19 @@ body {
     background: radial-gradient(ellipse, var(--gold) 0%, transparent 100%);
     filter: blur(1px);
 }
+/* Split-view (#16): per-tab pin icon to open a tab as a second pane */
+.tab-pin {
+    margin-left: 7px;
+    font-size: 11px;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s;
+    cursor: pointer;
+    color: var(--parchment-dim);
+}
+.tab-btn:hover .tab-pin { opacity: 0.55; }
+.tab-pin:hover { opacity: 1; color: var(--gold); }
+.tab-btn.pinned { color: var(--gold-light); }
+.tab-btn.pinned .tab-pin { opacity: 1; color: var(--gold); }
 
 /* ── MAIN LAYOUT ── */
 .main {
@@ -558,6 +578,19 @@ body {
     overflow-y: auto;
 }
 .tab-content.active { display: block; }
+
+/* Split-view (#16): primary + pinned tab side by side. Tabs bar spans the full top row;
+   the two visible panes share the remaining height and scroll independently. */
+.content.split-mode {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+    column-gap: 14px;
+    overflow: hidden;
+}
+.content.split-mode > .tabs { grid-column: 1 / -1; }
+.content.split-mode > .tab-content.active { min-width: 0; overflow-y: auto; }
+.content.split-mode > .tab-content.pinned-pane { border-left: 1px solid var(--border); }
 
 /* ── SECTION HEADERS ── */
 .section-header {
@@ -1816,7 +1849,8 @@ body {
 .fv-close-btn:hover { border-color: var(--gold-dim); color: var(--parchment); }
 .fv-body { flex: 1; overflow: auto; min-height: 0; display: flex; align-items: stretch; }
 .fv-iframe { width: 100%; height: 100%; border: none; display: block; }
-.fv-image { max-width: 100%; max-height: 100%; object-fit: contain; margin: auto; display: block; padding: 12px; }
+.fv-image { max-width: 100%; max-height: 100%; object-fit: contain; margin: auto; display: block; padding: 12px; transform-origin: 0 0; will-change: transform; cursor: zoom-in; }
+.fv-image.panning { cursor: grabbing; }
 .fv-text { width: 100%; padding: 16px; font-family: monospace; font-size: 13px; color: var(--parchment); white-space: pre-wrap; word-break: break-word; background: transparent; overflow: auto; }
 .fv-unsupported { margin: auto; text-align: center; padding: 32px; }
 .fv-unsupported-icon { font-size: 48px; margin-bottom: 12px; }
@@ -2364,4 +2398,25 @@ body.light-mode .roll-btn:hover {
     border-top: none;
     border-radius: 0 0 var(--radius) var(--radius);
     background: var(--bg2);
+}
+
+/* ═══════════════════════════════════════════
+   RESPONSIVE (#7) — tablets / small windows (≥768px target).
+   Below 768px is best-effort, not optimized for phones.
+   ═══════════════════════════════════════════ */
+@media (max-width: 1024px) {
+    .cs-skills-grid { column-gap: 14px; }
+}
+@media (max-width: 768px) {
+    /* Sidebar (HP / Combat / Inventory) stacks above the tab content */
+    .main { flex-direction: column; overflow: auto; }
+    .sidebar { width: 100%; flex-shrink: 0; border-right: none; border-bottom: 1px solid var(--border-strong); }
+    /* Multi-column character-sheet grids collapse to a single column */
+    .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    .cs-pair { grid-template-columns: 1fr; }
+    .editor-form { grid-template-columns: 1fr; }
+    .cs-skills-grid { grid-template-columns: 1fr; }
+    .money-editor-row { grid-template-columns: repeat(2, 1fr); }
+    /* Split-view: stack the two panes vertically instead of side by side */
+    .content.split-mode { display: flex; overflow-y: auto; }
 }

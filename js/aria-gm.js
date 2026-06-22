@@ -25,7 +25,7 @@ function buildDeck() { return shuffle([...ALL_CARDS]); }
 // ═══════════════════════════════════════════
 let config = JSON.parse(localStorage.getItem('aria-config') || '{}');
 if (config.lightMode) document.body.classList.add('light-mode');
-let ablyInstance = null, ablyRolls = null, ablyCards = null, ablyDamage = null;
+let ablyInstance = null, ablyRolls = null, ablyCards = null, ablyDamage = null, ablyRollsHidden = null;
 let dddiceSDK = null;            // ThreeDDice SDK instance
 let dddiceAPI = null;            // { theme } once connected
 let pendingGMRoll = null;        // { name, threshold, atk } for GM rolls in progress
@@ -634,7 +634,7 @@ function switchCampaign() {
     if (renderMonstersTimer) { clearTimeout(renderMonstersTimer); renderMonstersTimer = null; }
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch(_){} dddiceSDK = null; }
     if (ablyInstance) { try { ablyInstance.close(); } catch(_){} ablyInstance = null; }
-    ablyRolls = null; ablyCards = null; ablyDamage = null; ablyMusic = null;
+    ablyRolls = null; ablyRollsHidden = null; ablyCards = null; ablyDamage = null; ablyMusic = null;
     players.clear();
     rollFilter.clear(); playerFilter.clear();
     currentCampaignId = null;
@@ -851,6 +851,7 @@ function initAbly() {
     try {
         ablyInstance = new Ably.Realtime({ key: config.ablyKey, transports: ['web_socket'] });
         ablyRolls = ablyInstance.channels.get(campaignChannel('aria-rolls'));
+        ablyRollsHidden = ablyInstance.channels.get(campaignChannel('aria-rolls-hidden'));
         ablyCards = ablyInstance.channels.get(campaignChannel('aria-cards'));
         ablyDamage = ablyInstance.channels.get(campaignChannel('aria-damage'));
         ablyMusic = ablyInstance.channels.get(campaignChannel('aria-music'));
@@ -859,6 +860,7 @@ function initAbly() {
         ablyInstance.connection.on('disconnected', () => console.warn('[GM] Ably disconnected'));
         ablyInstance.connection.on('suspended',    () => console.warn('[GM] Ably suspended'));
         ablyRolls.subscribe('roll', msg => { console.log('[GM] received roll from', msg.data?.char, '| skill:', msg.data?.skillName, '| roll:', msg.data?.roll, '| threshold:', msg.data?.threshold, '| success:', msg.data?.success); handleIncomingRoll(msg.data); });
+        ablyRollsHidden.subscribe('roll', msg => { console.log('[GM] received HIDDEN roll from', msg.data?.char, '| skill:', msg.data?.skillName, '| roll:', msg.data?.roll); handleIncomingRoll(msg.data); });
         ablyCards.subscribe('draw',     msg => { console.log('[GM] received card draw:', msg.data?.cardId, 'by player'); handlePlayerCard(msg.data); });
         ablyCards.subscribe('reshuffle', () => { console.log('[GM] received card reshuffle'); handlePlayerReshuffle(); });
         ablyDamage.subscribe('presence', msg => { handlePresence(msg.data); });
@@ -1871,9 +1873,9 @@ function renderRollFeed() {
         entries.forEach(d => {
             const isDie = d.threshold === null;
             const type = isDie ? 'die' : classify(d.roll, d.threshold, d.success);
-            const row = document.createElement('div'); row.className = `roll-entry ${type}`;
+            const row = document.createElement('div'); row.className = `roll-entry ${type}${d.hidden ? ' hidden-roll' : ''}`;
             row.innerHTML = `
-              <div class="re-char">${_escHtml(d.char || d.playerId || '?')}</div>
+              <div class="re-char">${d.hidden ? '<span class="re-hidden-badge" title="Jet caché — visible uniquement par le MJ">🔒</span> ' : ''}${_escHtml(d.char || d.playerId || '?')}</div>
               <div class="re-context">
                 <div class="re-skill">${_escHtml(d.skillName)}</div>
                 ${isDie ? '' : `<div class="re-threshold">Seuil : ${d.threshold}%${d.bonusMalus ? ` · BM : ${d.bonusMalus > 0 ? '+' : ''}${d.bonusMalus}` : ''}</div>`}
@@ -2128,7 +2130,7 @@ function saveConfig() {
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch (_) {} dddiceSDK = null; }
     if (dddiceResizeHandler) { window.removeEventListener('resize', dddiceResizeHandler); dddiceResizeHandler = null; }
     pendingGMRoll = null; dddiceAPI = null;
-    ablyInstance = null; ablyRolls = null; ablyCards = null; ablyDamage = null; ablyMusic = null;
+    ablyInstance = null; ablyRolls = null; ablyRollsHidden = null; ablyCards = null; ablyDamage = null; ablyMusic = null;
     if (config.dddiceKey && config.dddiceRoom) initDddice();
     if (config.ablyKey) initAbly();
     startGMPresenceBroadcast();
@@ -2419,6 +2421,7 @@ function openGmFileViewer(fileId) {
         const img = document.createElement('img');
         img.src = f.url; img.className = 'fv-image';
         body.appendChild(img);
+        wireImageZoom(img);
     } else if (f.type === 'application/pdf') {
         const iframe = document.createElement('iframe');
         iframe.src = f.url; iframe.className = 'fv-iframe';
@@ -2443,6 +2446,35 @@ function closeGmFileViewer() {
     document.getElementById('gm-file-viewer-scrim').classList.remove('show');
     document.getElementById('gm-file-viewer-modal').classList.remove('show');
     document.getElementById('gm-fv-body').innerHTML = '';
+}
+
+// Wire wheel-zoom (toward cursor), drag-to-pan and double-click reset onto a file-viewer image.
+// The img is recreated on every open (body.innerHTML = ''), so no explicit teardown is needed.
+function wireImageZoom(img) {
+    let scale = 1, tx = 0, ty = 0;
+    const apply = () => { img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`; };
+    img.addEventListener('wheel', e => {
+        e.preventDefault();
+        const ns = Math.min(6, Math.max(1, scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+        const rect = img.getBoundingClientRect();
+        const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+        tx -= cx * (ns / scale - 1);
+        ty -= cy * (ns / scale - 1);
+        scale = ns;
+        if (scale === 1) { tx = 0; ty = 0; }
+        apply();
+    }, { passive: false });
+    img.addEventListener('mousedown', e => {
+        if (scale === 1) return;
+        e.preventDefault();
+        const sx = e.clientX - tx, sy = e.clientY - ty;
+        img.classList.add('panning');
+        const move = ev => { tx = ev.clientX - sx; ty = ev.clientY - sy; apply(); };
+        const up = () => { img.classList.remove('panning'); document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
+        document.addEventListener('mousemove', move);
+        document.addEventListener('mouseup', up);
+    });
+    img.addEventListener('dblclick', e => { e.preventDefault(); scale = 1; tx = 0; ty = 0; apply(); });
 }
 
 // ═══════════════════════════════════════════

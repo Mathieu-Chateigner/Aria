@@ -104,6 +104,9 @@ let bonusMalus = 0;
 // _appliedBM is the total BM stamped onto the most recent doRoll, for the roll payload.
 let bmNextValue = 0;
 let bmNextCount = 0;
+// Hidden-roll mode (#15): while armed, rolls publish to a GM-only channel so other
+// players and the overlay never receive them. The roller still sees their own card.
+let hiddenRollMode = false;
 let _appliedBM = 0;
 let rollFilter = new Set();
 let multiplier = 1;
@@ -113,7 +116,7 @@ let dddiceSDK = null;            // ThreeDDice SDK instance
 let pendingDddiceRoll = null;    // { skillName, threshold } waiting for RollFinished event
 let pendingSecondaryRoll = null; // { callback, mapFn } for non-d100 dice (d6, d3, weapon formula…)
 let dddiceRollSafetyTimer = null; // fallback timer in case RollFinished never fires
-let ablyRolls = null, ablyCards = null, ablyDamage = null, ablyMusic = null;
+let ablyRolls = null, ablyCards = null, ablyDamage = null, ablyMusic = null, ablyRollsHidden = null;
 let peerCameras = new Map(); // charId → { name, streamId }
 let gmStreamId = '';
 let vdoRoom = '';
@@ -634,7 +637,8 @@ function switchCharacter() {
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch(_){} dddiceSDK = null; }
     clearTimeout(dddiceRollSafetyTimer);
     pendingDddiceRoll = null; pendingSecondaryRoll = null; dddiceAPI = null;
-    currentHP = null; bonusMalus = 0; bmNextValue = 0; bmNextCount = 0; _appliedBM = 0; rollFilter.clear();
+    currentHP = null; bonusMalus = 0; bmNextValue = 0; bmNextCount = 0; _appliedBM = 0; hiddenRollMode = false; rollFilter.clear();
+    pinnedTabId = null; activeTabId = 'tab-skills';
     if (_musicFadeRaf) { cancelAnimationFrame(_musicFadeRaf); _musicFadeRaf = null; }
     _stopSlot('A'); _stopSlot('B'); musicIsPlaying = false;
     const doCloseAbly = () => {
@@ -703,12 +707,45 @@ function updateOverlayEditorBtn() {
 // ═══════════════════════════════════════════
 //  TABS
 // ═══════════════════════════════════════════
-// Switch the active tab panel in the player UI.
-function switchTab(id, btn) {
-    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById(id).classList.add('active');
-    btn.classList.add('active');
+// Split-view (#16): activeTabId is the primary pane; pinnedTabId is an optional
+// secondary tab shown side by side (e.g. Inventaire + Documents).
+let activeTabId = 'tab-skills';
+let pinnedTabId = null;
+
+// Switch the primary tab panel in the player UI.
+function switchTab(id, _btn) {
+    activeTabId = id;
+    if (pinnedTabId === id) pinnedTabId = null; // a tab can't be in both panes at once
+    renderTabLayout();
+}
+// Pin a tab as a secondary split pane; clicking the same tab's pin icon again closes it.
+function pinTab(id) {
+    if (pinnedTabId === id) pinnedTabId = null;
+    else if (id === activeTabId) return;        // already the primary pane
+    else pinnedTabId = id;
+    renderTabLayout();
+}
+// Close the secondary split pane.
+function unpinTab() { pinnedTabId = null; renderTabLayout(); }
+// Apply active/pinned classes to tab buttons and content panes for single or split view.
+function renderTabLayout() {
+    // Drop the pinned pane if the GM has hidden that tab (conditional tabs set display:none).
+    if (pinnedTabId) {
+        const pb = document.querySelector(`.tab-btn[data-tab="${pinnedTabId}"]`);
+        if (pb && pb.style.display === 'none') pinnedTabId = null;
+    }
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active', 'pinned-pane'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active', 'pinned'));
+    const content = document.querySelector('.content');
+    document.getElementById(activeTabId)?.classList.add('active');
+    document.querySelector(`.tab-btn[data-tab="${activeTabId}"]`)?.classList.add('active');
+    if (pinnedTabId && document.getElementById(pinnedTabId)) {
+        document.getElementById(pinnedTabId).classList.add('active', 'pinned-pane');
+        document.querySelector(`.tab-btn[data-tab="${pinnedTabId}"]`)?.classList.add('pinned');
+        content?.classList.add('split-mode');
+    } else {
+        content?.classList.remove('split-mode');
+    }
 }
 // ═══════════════════════════════════════════
 //  NOTES
@@ -871,6 +908,7 @@ function applyTabVisibility() {
             switchTab('tab-skills', document.querySelector('.tab-btn'));
         }
     }
+    renderTabLayout(); // re-assert layout / drop a pinned pane that was just hidden
 }
 
 // Show/hide the Cameras tab based on whether any active stream IDs are known.
@@ -884,6 +922,7 @@ function updateCamerasTabVisibility() {
     if (!hasAny && document.getElementById('tab-cameras')?.classList.contains('active')) {
         switchTab('tab-skills', document.querySelector('.tab-btn'));
     }
+    if (!hasAny && pinnedTabId === 'tab-cameras') unpinTab();
     if (document.getElementById('tab-cameras')?.classList.contains('active')) {
         console.log('[VDO] cameras tab is active → calling renderCamerasTab()');
         renderCamerasTab();
@@ -1239,6 +1278,15 @@ function setBMNext() {
 }
 // Cancel the armed temporary modifier.
 function clearBMNext() { bmNextValue = 0; bmNextCount = 0; updateBMDisplay(); }
+// Toggle hidden-roll mode (#15): rolls go only to the GM until toggled off again.
+function toggleHiddenRoll() { hiddenRollMode = !hiddenRollMode; updateHiddenRollBtn(); }
+// Reflect the hidden-roll armed state on its toggle button.
+function updateHiddenRollBtn() {
+    const btn = document.getElementById('hidden-roll-btn');
+    if (!btn) return;
+    btn.classList.toggle('active', hiddenRollMode);
+    btn.textContent = hiddenRollMode ? '🔒 Jet caché ON' : '🔒 Jet caché';
+}
 // Render the karma value display with appropriate positive/negative styling.
 function renderKarma() {
     const el = document.getElementById('karma-display');
@@ -1284,6 +1332,7 @@ function updateBMDisplay() {
         const r = (character.potionRecipes || [])[i];
         if (r) div.querySelector('.recipe-chance').textContent = Math.max(0, Math.min(100, (r.successChance || 0) + bm + (character?.karma ?? 0))) + '%';
     });
+    updateHiddenRollBtn();
     renderCombatSidebar();
 }
 
@@ -1762,10 +1811,10 @@ function toggleRollFilter(key) {
 function handleResult(skillName, threshold, roll) {
     const success = roll <= threshold;
     console.log('[PLAYER] handleResult:', skillName, '| roll:', roll, '| threshold:', threshold, '|', success ? 'SUCCÈS' : 'ÉCHEC', roll <= 10 && success ? '(CRITIQUE)' : roll >= 91 && !success ? '(CRITIQUE)' : '');
-    const data = { skillName, threshold, roll, success, char: character.name, bonusMalus: _appliedBM, playerId };
+    const data = { skillName, threshold, roll, success, char: character.name, bonusMalus: _appliedBM, playerId, hidden: hiddenRollMode };
     setRolling(false);
     showFloatCard(data);
-    publishRoll(data);
+    if (hiddenRollMode) publishRollHidden(data); else publishRoll(data);
     pushRollHistory(data);
     if (skillName === 'Soigner') applySoigner(success);
     if (pendingCraft !== null) { applyCraft(success, pendingCraft); pendingCraft = null; }
@@ -2292,6 +2341,7 @@ function initAbly() {
     try {
         ablyInstance = new Ably.Realtime({ key: config.ablyKey, transports: ['web_socket'] });
         ablyRolls = ablyInstance.channels.get(campaignChannel('aria-rolls'));
+        ablyRollsHidden = ablyInstance.channels.get(campaignChannel('aria-rolls-hidden'));
         ablyCards = ablyInstance.channels.get(campaignChannel('aria-cards'));
         ablyDamage = ablyInstance.channels.get(campaignChannel('aria-damage'));
         ablyMusic = ablyInstance.channels.get(campaignChannel('aria-music'));
@@ -2499,6 +2549,8 @@ function initAbly() {
 }
 // Publish a roll event to the aria-rolls Ably channel.
 function publishRoll(data) { if (ablyRolls) ablyRolls.publish('roll', data); }
+// Publish a hidden roll to the GM-only channel (other players + overlay never subscribe to it).
+function publishRollHidden(data) { if (ablyRollsHidden) ablyRollsHidden.publish('roll', data); }
 // Build and copy the OBS overlay URL for this player to the clipboard.
 function copyOverlayUrl() {
     const base = window.location.href.replace(/aria-player\.html.*$/, 'aria-overlay.html');
@@ -3189,6 +3241,7 @@ function openFileViewer(fileId) {
         img.src = f.url;
         img.className = 'fv-image';
         body.appendChild(img);
+        wireImageZoom(img);
     } else if (f.type === 'application/pdf') {
         const iframe = document.createElement('iframe');
         iframe.src = f.url;
@@ -3220,4 +3273,33 @@ function closeFileViewer() {
     document.getElementById('file-viewer-scrim').classList.remove('show');
     document.getElementById('file-viewer-modal').classList.remove('show');
     document.getElementById('fv-body').innerHTML = '';
+}
+
+// Wire wheel-zoom (toward cursor), drag-to-pan and double-click reset onto a file-viewer image.
+// The img is recreated on every open (body.innerHTML = ''), so no explicit teardown is needed.
+function wireImageZoom(img) {
+    let scale = 1, tx = 0, ty = 0;
+    const apply = () => { img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`; };
+    img.addEventListener('wheel', e => {
+        e.preventDefault();
+        const ns = Math.min(6, Math.max(1, scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+        const rect = img.getBoundingClientRect();
+        const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+        tx -= cx * (ns / scale - 1);
+        ty -= cy * (ns / scale - 1);
+        scale = ns;
+        if (scale === 1) { tx = 0; ty = 0; }
+        apply();
+    }, { passive: false });
+    img.addEventListener('mousedown', e => {
+        if (scale === 1) return;
+        e.preventDefault();
+        const sx = e.clientX - tx, sy = e.clientY - ty;
+        img.classList.add('panning');
+        const move = ev => { tx = ev.clientX - sx; ty = ev.clientY - sy; apply(); };
+        const up = () => { img.classList.remove('panning'); document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
+        document.addEventListener('mousemove', move);
+        document.addEventListener('mouseup', up);
+    });
+    img.addEventListener('dblclick', e => { e.preventDefault(); scale = 1; tx = 0; ty = 0; apply(); });
 }
