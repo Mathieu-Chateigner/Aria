@@ -250,7 +250,7 @@ function buildPlayingCard(cardId) {
           <div class="pc-corner tl"><span class="pc-rank" style="font-size:20px;color:var(--card-purple)">JKR</span></div>
           <div class="pc-center" style="flex-direction:column;gap:10px;">
             <span style="font-size:75px;line-height:1;color:var(--card-purple)">★</span>
-            <span style="font-family:'Playfair Display',serif;font-size:16px;font-weight:700;letter-spacing:.14em;color:var(--card-purple)">${label.toUpperCase()}</span>
+            <span style="font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:700;letter-spacing:.14em;color:var(--card-purple)">${label.toUpperCase()}</span>
           </div>
           <div class="pc-corner br"><span class="pc-rank" style="font-size:20px;color:var(--card-purple)">JKR</span></div>`;
     } else {
@@ -636,11 +636,11 @@ function renderWidgetContent(widget) {
         }
         case 'player_inventory': {
             if (!presenceCache.size) return '<div class="ow-list">—</div>';
-            return [...presenceCache.values()].map(p => `<div style="margin-bottom:4px"><div style="font-family:'Cinzel',serif;font-size:0.7em;color:var(--parchment-dim)">${esc(p.name)}</div>${(p.inventory || []).slice(0, 5).map(i => `<div class="ow-list-item"><span class="ow-list-name">${esc(i.name)}</span><span class="ow-list-value">×${esc(i.qty)}</span></div>`).join('')}</div>`).join('');
+            return [...presenceCache.values()].map(p => `<div style="margin-bottom:4px"><div style="font-family:'Cormorant Garamond',serif;font-size:0.7em;color:var(--parchment-dim)">${esc(p.name)}</div>${(p.inventory || []).slice(0, 5).map(i => `<div class="ow-list-item"><span class="ow-list-name">${esc(i.name)}</span><span class="ow-list-value">×${esc(i.qty)}</span></div>`).join('')}</div>`).join('');
         }
         case 'player_skills': {
             if (!presenceCache.size) return '<div class="ow-list">—</div>';
-            return [...presenceCache.values()].map(p => `<div style="margin-bottom:4px"><div style="font-family:'Cinzel',serif;font-size:0.7em;color:var(--parchment-dim)">${esc(p.name)}</div>${(p.skills || []).slice(0, 5).map(s => `<div class="ow-list-item"><span class="ow-list-name">${esc(s.name)}</span><span class="ow-list-value">${esc(s.pct)}%</span></div>`).join('')}</div>`).join('');
+            return [...presenceCache.values()].map(p => `<div style="margin-bottom:4px"><div style="font-family:'Cormorant Garamond',serif;font-size:0.7em;color:var(--parchment-dim)">${esc(p.name)}</div>${(p.skills || []).slice(0, 5).map(s => `<div class="ow-list-item"><span class="ow-list-name">${esc(s.name)}</span><span class="ow-list-value">${esc(s.pct)}%</span></div>`).join('')}</div>`).join('');
         }
         case 'monster_list': {
             const monsters = cfg.monsters || [];

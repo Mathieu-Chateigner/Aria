@@ -1185,7 +1185,7 @@ function showHealNumber(amt) { spawnDmgNumber(`+${amt}`, true); }
 function spawnDmgNumber(txt, isHeal) {
     const el = document.createElement('div');
     el.textContent = txt;
-    el.style.cssText = `position:fixed;top:40%;left:50%;transform:translate(-50%,-50%);font-family:'Cinzel',serif;font-size:64px;font-weight:900;color:${isHeal ? '#4cff88' : '#ff4444'};text-shadow:0 0 20px ${isHeal ? 'rgba(76,255,136,.5)' : 'rgba(255,50,50,.6)'};pointer-events:none;z-index:900;transition:all .9s ease-out;`;
+    el.style.cssText = `position:fixed;top:40%;left:50%;transform:translate(-50%,-50%);font-family:'Cormorant Garamond',serif;font-size:64px;font-weight:900;color:${isHeal ? '#4cff88' : '#ff4444'};text-shadow:0 0 20px ${isHeal ? 'rgba(76,255,136,.5)' : 'rgba(255,50,50,.6)'};pointer-events:none;z-index:900;transition:all .9s ease-out;`;
     document.body.appendChild(el);
     void el.offsetWidth;
     el.style.transform = 'translate(-50%,-120%)';
@@ -1436,10 +1436,10 @@ function renderInventorySidebar() {
     const items = character.inventory || [];
     const vials = character.vials ?? 0;
     const showVials = playerTabs.alchemy && vials > 0;
-    if (!items.length && !showVials) { body.innerHTML = `<div style="font-family:'EB Garamond',serif;font-size:13px;color:var(--parchment-dim);font-style:italic;opacity:.5;">Vide</div>`; }
+    if (!items.length && !showVials) { body.innerHTML = `<div style="font-family:'Cormorant Garamond',serif;font-size:13px;color:var(--parchment-dim);font-style:italic;opacity:.5;">Vide</div>`; }
     else {
-        let html = showVials ? `<div class="inv-item"><span style="font-style:italic">Fioles vides</span><span style="color:var(--gold-dim);font-family:'Cinzel',serif;font-size:12px;">×${vials}</span></div>` : '';
-        html += items.map(it => `<div class="inv-item"><span style="font-style:italic">${it.name || '—'}</span><span style="color:var(--gold-dim);font-family:'Cinzel',serif;font-size:12px;">×${it.qty || 1}</span></div>`).join('');
+        let html = showVials ? `<div class="inv-item"><span style="font-style:italic">Fioles vides</span><span style="color:var(--gold-dim);font-family:'Cormorant Garamond',serif;font-size:12px;">×${vials}</span></div>` : '';
+        html += items.map(it => `<div class="inv-item"><span style="font-style:italic">${it.name || '—'}</span><span style="color:var(--gold-dim);font-family:'Cormorant Garamond',serif;font-size:12px;">×${it.qty || 1}</span></div>`).join('');
         body.innerHTML = html;
     }
     const moneyEl = document.getElementById('inv-money-display');
@@ -1473,13 +1473,13 @@ function renderCombatSidebar() {
             const rollAttr = hasFormula ? ` onclick="rollWeaponDamage('${w.nom.replace(/'/g,"\\'")}','${w.degats.replace(/'/g,"\\'")}')"` : '';
             const rollableClass = hasFormula ? ' weap-rollable' : '';
             const hint = hasFormula ? `<span class="weap-roll-hint">⚄ lancer</span>` : '';
-            html += `<div class="weap-row${rollableClass}"${rollAttr}><span style="font-family:'EB Garamond',serif;font-size:14px;font-style:italic;">${w.nom}</span><span style="display:flex;align-items:center;gap:6px;font-family:'Cinzel',serif;font-size:12px;color:var(--gold-dim);">${hint}${w.degats || '—'}</span></div>`;
+            html += `<div class="weap-row${rollableClass}"${rollAttr}><span style="font-family:'Cormorant Garamond',serif;font-size:14px;font-style:italic;">${w.nom}</span><span style="display:flex;align-items:center;gap:6px;font-family:'Cormorant Garamond',serif;font-size:12px;color:var(--gold-dim);">${hint}${w.degats || '—'}</span></div>`;
         });
     } else {
-        html += `<div style="font-family:'EB Garamond',serif;font-size:13px;color:var(--parchment-dim);font-style:italic;opacity:.5;">Aucune arme</div>`;
+        html += `<div style="font-family:'Cormorant Garamond',serif;font-size:13px;color:var(--parchment-dim);font-style:italic;opacity:.5;">Aucune arme</div>`;
     }
     html += `<div style="margin:8px 0 6px;border-top:1px solid var(--border);"></div>`;
-    html += `<div style="margin-bottom:6px;"><div style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:3px;">Protection</div><div style="display:flex;justify-content:space-between;align-items:center;font-family:'Cinzel',serif;font-size:12px;"><span>${prot.nom || '—'}</span>${prot.valeur ? `<span class="prot-val-badge">${prot.valeur}</span>` : ''}</div></div>`;
+    html += `<div style="margin-bottom:6px;"><div style="font-family:'Cormorant Garamond',serif;font-size:9px;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:3px;">Protection</div><div style="display:flex;justify-content:space-between;align-items:center;font-family:'Cormorant Garamond',serif;font-size:12px;"><span>${prot.nom || '—'}</span>${prot.valeur ? `<span class="prot-val-badge">${prot.valeur}</span>` : ''}</div></div>`;
 
     // Reaction buttons — look up Parade and Esquiver in the character's skills/specials
     const allSkills = [...(character.skills || []), ...(character.specials || [])];
@@ -1488,7 +1488,7 @@ function renderCombatSidebar() {
     const dodgeSkill = allSkills.find(s => isContemporary ? /réflexes/i.test(s.name) : /esquiv/i.test(s.name));
     if (parrySkill || dodgeSkill) {
         html += `<div style="margin:8px 0 6px;border-top:1px solid var(--border);"></div>`;
-        html += `<div style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:6px;">Réactions</div>`;
+        html += `<div style="font-family:'Cormorant Garamond',serif;font-size:9px;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:6px;">Réactions</div>`;
         html += `<div class="react-btns">`;
         if (parrySkill) {
             const pb = +parrySkill.bonus || 0;
@@ -2760,7 +2760,7 @@ function renderInventoryEditor() {
         const v = character.vials ?? 0;
         const vRow = document.createElement('div');
         vRow.className = 'inv-row';
-        vRow.innerHTML = `<span style="font-family:'EB Garamond',serif;font-size:14px;font-style:italic;padding:6px 8px;color:var(--parchment-dim);">Fioles vides</span><input class="editor-input inv-qty" type="text" inputmode="numeric" value="${v}" oninput="this.value=this.value.replace(/[^0-9]/g,'');character.vials=Math.max(0,+this.value||0);saveCurrentCharacter();renderInventorySidebar();renderPotions()" /><span></span>`;
+        vRow.innerHTML = `<span style="font-family:'Cormorant Garamond',serif;font-size:14px;font-style:italic;padding:6px 8px;color:var(--parchment-dim);">Fioles vides</span><input class="editor-input inv-qty" type="text" inputmode="numeric" value="${v}" oninput="this.value=this.value.replace(/[^0-9]/g,'');character.vials=Math.max(0,+this.value||0);saveCurrentCharacter();renderInventorySidebar();renderPotions()" /><span></span>`;
         list.insertBefore(vRow, list.firstChild);
     }
 }
@@ -3097,7 +3097,7 @@ function renderCardContent(card) {
     const el = document.getElementById('drawn-card');
     if (card.isJoker) {
         el.className = `flip-face ${card.jokerColor === 'red' ? 'c-red' : 'c-black'}`;
-        el.innerHTML = `<div class="card-corner tl"><span class="rank" style="font-size:14px;color:var(--card-purple)">JKR</span></div><div class="card-center" style="flex-direction:column;gap:6px;"><span style="font-size:50px;line-height:1;color:var(--card-purple)">★</span><span style="font-family:'Playfair Display',serif;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--card-purple)">${card.label.toUpperCase()}</span></div><div class="card-corner br"><span class="rank" style="font-size:14px;color:var(--card-purple)">JKR</span></div>`;
+        el.innerHTML = `<div class="card-corner tl"><span class="rank" style="font-size:14px;color:var(--card-purple)">JKR</span></div><div class="card-center" style="flex-direction:column;gap:6px;"><span style="font-size:50px;line-height:1;color:var(--card-purple)">★</span><span style="font-family:'Cormorant Garamond',serif;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--card-purple)">${card.label.toUpperCase()}</span></div><div class="card-corner br"><span class="rank" style="font-size:14px;color:var(--card-purple)">JKR</span></div>`;
     } else {
         el.className = `flip-face ${card.suit.cls}`;
         el.innerHTML = `<div class="card-corner tl"><span class="rank">${card.rank}</span><span class="suit-small">${card.suit.sym}</span></div><div class="card-center">${card.suit.sym}</div><div class="card-corner br"><span class="rank">${card.rank}</span><span class="suit-small">${card.suit.sym}</span></div>`;
