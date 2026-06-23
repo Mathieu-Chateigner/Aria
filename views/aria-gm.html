@@ -73,9 +73,10 @@
 
     <!-- TOP BAR -->
     <div class="topbar">
-        <div class="topbar-title" onclick="switchCampaign()" title="Changer de campagne" style="cursor:pointer;">♛ ARIA</div>
+        <div class="topbar-title" onclick="switchCampaign()" title="Changer de campagne" style="cursor:pointer;">ARIA</div>
+        <span class="topbar-mj">MJ</span>
         <input class="campaign-name-input" id="campaign-display" value="" placeholder="Campagne" onblur="saveCampaignName(this)" onkeydown="if(event.key==='Enter')this.blur()" />
-        <button id="btn-open-overlay-editor" class="icon-btn" title="Éditeur d'overlay" style="display:none">🎬</button>
+        <button id="btn-open-overlay-editor" class="icon-btn" title="Éditeur d'overlay" style="display:none">▦</button>
         <button class="icon-btn" onclick="toggleConfig()" title="Configuration">⚙</button>
     </div>
 
@@ -83,15 +84,14 @@
     <div class="main">
         <div class="content">
             <div class="tabs">
-                <button class="tab-btn active" onclick="switchTab('tab-players',this)">♟ Joueurs</button>
-                <button class="tab-btn" onclick="switchTab('tab-monsters',this)">☠ Monstres</button>
-                <button class="tab-btn" onclick="switchTab('tab-rolls',this)">⚄ Jets</button>
-                <button class="tab-btn" onclick="switchTab('tab-gm-roll',this)">⚅ Jet MJ</button>
-                <button class="tab-btn" onclick="switchTab('tab-cards',this)">♠ Cartes</button>
-                <button class="tab-btn" onclick="switchTab('tab-alchemy',this)">⚗ Alchimie</button>
-                <button class="tab-btn" onclick="switchTab('tab-files',this)">✉ Fichiers</button>
-                <button class="tab-btn" onclick="switchTab('tab-music',this)">♪ Musique</button>
-                <button class="tab-btn" onclick="switchTab('tab-gm-notes',this)">✎ Notes</button>
+                <button class="tab-btn active" onclick="switchTab('tab-players',this)">Joueurs</button>
+                <button class="tab-btn" onclick="switchTab('tab-monsters',this)">Monstres</button>
+                <button class="tab-btn" onclick="switchTab('tab-gm-roll',this)">Jets</button>
+                <button class="tab-btn" onclick="switchTab('tab-cards',this)">Cartes</button>
+                <button class="tab-btn" onclick="switchTab('tab-alchemy',this)">Alchimie</button>
+                <button class="tab-btn" onclick="switchTab('tab-files',this)">Fichiers</button>
+                <button class="tab-btn" onclick="switchTab('tab-music',this)">Musique</button>
+                <button class="tab-btn" onclick="switchTab('tab-gm-notes',this)">Notes</button>
             </div>
 
             <!-- JOUEURS -->
@@ -172,44 +172,22 @@
                 </div>
                 <div class="group-bar" id="monster-group-bar"></div>
                 <div class="monsters-grid" id="monsters-grid">
-                    <div style="font-family:'EB Garamond',serif;font-size:15px;font-style:italic;color:var(--parchment-dim);opacity:.5;text-align:center;padding:20px;" id="no-monsters">Aucun monstre actif</div>
+                    <div style="font-family:'Cormorant Garamond',serif;font-size:15px;font-style:italic;color:var(--parchment-dim);opacity:.5;text-align:center;padding:20px;" id="no-monsters">Aucun monstre actif</div>
                 </div>
             </div>
 
-            <!-- JETS -->
-            <div class="tab-content" id="tab-rolls">
-                <div class="rolls-header">
-                    <div class="section-header" style="margin-bottom:0;flex:1;">
-                        <span class="section-icon">🎲</span>
-                        <span class="section-title">Fil des jets</span>
-                        <div class="section-rule"></div>
-                    </div>
-                    <button class="clear-btn" onclick="clearRolls()">Effacer</button>
-                </div>
-                <div class="rh-filter-bar" id="gm-roll-filter-bar">
-                    <button class="rf-pill active" id="gm-rfp-all"     onclick="toggleGMRollFilter('all')">Tous</button>
-                    <button class="rf-pill"        id="gm-rfp-success" onclick="toggleGMRollFilter('success')">Succès</button>
-                    <button class="rf-pill"        id="gm-rfp-fail"    onclick="toggleGMRollFilter('fail')">Échec</button>
-                    <button class="rf-pill"        id="gm-rfp-crit"    onclick="toggleGMRollFilter('crit')">Critique</button>
-                    <button class="rf-pill"        id="gm-rfp-die"     onclick="toggleGMRollFilter('die')">Dés</button>
-                    <div class="rf-player-group" id="gm-player-pills"></div>
-                </div>
-                <div class="rolls-feed" id="rolls-feed">
-                    <div class="rolls-empty">En attente de jets…</div>
-                </div>
-            </div>
-
-            <!-- JET MJ -->
+            <!-- JETS — roll console (left) + live feed (right), fused -->
             <div class="tab-content" id="tab-gm-roll">
-                <div class="gm-roll-section">
-                    <div>
+                <div class="gm-jets-layout">
+                    <!-- LEFT: roll console -->
+                    <div class="gm-jets-console">
                         <div class="gm-roll-form">
                             <h3>Jet libre</h3>
                             <label class="field-label">Nom du jet</label>
                             <input class="gm-input" id="gm-free-name" placeholder="ex: Perception" />
                             <label class="field-label">Seuil (%)</label>
                             <input class="gm-input" id="gm-free-threshold" type="text" inputmode="numeric" placeholder="50" oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
-                            <button class="gm-roll-btn" onclick="doGMFreeRoll()">⚄ Lancer</button>
+                            <button class="gm-roll-btn" onclick="doGMFreeRoll()">Lancer</button>
                         </div>
                         <div class="gm-roll-form" style="margin-top:12px;">
                             <h3>Combat — Monstre</h3>
@@ -231,20 +209,18 @@
                             </div>
                             <label class="field-label">Seuil (%)</label>
                             <input class="gm-input" id="gm-monster-threshold" type="text" inputmode="numeric" placeholder="50" oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
-                            <button class="gm-roll-btn" onclick="doGMMonsterRoll()">⚄ Lancer l'attaque</button>
+                            <button class="gm-roll-btn" onclick="doGMMonsterRoll()">Lancer l'attaque</button>
                             <div class="gm-combat-sep"></div>
                             <div class="gm-combat-row">
                                 <input class="gm-input" id="gm-monster-dmg-input" type="text" inputmode="numeric" placeholder="Dégâts" oninput="this.value=this.value.replace(/[^0-9]/g,'')" onkeydown="if(event.key==='Enter')doGMMonsterDamage()" />
-                                <button class="gm-action-btn gm-action-dmg" onclick="doGMMonsterDamage()">⚔ Attaquer</button>
+                                <button class="gm-action-btn gm-action-dmg" onclick="doGMMonsterDamage()">Attaquer</button>
                             </div>
                             <div class="gm-combat-row">
                                 <input class="gm-input" id="gm-monster-heal-input" type="text" inputmode="numeric" placeholder="Soins" oninput="this.value=this.value.replace(/[^0-9]/g,'')" onkeydown="if(event.key==='Enter')doGMMonsterHeal()" />
-                                <button class="gm-action-btn gm-action-heal" onclick="doGMMonsterHeal()">♥ Soigner</button>
+                                <button class="gm-action-btn gm-action-heal" onclick="doGMMonsterHeal()">Soigner</button>
                             </div>
                         </div>
-                    </div>
-                    <div>
-                        <div class="section-title">Dés simples</div>
+                        <div class="section-title" style="margin-top:16px;">Dés simples</div>
                         <div class="gm-dice-tray">
                             <button class="die-btn" onclick="gmRollDie(4)">d4</button>
                             <button class="die-btn" onclick="gmRollDie(6)">d6</button>
@@ -256,7 +232,28 @@
                         <div class="gm-die-result" id="gm-die-result"></div>
                         <div class="section-title" style="margin-top:16px;">Résultat</div>
                         <div class="gm-roll-result" id="gm-roll-result">
-                            <div style="font-family:'EB Garamond',serif;font-size:14px;font-style:italic;color:var(--parchment-dim);opacity:.5;">Pas encore de jet</div>
+                            <div style="font-family:'Cormorant Garamond',serif;font-size:14px;font-style:italic;color:var(--parchment-dim);opacity:.5;">Pas encore de jet</div>
+                        </div>
+                    </div>
+                    <!-- RIGHT: live roll feed -->
+                    <div class="gm-jets-feed">
+                        <div class="rolls-header">
+                            <div class="section-header" style="margin-bottom:0;flex:1;">
+                                <span class="section-title">Fil des jets</span>
+                                <div class="section-rule"></div>
+                            </div>
+                            <button class="clear-btn" onclick="clearRolls()">Effacer</button>
+                        </div>
+                        <div class="rh-filter-bar" id="gm-roll-filter-bar">
+                            <button class="rf-pill active" id="gm-rfp-all"     onclick="toggleGMRollFilter('all')">Tous</button>
+                            <button class="rf-pill"        id="gm-rfp-success" onclick="toggleGMRollFilter('success')">Succès</button>
+                            <button class="rf-pill"        id="gm-rfp-fail"    onclick="toggleGMRollFilter('fail')">Échec</button>
+                            <button class="rf-pill"        id="gm-rfp-crit"    onclick="toggleGMRollFilter('crit')">Critique</button>
+                            <button class="rf-pill"        id="gm-rfp-die"     onclick="toggleGMRollFilter('die')">Dés</button>
+                            <div class="rf-player-group" id="gm-player-pills"></div>
+                        </div>
+                        <div class="rolls-feed" id="rolls-feed">
+                            <div class="rolls-empty">En attente de jets…</div>
                         </div>
                     </div>
                 </div>
@@ -266,7 +263,7 @@
             <div class="tab-content" id="tab-cards">
                 <!-- GM private deck -->
                 <div class="gm-own-deck-section">
-                    <div class="section-title" style="margin-bottom:12px;">Deck MJ <span style="font-size:11px;color:var(--parchment-dim);font-family:'EB Garamond',serif;font-style:italic;">(privé)</span></div>
+                    <div class="section-title" style="margin-bottom:12px;">Deck MJ <span style="font-size:11px;color:var(--parchment-dim);font-family:'Cormorant Garamond',serif;font-style:italic;">(privé)</span></div>
                     <div class="card-tab-layout">
                         <div class="card-deck-col">
                             <div class="deck-wrap" id="gm-deck-wrap" onclick="gmDrawCard()">

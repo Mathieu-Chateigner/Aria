@@ -1043,6 +1043,19 @@ function sweepOfflinePlayers() {
     if (changed) { saveKnownPlayers(); renderPlayerCards(); }
 }
 // Render/update all player cards with in-place DOM updates to preserve camera iframes.
+// Cosmetic combat-feedback FX on a player/monster card (flash + shake + number pop).
+// HP numbers are updated synchronously by the render; this only adds the transient
+// visual layer, then removes it so a re-render can't leave it stuck.
+function triggerCardFx(el, type) {
+    if (!el) return;
+    el.classList.remove('fx-dmg', 'fx-crit', 'fx-heal');
+    void el.offsetWidth; // restart the animation
+    el.classList.add('fx-' + type);
+    setTimeout(() => el.classList.remove('fx-' + type), 650);
+}
+function playerCardEl(id) { try { return document.querySelector(`#players-grid [data-char-id="${CSS.escape(id)}"]`); } catch { return null; } }
+function monsterCardEl(id) { try { return document.querySelector(`#monsters-grid [data-monster-id="${CSS.escape(String(id))}"]`); } catch { return null; } }
+
 function renderPlayerCards() {
     const grid = document.getElementById('players-grid');
     const noP = document.getElementById('no-players');
@@ -1061,8 +1074,11 @@ function renderPlayerCards() {
         const isOnline = p.online !== false && Date.now() - p.ts < PRESENCE_TIMEOUT;
         const hp = p.hp ?? p.maxHP ?? '?', maxHP = p.maxHP ?? '?';
         const pct = maxHP > 0 ? hp / maxHP : 0;
-        const hpColor = pct > 0.5 ? 'var(--success)' : pct > 0.25 ? '#e8a020' : 'var(--fail)';
+        const hpColor = pct > 0.5 ? 'var(--ok)' : pct > 0.25 ? 'var(--warn)' : 'var(--bad)';
         const hpClass = pct <= 0.25 ? 'critical' : pct <= 0.5 ? 'low' : '';
+        const dead = (typeof hp === 'number' && hp <= 0);
+        const critical = !dead && pct >= 0 && pct <= 0.25;
+        const stateCls = dead ? ' is-dead' : (critical ? ' hp-critical' : '');
         const stats = p.stats || {};
         const k = gmKarma[playerId] ?? 0;
         let card = grid.querySelector(`[data-char-id="${playerId}"]`);
@@ -1070,7 +1086,7 @@ function renderPlayerCards() {
             // First render: build full card structure
             card = document.createElement('div');
             card.dataset.charId = playerId;
-            card.className = `player-card ${isOnline ? 'online' : 'offline'}`;
+            card.className = `player-card ${isOnline ? 'online' : 'offline'}${stateCls}`;
             card.innerHTML = `
               <div class="pc-header">
                 <div class="pc-online-dot ${isOnline ? 'online' : ''}"></div>
@@ -1127,7 +1143,7 @@ function renderPlayerCards() {
             }
         } else {
             // In-place update: only touch what changed, never rebuild the whole card
-            card.className = `player-card ${isOnline ? 'online' : 'offline'}`;
+            card.className = `player-card ${isOnline ? 'online' : 'offline'}${stateCls}`;
             const dot = card.querySelector('.pc-online-dot');
             if (dot) dot.className = `pc-online-dot${isOnline ? ' online' : ''}`;
             const nameEl = card.querySelector('.pc-name');
@@ -1360,6 +1376,7 @@ function applyPlayerDamage(playerId) {
     inp.value = '';
     publishDamage(p.playerId, dmg, hpBefore, hpAfter, p.maxHP || hpBefore, p.name);
     renderPlayerCards();
+    triggerCardFx(playerCardEl(playerId), 'dmg');
 }
 // Read the heal input for a player, clamp to max HP, and publish the heal.
 function applyPlayerHeal(playerId) {
@@ -1375,6 +1392,7 @@ function applyPlayerHeal(playerId) {
     inp.value = '';
     publishHeal(p.playerId, amt, hpBefore, hpAfter, p.maxHP || hpBefore, p.name);
     renderPlayerCards();
+    triggerCardFx(playerCardEl(playerId), 'heal');
 }
 
 // ═══════════════════════════════════════════
@@ -1454,6 +1472,7 @@ function doGMMonsterDamage() {
     document.getElementById('gm-monster-dmg-input').value = '';
     saveMonsters();
     clearTimeout(renderMonstersTimer); renderMonstersTimer = setTimeout(renderMonsters, 50);
+    setTimeout(() => triggerCardFx(monsterCardEl(m.id), 'dmg'), 70);
 }
 // Apply heal to the selected monster in the GM roll panel.
 function doGMMonsterHeal() {
@@ -1464,6 +1483,7 @@ function doGMMonsterHeal() {
     document.getElementById('gm-monster-heal-input').value = '';
     saveMonsters();
     clearTimeout(renderMonstersTimer); renderMonstersTimer = setTimeout(renderMonsters, 50);
+    setTimeout(() => triggerCardFx(monsterCardEl(m.id), 'heal'), 70);
 }
 // Evaluate a dice formula string (e.g. "2d6+2") and return total and breakdown.
 function rollDiceFormula(formula) {
@@ -1708,9 +1728,13 @@ function renderMonsters() {
     if (noM) noM.style.display = 'none';
     list.forEach(m => {
         const pct = m.maxPV > 0 ? m.pv / m.maxPV : 0;
-        const hpColor = pct > 0.5 ? 'var(--fail)' : pct > 0.25 ? '#e85020' : '#ff4444';
+        const hpColor = pct > 0.5 ? 'var(--ok)' : pct > 0.25 ? 'var(--warn)' : 'var(--bad)';
         const safeId = String(m.id).replace(/[^a-zA-Z0-9_-]/g, '-');
-        const card = document.createElement('div'); card.className = 'monster-card';
+        const mDead = m.pv <= 0;
+        const mCritical = !mDead && pct >= 0 && pct <= 0.25;
+        const card = document.createElement('div');
+        card.className = 'monster-card' + (mDead ? ' is-dead' : (mCritical ? ' hp-critical' : ''));
+        card.dataset.monsterId = m.id;
         const gName = monsterGroupAssign[m.id] ? (monsterGroups.find(g => g.id === monsterGroupAssign[m.id]) || {}).name : '';
         card.innerHTML = `
           <div class="mc-header">
@@ -2037,6 +2061,7 @@ function bulkDamageAll() {
     });
     if (inp) inp.value = '';
     renderPlayerCards();
+    online.forEach(([id]) => triggerCardFx(playerCardEl(id), 'dmg'));
 }
 // Apply a heal amount to all online players simultaneously.
 function bulkHealAll() {
@@ -2052,6 +2077,7 @@ function bulkHealAll() {
     });
     if (inp) inp.value = '';
     renderPlayerCards();
+    online.forEach(([id]) => triggerCardFx(playerCardEl(id), 'heal'));
 }
 
 // ── KARMA ─────────────────────────────────────
@@ -2078,6 +2104,7 @@ function monsterInlineDamage(id) {
     if (inp) inp.value = '';
     saveMonsters();
     clearTimeout(renderMonstersTimer); renderMonstersTimer = setTimeout(renderMonsters, 50);
+    setTimeout(() => triggerCardFx(monsterCardEl(m.id), 'dmg'), 70);
 }
 // Apply heal from the monster card inline input, capping at maxPV.
 function monsterInlineHeal(id) {
@@ -2089,6 +2116,7 @@ function monsterInlineHeal(id) {
     if (inp) inp.value = '';
     saveMonsters();
     clearTimeout(renderMonstersTimer); renderMonstersTimer = setTimeout(renderMonsters, 50);
+    setTimeout(() => triggerCardFx(monsterCardEl(m.id), 'heal'), 70);
 }
 
 // ═══════════════════════════════════════════
