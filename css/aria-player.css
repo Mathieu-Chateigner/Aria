@@ -2,24 +2,37 @@
    ARIA PLAYER — Design System
    ═══════════════════════════════════════════════ */
 :root {
-    --gold: #c9a84c;
-    --gold-light: #e8c97a;
-    --gold-dim: #6b5020;
-    --bg: #0d0b06;
-    --bg2: #141008;
-    --bg3: #1c160d;
-    --bg4: #221a0f;
-    --parchment: #f0e6c8;
-    --parchment-dim: #9e8e6a;
-    --success: #4caf77;
-    --fail: #c0392b;
-    --hp-low: #e8a020;
-    --border: rgba(201,168,76,0.18);
-    --border-strong: rgba(201,168,76,0.35);
-    --gold-wash-sm: rgba(201,168,76,0.05);
-    --gold-wash-md: rgba(201,168,76,0.07);
-    --gold-wash-lg: rgba(201,168,76,0.3);
-    --radius: 2px;
+    /* ── New design tokens — cold-ink / single-accent (player = ember) ── */
+    --ink:#050608; --bg:#0b0e13; --panel:#10141b; --raise:#161b25;
+    --line:rgba(150,168,200,.10); --line2:rgba(150,168,200,.20);
+    --text:#e8ebf1; --warm:#f3ede1; --dim:#868f9f; --faint:#586273;
+    --ember:#eca456; --ember2:#f6c07e; --embersoft:rgba(236,164,86,.12);
+    --violet:#a98bdd; --violet2:#c4aef0; --violetsoft:rgba(169,139,221,.12);
+    --ok:#5bc98e; --bad:#e25a4f; --warn:#e9aa45;
+    --field:rgba(0,0,0,.30); --field2:rgba(0,0,0,.25);
+    --track:rgba(255,255,255,.06); --track2:rgba(255,255,255,.10);
+    --chrome1:#0e1219; --rail:#0a0d12; --frameShadow:rgba(0,0,0,.9);
+    --pageGlow:rgba(236,164,86,.035);
+    --hp1:#2f7d54;
+    /* ── Legacy aliases → new palette (var()-based, so they follow the theme) ── */
+    --gold: var(--ember);
+    --gold-light: var(--ember2);
+    --gold-dim: var(--faint);
+    --bg2: var(--panel);
+    --bg3: var(--raise);
+    --bg4: var(--raise);
+    --parchment: var(--text);
+    --parchment-dim: var(--dim);
+    --success: var(--ok);
+    --fail: var(--bad);
+    --hp-low: var(--warn);
+    --border: var(--line);
+    --border-strong: var(--line2);
+    --gold-wash-sm: var(--embersoft);
+    --gold-wash-md: var(--embersoft);
+    --gold-wash-lg: var(--embersoft);
+    --radius: 4px;
+    /* card system (unchanged — playing-card faces) */
     --card-red: #c0392b;
     --card-black: #1a1a1a;
     --card-cream: #f5f0e8;
@@ -35,19 +48,34 @@
 html, body { height: 100%; }
 
 body {
-    background: var(--bg);
-    font-family: 'EB Garamond', serif;
-    font-size: 19px;
-    color: var(--parchment);
+    background:
+        radial-gradient(120% 50% at 50% -5%, var(--pageGlow), transparent 55%),
+        var(--ink);
+    font-family: 'Archivo', sans-serif;
+    font-size: 15px;
+    color: var(--text);
     display: flex;
     flex-direction: column;
     min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
 }
 
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: var(--gold-dim); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--gold); }
+/* ── Film-grain material overlay — subtle, over everything; clicks pass through ── */
+body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: .05;
+    mix-blend-mode: soft-light;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #1c2230; border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: var(--faint); }
 
 /* ── TOPBAR ── */
 .topbar {
@@ -71,7 +99,7 @@ body {
     pointer-events: none;
 }
 .topbar-title {
-    font-family: 'Cinzel Decorative', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 22px;
     color: var(--gold-light);
     letter-spacing: 2px;
@@ -79,14 +107,14 @@ body {
     cursor: pointer;
 }
 .topbar-char {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 14px;
     color: var(--parchment-dim);
     letter-spacing: 1px;
     flex: 1;
 }
 .topbar-badge {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 11px;
     letter-spacing: 2px;
     color: var(--gold-light);
@@ -96,7 +124,7 @@ body {
     border-radius: var(--radius);
 }
 .rolling-ind {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 12px;
     color: var(--gold);
     letter-spacing: 1px;
@@ -109,7 +137,7 @@ body {
     display: flex;
     align-items: center;
     gap: 6px;
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 11px;
     color: var(--parchment-dim);
 }
@@ -140,7 +168,7 @@ body {
     flex-wrap: wrap;
 }
 .bm-bar-label {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 11px;
     letter-spacing: 2px;
     color: var(--parchment-dim);
@@ -153,7 +181,7 @@ body {
     background: var(--bg3);
     border: 1px solid var(--border);
     color: var(--parchment-dim);
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 12px;
     padding: 5px 11px;
     border-radius: var(--radius);
@@ -176,7 +204,7 @@ body {
     box-shadow: 0 0 8px rgba(201,168,76,0.45);
 }
 .bm-display {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 16px;
     font-weight: 700;
     min-width: 64px;
@@ -198,7 +226,7 @@ body {
     background: var(--bg3);
     border: 1px solid var(--border);
     color: var(--parchment);
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 12px;
     padding: 4px 6px;
     border-radius: var(--radius);
@@ -206,7 +234,7 @@ body {
     outline: none;
 }
 .karma-display {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 14px;
     font-weight: 700;
     min-width: 36px;
@@ -227,7 +255,7 @@ body {
     background: var(--bg3);
     border: 1px solid var(--border);
     color: var(--parchment);
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 12px;
     padding: 4px 6px;
     border-radius: var(--radius);
@@ -236,7 +264,7 @@ body {
 }
 .bm-next-input:focus { border-color: var(--gold-dim); }
 .bm-next-count-input { width: 36px; }
-.bm-next-x { color: var(--parchment-dim); font-family: 'Cinzel', serif; font-size: 12px; }
+.bm-next-x { color: var(--parchment-dim); font-family: 'Cormorant Garamond', serif; font-size: 12px; }
 .bm-next-status {
     display: flex; align-items: center; gap: 6px;
     border: 1px solid var(--gold-dim); border-radius: 12px;
@@ -244,10 +272,10 @@ body {
 }
 .bm-next-status.positive { border-color: rgba(76,175,119,0.4); background: rgba(76,175,119,0.08); }
 .bm-next-status.negative { border-color: rgba(192,57,43,0.4); background: rgba(192,57,43,0.08); }
-.bm-next-mod { font-family: 'Cinzel', serif; font-size: 12px; font-weight: 700; color: var(--gold-light); }
+.bm-next-mod { font-family: 'Cormorant Garamond', serif; font-size: 12px; font-weight: 700; color: var(--gold-light); }
 .bm-next-status.positive .bm-next-mod { color: var(--success); }
 .bm-next-status.negative .bm-next-mod { color: var(--fail); }
-.bm-next-cnt { font-family: 'EB Garamond', serif; font-size: 11px; font-style: italic; color: var(--parchment-dim); }
+.bm-next-cnt { font-family: 'Cormorant Garamond', serif; font-size: 11px; font-style: italic; color: var(--parchment-dim); }
 .bm-next-clear { background: none; border: none; color: var(--parchment-dim); cursor: pointer; font-size: 11px; line-height: 1; padding: 0 2px; opacity: .7; }
 .bm-next-clear:hover { color: var(--fail); opacity: 1; }
 
@@ -263,7 +291,7 @@ body {
 }
 .music-bar-note { color: var(--gold); font-size: 16px; flex-shrink: 0; }
 .music-bar-title {
-    font-family: 'EB Garamond', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 16px;
     font-style: italic;
     color: var(--parchment);
@@ -287,7 +315,7 @@ body {
 }
 .tabs::-webkit-scrollbar { display: none; }
 .tab-btn {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 12px;
     letter-spacing: 1.5px;
     text-transform: uppercase;
@@ -379,7 +407,7 @@ body {
     pointer-events: none;
 }
 .panel-header {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 11px;
     letter-spacing: 2.5px;
     text-transform: uppercase;
@@ -402,7 +430,7 @@ body {
     position: relative;
 }
 .hp-number {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 52px;
     font-weight: 700;
     color: var(--success);
@@ -412,7 +440,7 @@ body {
 .hp-number.low { color: var(--hp-low); text-shadow: 0 0 18px rgba(232,160,32,0.25); }
 .hp-number.critical { color: var(--fail); text-shadow: 0 0 18px rgba(192,57,43,0.3); }
 .hp-fraction {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 15px;
     color: var(--parchment-dim);
     margin-top: 3px;
@@ -449,7 +477,7 @@ body {
     align-items: center;
     justify-content: center;
     z-index: 9000;
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
 }
 .mort-screen.show { display: flex; }
 .mort-text {
@@ -482,14 +510,14 @@ body {
     background: var(--gold-wash-sm);
 }
 .weap-roll-hint {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 9px;
     letter-spacing: 0.5px;
     color: var(--gold-dim);
     opacity: 0.7;
 }
 .prot-val-badge {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 11px;
     color: var(--gold-light);
     border: 1px solid var(--gold-dim);
@@ -505,7 +533,7 @@ body {
     background: var(--bg3);
     border: 1px solid var(--gold-dim);
     color: var(--parchment);
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 11px;
     letter-spacing: 0.5px;
     padding: 8px 4px;
@@ -533,13 +561,13 @@ body {
     justify-content: space-between;
     padding: 6px 0;
     border-bottom: 1px solid var(--border);
-    font-family: 'EB Garamond', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 15px;
     color: var(--parchment);
 }
 .inv-sidebar-row:last-child { border-bottom: none; }
 .inv-sidebar-qty {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 12px;
     color: var(--parchment-dim);
 }
@@ -549,19 +577,19 @@ body {
     justify-content: space-between;
     padding: 6px 0;
     border-bottom: 1px solid var(--border);
-    font-family: 'EB Garamond', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 15px;
     color: var(--parchment);
 }
 .inv-item:last-child { border-bottom: none; }
 .inv-item-qty {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 12px;
     color: var(--parchment-dim);
 }
 .inv-money-display { display: flex; gap: 6px; }
 .inv-money-chip {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 10px;
     letter-spacing: 1px;
     color: var(--gold-light);
@@ -606,7 +634,7 @@ body {
     flex-shrink: 0;
 }
 .section-title {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 13px;
     letter-spacing: 3px;
     text-transform: uppercase;
@@ -686,7 +714,7 @@ body {
 
 .skill-name {
     flex: 1;
-    font-family: 'EB Garamond', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 19px;
     font-style: italic;
     color: var(--parchment);
@@ -695,7 +723,7 @@ body {
     text-overflow: ellipsis;
 }
 .skill-link {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 10px;
     letter-spacing: 1px;
     color: var(--parchment-dim);
@@ -716,7 +744,7 @@ body {
     border-radius: 1px;
 }
 .skill-pct {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 16px;
     font-weight: 600;
     color: var(--gold-light);
@@ -725,7 +753,7 @@ body {
     flex-shrink: 0;
 }
 .skill-badge {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 8px;
     letter-spacing: 1px;
     color: var(--gold-dim);
@@ -736,7 +764,7 @@ body {
 }
 /* Per-skill permanent modifier badge in the Compétences list (#12) */
 .skill-mod {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 11px;
     font-weight: 600;
     color: var(--gold-light);
@@ -783,13 +811,13 @@ body {
 
 .special-name {
     flex: 1;
-    font-family: 'EB Garamond', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 17px;
     font-style: italic;
     color: var(--parchment);
 }
 .special-pct {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 15px;
     font-weight: 600;
     color: var(--parchment-dim);
@@ -811,7 +839,7 @@ body {
     margin-bottom: 16px;
 }
 .mult-bar-label {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 11px;
     letter-spacing: 2px;
     text-transform: uppercase;
@@ -822,7 +850,7 @@ body {
     background: var(--bg3);
     border: 1px solid var(--border);
     color: var(--parchment-dim);
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 12px;
     padding: 5px 12px;
     border-radius: var(--radius);
@@ -859,7 +887,7 @@ body {
 .stat-card:hover { border-color: var(--border-strong); background: var(--bg4); }
 /* JS renders .stat-key and .stat-val inside .stat-card */
 .stat-key {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 9px;
     letter-spacing: 2px;
     text-transform: uppercase;
@@ -867,7 +895,7 @@ body {
     margin-bottom: 6px;
 }
 .stat-val {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 28px;
     font-weight: 700;
     color: var(--gold-light);
@@ -884,7 +912,7 @@ body {
     margin-bottom: 24px;
 }
 .field-label {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 10px;
     letter-spacing: 2px;
     text-transform: uppercase;
@@ -897,7 +925,7 @@ body {
     background: var(--bg3);
     border: 1px solid var(--border);
     color: var(--parchment);
-    font-family: 'EB Garamond', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 17px;
     padding: 9px 12px;
     border-radius: var(--radius);
@@ -910,7 +938,7 @@ body {
     background: linear-gradient(180deg, #2a1e08, #1a1206);
     border: 1px solid var(--gold-dim);
     color: var(--gold-light);
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 13px;
     letter-spacing: 2px;
     text-transform: uppercase;
@@ -940,7 +968,7 @@ body {
     background: var(--bg3);
     border: 1px solid var(--border);
     color: var(--parchment-dim);
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 13px;
     padding: 8px 14px;
     border-radius: var(--radius);
@@ -962,7 +990,7 @@ body {
     background: none;
     border: 1px solid var(--border);
     color: var(--parchment-dim);
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 10px;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -977,7 +1005,7 @@ body {
     background: var(--bg3);
     border: 1px solid var(--border);
     color: var(--parchment-dim);
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 10px;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -990,7 +1018,7 @@ body {
 .rf-pill.active { border-color: var(--gold-dim); color: var(--gold-light); background: var(--bg4); }
 .roll-history-list { display: flex; flex-direction: column; gap: 4px; }
 .roll-history-empty {
-    font-family: 'EB Garamond', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 16px;
     font-style: italic;
     color: var(--parchment-dim);
@@ -1009,7 +1037,7 @@ body {
     border: 1px solid var(--border);
     border-left: 2px solid var(--gold-dim);
     border-radius: var(--radius);
-    font-family: 'EB Garamond', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 15px;
 }
 .rh-row.rh-die  { border-left-color: rgba(201,168,76,0.3); }
@@ -1018,14 +1046,14 @@ body {
 .rh-row.rh-crit-success { border-left-color: #a8ff78; background: rgba(168,255,120,0.05); }
 .rh-row.rh-crit-fail    { border-left-color: #ff4444; background: rgba(255,68,68,0.05); }
 .rh-skill { flex: 1; font-style: italic; color: var(--parchment-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rh-roll  { font-family: 'Cinzel', serif; font-size: 15px; font-weight: 600; text-align: right; color: var(--parchment); }
-.rh-verdict { font-family: 'Cinzel', serif; font-size: 10px; letter-spacing: 1px; text-align: right; }
+.rh-roll  { font-family: 'Cormorant Garamond', serif; font-size: 15px; font-weight: 600; text-align: right; color: var(--parchment); }
+.rh-verdict { font-family: 'Cormorant Garamond', serif; font-size: 10px; letter-spacing: 1px; text-align: right; }
 .rh-success .rh-verdict  { color: var(--success); }
 .rh-fail .rh-verdict     { color: var(--fail); }
 .rh-crit-success .rh-verdict { color: #a8ff78; }
 .rh-crit-fail .rh-verdict    { color: #ff4444; }
 .rh-day-header {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 9px;
     letter-spacing: 0.15em;
     text-transform: uppercase;
@@ -1052,7 +1080,7 @@ body {
 .cs-inv-hdr     { display: grid; grid-template-columns: 1fr 52px 28px;  gap: 6px; }
 .cs-specials-hdr { display: grid; grid-template-columns: 1.2fr 52px 48px 2fr auto; gap: 6px; }
 .editor-label {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 10px;
     letter-spacing: 1.5px;
     text-transform: uppercase;
@@ -1075,7 +1103,7 @@ body {
 }
 .inv-row:last-child { border-bottom: none; }
 .inv-row .editor-input { font-size: 14px; padding: 6px 8px; }
-.inv-row .inv-qty { color: var(--gold); font-family: 'Cinzel', serif; font-size: 14px; text-align: center; }
+.inv-row .inv-qty { color: var(--gold); font-family: 'Cormorant Garamond', serif; font-size: 14px; text-align: center; }
 
 .editor-input {
     flex: 1;
@@ -1083,7 +1111,7 @@ body {
     border: 1px solid var(--border);
     border-bottom: 1px solid var(--border);
     color: var(--parchment);
-    font-family: 'EB Garamond', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 15px;
     padding: 7px 10px;
     border-radius: var(--radius);
@@ -1102,7 +1130,7 @@ body {
 }
 
 .add-skill-btn {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 11px;
     letter-spacing: 1.5px;
     text-transform: uppercase;
@@ -1139,7 +1167,7 @@ body {
 .money-field { display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .money-dot   { font-size: 16px; line-height: 1; }
 .money-label {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 9px;
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -1148,7 +1176,7 @@ body {
 .money-input {
     text-align: center;
     width: 100%;
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
 }
 
 /* ── NOTES TAB ── */
@@ -1175,7 +1203,7 @@ body {
     flex-shrink: 0;
 }
 .notes-sidebar-title {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 10px;
     letter-spacing: 0.14em;
     color: var(--parchment-dim);
@@ -1213,7 +1241,7 @@ body {
 }
 .notes-item-name {
     flex: 1;
-    font-family: 'EB Garamond', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 14px;
     color: var(--parchment-dim);
     white-space: nowrap;
@@ -1248,7 +1276,7 @@ body {
     border: none;
     border-bottom: 1px solid var(--border);
     color: var(--parchment);
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 13px;
     letter-spacing: 0.05em;
     padding: 8px 4px;
@@ -1256,7 +1284,7 @@ body {
     outline: none;
     transition: border-color 0.15s;
 }
-.notes-name-input::placeholder { color: var(--parchment-dim); opacity: 0.35; font-style: italic; font-family: 'EB Garamond', serif; letter-spacing: 0; }
+.notes-name-input::placeholder { color: var(--parchment-dim); opacity: 0.35; font-style: italic; font-family: 'Cormorant Garamond', serif; letter-spacing: 0; }
 .notes-name-input:focus { border-bottom-color: var(--gold-dim); }
 .notes-name-input:disabled, .notes-area:disabled { opacity: 0.3; cursor: default; }
 .notes-area {
@@ -1268,7 +1296,7 @@ body {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 14px 16px;
-    font-family: 'EB Garamond', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 15px;
     line-height: 1.65;
     resize: vertical;
@@ -1302,7 +1330,7 @@ body {
     pointer-events: none;
 }
 .cs-block-title {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 12px;
     letter-spacing: 0.2em;
     text-transform: uppercase;
@@ -1315,7 +1343,7 @@ body {
     gap: 8px;
 }
 .cs-hint {
-    font-family: 'EB Garamond', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 12px;
     font-style: italic;
     color: var(--parchment-dim);
@@ -1332,10 +1360,10 @@ body {
 .cs-attr { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 0 4px; }
 .cs-attr + .cs-attr { border-left: 1px solid rgba(201,168,76,0.1); }
 .cs-attr-pv { border-left: 1px solid var(--border) !important; }
-.cs-attr-label { font-family: 'Cinzel', serif; font-size: 12px; letter-spacing: 0.15em; color: var(--gold-dim); text-transform: uppercase; }
+.cs-attr-label { font-family: 'Cormorant Garamond', serif; font-size: 12px; letter-spacing: 0.15em; color: var(--gold-dim); text-transform: uppercase; }
 .editor-input.cs-attr-input {
     text-align: center;
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 16px;
     font-weight: 600;
     padding: 4px 2px;
@@ -1359,12 +1387,12 @@ body {
     border-bottom: 1px solid rgba(201,168,76,0.06);
 }
 .skill-editor-row:last-child { border-bottom: none; }
-.skill-editor-row .sname { font-family: 'EB Garamond', serif; font-size: 14px; font-style: italic; }
+.skill-editor-row .sname { font-family: 'Cormorant Garamond', serif; font-size: 14px; font-style: italic; }
 .skill-editor-row .spct {
     background: rgba(0,0,0,0.3);
     border: 1px solid var(--border);
     color: var(--gold);
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 14px;
     padding: 4px 6px;
     border-radius: var(--radius);
@@ -1377,7 +1405,7 @@ body {
     background: rgba(0,0,0,0.3);
     border: 1px solid var(--border);
     color: var(--parchment-dim);
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 13px;
     padding: 4px 4px;
     border-radius: var(--radius);
@@ -1400,7 +1428,7 @@ body {
     background: rgba(0,0,0,0.3);
     border: 1px solid var(--border);
     color: var(--parchment);
-    font-family: 'EB Garamond', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 14px;
     padding: 5px 8px;
     border-radius: var(--radius);
@@ -1408,7 +1436,7 @@ body {
 }
 .specials-row input:focus { outline: none; border-color: var(--gold-dim); }
 /* Save status */
-.cs-save-status { font-family: 'Cinzel', serif; font-size: 13px; letter-spacing: 0.12em; color: var(--success); opacity: 0; transition: opacity 0.4s; }
+.cs-save-status { font-family: 'Cormorant Garamond', serif; font-size: 13px; letter-spacing: 0.12em; color: var(--success); opacity: 0; transition: opacity 0.4s; }
 .cs-save-status.show { opacity: 1; }
 
 /* ═══════════════════════════════════════════
@@ -1469,9 +1497,9 @@ body {
     font-size: 28px;
     color: var(--gold-dim);
 }
-.deck-count { font-family: 'Cinzel', serif; font-size: 13px; color: var(--parchment-dim); }
+.deck-count { font-family: 'Cormorant Garamond', serif; font-size: 13px; color: var(--parchment-dim); }
 .card-action-btn {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 13px;
     padding: 5px 14px;
     background: rgba(201,168,76,0.08);
@@ -1485,7 +1513,7 @@ body {
 }
 .card-action-btn.visible { visibility: visible; }
 .card-action-btn:hover { background: rgba(201,168,76,0.18); }
-.card-status { font-family: 'Cinzel', serif; font-size: 13px; color: var(--parchment-dim); min-height: 18px; text-align: center; }
+.card-status { font-family: 'Cormorant Garamond', serif; font-size: 13px; color: var(--parchment-dim); min-height: 18px; text-align: center; }
 
 /* Flip animation */
 .flip-wrap {
@@ -1533,7 +1561,7 @@ body {
     justify-content: center;
 }
 .card-corner { display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
-.rank { font-family: 'Cinzel', serif; font-size: 18px; font-weight: 700; }
+.rank { font-family: 'Cormorant Garamond', serif; font-size: 18px; font-weight: 700; }
 .suit-small { font-size: 13px; }
 .br { transform: rotate(180deg); }
 .card-center { font-size: 58px; text-align: center; line-height: 1; align-self: center; }
@@ -1592,7 +1620,7 @@ body {
 }
 .reshuffle-flash.show { opacity: 1; }
 .reshuffle-msg {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 26px;
     font-weight: 900;
     letter-spacing: 0.25em;
@@ -1610,7 +1638,7 @@ body {
 .c-purple { color: var(--card-purple); }
 .rank-pills { display: flex; gap: 4px; flex-wrap: wrap; }
 .rank-pill {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 12px;
     padding: 2px 6px;
     border: 1px solid var(--border);
@@ -1643,7 +1671,7 @@ body {
     margin-bottom: 14px;
 }
 .alchemy-vials-label {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 13px;
     color: var(--parchment-dim);
     letter-spacing: 0.05em;
@@ -1653,7 +1681,7 @@ body {
     background: transparent;
     border: 1px solid var(--border);
     color: var(--gold);
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 16px;
     width: 28px; height: 28px;
     border-radius: var(--radius);
@@ -1664,7 +1692,7 @@ body {
 .vial-btn:hover:not(:disabled) { border-color: var(--gold); color: var(--gold-light); }
 .vial-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 .vial-count {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 22px;
     font-weight: 600;
     color: var(--gold);
@@ -1681,7 +1709,7 @@ body {
     margin-bottom: 8px;
 }
 .inv-vials-label {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 14px;
     font-weight: 600;
     color: var(--parchment);
@@ -1696,11 +1724,11 @@ body {
     border-bottom: 1px solid var(--border);
 }
 .recipe-row:last-child { border-bottom: none; }
-.recipe-name { font-family: 'Cinzel', serif; font-size: 14px; color: var(--parchment); white-space: nowrap; flex-shrink: 0; }
-.recipe-meta { flex: 1; font-family: 'EB Garamond', serif; font-size: 14px; font-style: italic; color: var(--parchment-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.recipe-chance { font-family: 'Cinzel', serif; font-size: 13px; color: var(--gold); white-space: nowrap; flex-shrink: 0; }
+.recipe-name { font-family: 'Cormorant Garamond', serif; font-size: 14px; color: var(--parchment); white-space: nowrap; flex-shrink: 0; }
+.recipe-meta { flex: 1; font-family: 'Cormorant Garamond', serif; font-size: 14px; font-style: italic; color: var(--parchment-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.recipe-chance { font-family: 'Cormorant Garamond', serif; font-size: 13px; color: var(--gold); white-space: nowrap; flex-shrink: 0; }
 .recipe-craft-btn {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 12px;
     letter-spacing: 0.05em;
     background: rgba(201,168,76,0.1);
@@ -1716,7 +1744,7 @@ body {
 .recipe-craft-btn:hover:not(:disabled) { background: rgba(201,168,76,0.2); border-color: var(--gold-dim); }
 .recipe-craft-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 .alchemy-section-hdr {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 11px;
     letter-spacing: 0.12em;
     text-transform: uppercase;
@@ -1740,15 +1768,15 @@ body {
 .potion-row:last-child { border-bottom: none; }
 .potion-row:hover { border-left-color: var(--gold); }
 .potion-info { flex: 1; min-width: 0; }
-.potion-name { font-family: 'Cinzel', serif; font-size: 14px; font-weight: 600; color: var(--parchment); margin-bottom: 3px; }
-.potion-detail { font-family: 'EB Garamond', serif; font-size: 13px; color: var(--parchment-dim); margin-bottom: 1px; }
+.potion-name { font-family: 'Cormorant Garamond', serif; font-size: 14px; font-weight: 600; color: var(--parchment); margin-bottom: 3px; }
+.potion-detail { font-family: 'Cormorant Garamond', serif; font-size: 13px; color: var(--parchment-dim); margin-bottom: 1px; }
 .potion-ing   { color: var(--gold-dim); }
-.potion-chance { color: var(--gold); font-family: 'Cinzel', serif; font-size: 12px; }
+.potion-chance { color: var(--gold); font-family: 'Cormorant Garamond', serif; font-size: 12px; }
 .potion-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-.potion-qty { font-family: 'Cinzel', serif; font-size: 14px; color: var(--gold); min-width: 28px; text-align: center; }
+.potion-qty { font-family: 'Cormorant Garamond', serif; font-size: 14px; color: var(--gold); min-width: 28px; text-align: center; }
 .potion-qty.depleted { color: var(--parchment-dim); opacity: 0.5; }
 .potion-use-btn {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 13px;
     letter-spacing: 0.05em;
     background: linear-gradient(135deg,rgba(76,175,119,0.2),rgba(40,100,65,0.15));
@@ -1773,7 +1801,7 @@ body {
     gap: 6px;
 }
 .alchemy-empty {
-    font-family: 'EB Garamond', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 13px;
     font-style: italic;
     color: var(--parchment-dim);
@@ -1795,9 +1823,9 @@ body {
 }
 .player-file-row:hover { border-color: rgba(201,168,76,0.3); }
 .pf-icon { font-size: 22px; flex-shrink: 0; width: 28px; text-align: center; }
-.pf-name { flex: 1; min-width: 0; font-family: 'EB Garamond', serif; font-size: 15px; color: var(--parchment); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pf-name { flex: 1; min-width: 0; font-family: 'Cormorant Garamond', serif; font-size: 15px; color: var(--parchment); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pf-open-btn {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 11px;
     letter-spacing: 0.08em;
     background: var(--bg3);
@@ -1832,9 +1860,9 @@ body {
 }
 .file-viewer-modal.show { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); }
 .fv-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.fv-title { font-family: 'EB Garamond', serif; font-size: 16px; color: var(--parchment); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+.fv-title { font-family: 'Cormorant Garamond', serif; font-size: 16px; color: var(--parchment); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
 .fv-close-btn {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 13px;
     background: transparent;
     border: 1px solid var(--border);
@@ -1854,9 +1882,9 @@ body {
 .fv-text { width: 100%; padding: 16px; font-family: monospace; font-size: 13px; color: var(--parchment); white-space: pre-wrap; word-break: break-word; background: transparent; overflow: auto; }
 .fv-unsupported { margin: auto; text-align: center; padding: 32px; }
 .fv-unsupported-icon { font-size: 48px; margin-bottom: 12px; }
-.fv-unsupported-name { font-family: 'EB Garamond', serif; font-size: 16px; color: var(--parchment); margin-bottom: 16px; }
+.fv-unsupported-name { font-family: 'Cormorant Garamond', serif; font-size: 16px; color: var(--parchment); margin-bottom: 16px; }
 .fv-download-link {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 12px;
     letter-spacing: 0.08em;
     color: var(--gold);
@@ -1952,10 +1980,10 @@ body {
 .corner.bl { bottom: 8px; left: 8px;  border-bottom-width: 1px; border-left-width: 1px; }
 .corner.br { bottom: 8px; right: 8px; border-bottom-width: 1px; border-right-width: 1px; }
 /* Float card text */
-.fc-char { font-family: 'Cinzel', serif; font-size: 13px; letter-spacing: 0.2em; color: var(--gold-dim); text-transform: uppercase; margin-bottom: 10px; }
-.fc-skill { font-family: 'Playfair Display', serif; font-size: 22px; font-style: italic; color: var(--parchment); margin-bottom: 20px; max-width: 320px; line-height: 1.3; }
+.fc-char { font-family: 'Cormorant Garamond', serif; font-size: 13px; letter-spacing: 0.2em; color: var(--gold-dim); text-transform: uppercase; margin-bottom: 10px; }
+.fc-skill { font-family: 'Cormorant Garamond', serif; font-size: 22px; font-style: italic; color: var(--parchment); margin-bottom: 20px; max-width: 320px; line-height: 1.3; }
 .fc-roll-num {
-    font-family: 'Cinzel Decorative', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 80px;
     font-weight: 700;
     color: var(--parchment);
@@ -1979,7 +2007,7 @@ body {
     to   { filter: brightness(1.4) drop-shadow(0 0 10px rgba(255,68,68,0.9)); }
 }
 .card-divider { width: 80px; height: 1px; background: linear-gradient(90deg,transparent,var(--gold-dim),transparent); margin: 14px auto; }
-.fc-verdict { font-family: 'Cinzel', serif; font-weight: 900; letter-spacing: 0.18em; animation: fcVerdictIn 0.35s 0.18s both ease-out; }
+.fc-verdict { font-family: 'Cormorant Garamond', serif; font-weight: 900; letter-spacing: 0.18em; animation: fcVerdictIn 0.35s 0.18s both ease-out; }
 @keyframes fcVerdictIn {
     from { opacity: 0; transform: translateY(12px) scale(0.9); }
     to   { opacity: 1; transform: translateY(0) scale(1); }
@@ -1992,7 +2020,7 @@ body {
     from { filter: brightness(1); opacity: 1; }
     to   { filter: brightness(1.35); opacity: 0.88; }
 }
-.fc-crit-sub { font-family: 'EB Garamond', serif; font-style: italic; font-size: 12px; letter-spacing: 0.12em; margin-top: 6px; opacity: 0; animation: fcSubIn 0.5s 0.6s both ease-out; }
+.fc-crit-sub { font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 12px; letter-spacing: 0.12em; margin-top: 6px; opacity: 0; animation: fcSubIn 0.5s 0.6s both ease-out; }
 .crit-success .fc-crit-sub { color: rgba(168,255,120,0.55); }
 .crit-fail    .fc-crit-sub { color: rgba(255,100,100,0.55); }
 @keyframes fcSubIn {
@@ -2000,7 +2028,7 @@ body {
     to   { opacity: 1; letter-spacing: 0.12em; }
 }
 .fc-bonus   { font-size: 13px; color: var(--gold-dim); font-style: italic; margin-top: 6px; letter-spacing: 0.05em; }
-.fc-dismiss { font-family: 'Cinzel', serif; font-size: 12px; color: var(--parchment-dim); text-align: center; margin-top: 16px; opacity: 0.5; }
+.fc-dismiss { font-family: 'Cormorant Garamond', serif; font-size: 12px; color: var(--parchment-dim); text-align: center; margin-top: 16px; opacity: 0.5; }
 #fc-particles { position: fixed; inset: 0; pointer-events: none; z-index: 902; }
 
 /* Other players roll toast */
@@ -2014,7 +2042,7 @@ body {
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 10px 18px;
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 12px;
     color: var(--parchment-dim);
     opacity: 0;
@@ -2038,7 +2066,7 @@ body {
     border: 1px solid rgba(192,57,43,0.6);
     border-radius: 8px;
     padding: 14px 18px;
-    font-family: 'Cinzel', serif; font-size: 13px; color: #ffbbbb;
+    font-family: 'Cormorant Garamond', serif; font-size: 13px; color: #ffbbbb;
     opacity: 0; transform: translateX(40px);
     transition: all 0.3s; pointer-events: none;
 }
@@ -2049,7 +2077,7 @@ body {
     border: 1px solid rgba(76,175,119,0.5);
     border-radius: 8px;
     padding: 14px 18px;
-    font-family: 'Cinzel', serif; font-size: 13px; color: #aaffcc;
+    font-family: 'Cormorant Garamond', serif; font-size: 13px; color: #aaffcc;
     opacity: 0; transform: translateX(40px);
     transition: all 0.3s; pointer-events: none;
 }
@@ -2082,9 +2110,9 @@ body {
     display: none;
 }
 .config-modal.show { display: block; }
-.config-modal h2 { font-family: 'Cinzel', serif; font-size: 14px; letter-spacing: 0.15em; color: var(--gold); margin-bottom: 16px; text-transform: uppercase; }
+.config-modal h2 { font-family: 'Cormorant Garamond', serif; font-size: 14px; letter-spacing: 0.15em; color: var(--gold); margin-bottom: 16px; text-transform: uppercase; }
 .config-label {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 12px;
     letter-spacing: 0.12em;
     color: var(--gold-dim);
@@ -2097,7 +2125,7 @@ body {
     background: rgba(0,0,0,0.4);
     border: 1px solid var(--border);
     color: var(--parchment);
-    font-family: 'EB Garamond', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 15px;
     padding: 8px 10px;
     border-radius: var(--radius);
@@ -2114,7 +2142,7 @@ body {
 .theme-toggle input:checked + .theme-toggle-slider::before { transform: translateX(18px); background: var(--gold); }
 .config-save-btn {
     margin-top: 16px;
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 12px;
     letter-spacing: 0.1em;
     background: rgba(201,168,76,0.12);
@@ -2145,20 +2173,20 @@ body {
     transition: opacity 0.2s, transform 0.2s;
 }
 .soigner-target-modal.show { opacity: 1; transform: translate(-50%,-50%) scale(1); pointer-events: auto; }
-.stm-title { font-family: 'Cinzel', serif; font-size: 13px; letter-spacing: 0.15em; color: var(--success); text-align: center; margin-bottom: 16px; text-transform: uppercase; }
-.stm-btn { display: block; width: 100%; padding: 10px 14px; margin-bottom: 8px; background: rgba(76,175,119,0.08); border: 1px solid rgba(76,175,119,0.25); color: var(--parchment); font-family: 'EB Garamond', serif; font-size: 15px; cursor: pointer; border-radius: var(--radius); text-align: left; transition: all 0.15s; }
+.stm-title { font-family: 'Cormorant Garamond', serif; font-size: 13px; letter-spacing: 0.15em; color: var(--success); text-align: center; margin-bottom: 16px; text-transform: uppercase; }
+.stm-btn { display: block; width: 100%; padding: 10px 14px; margin-bottom: 8px; background: rgba(76,175,119,0.08); border: 1px solid rgba(76,175,119,0.25); color: var(--parchment); font-family: 'Cormorant Garamond', serif; font-size: 15px; cursor: pointer; border-radius: var(--radius); text-align: left; transition: all 0.15s; }
 .stm-btn:hover { background: rgba(76,175,119,0.18); border-color: var(--success); }
-.stm-cancel { display: block; width: 100%; padding: 8px 14px; margin-top: 4px; background: none; border: 1px solid var(--border); color: var(--parchment-dim); font-family: 'Cinzel', serif; font-size: 12px; letter-spacing: 0.08em; cursor: pointer; border-radius: var(--radius); transition: all 0.15s; }
+.stm-cancel { display: block; width: 100%; padding: 8px 14px; margin-top: 4px; background: none; border: 1px solid var(--border); color: var(--parchment-dim); font-family: 'Cormorant Garamond', serif; font-size: 12px; letter-spacing: 0.08em; cursor: pointer; border-radius: var(--radius); transition: all 0.15s; }
 .stm-cancel:hover { border-color: var(--gold-dim); color: var(--parchment); }
 
 /* ── SELECTION SCREEN ── */
 .sel-container { display: flex; flex-direction: column; align-items: center; gap: 28px; max-width: 780px; width: 100%; }
 .sel-home-btn { position: absolute; top: 20px; left: 20px; font-size: 18px; color: var(--parchment-dim); text-decoration: none; opacity: 0.45; transition: opacity 0.15s; line-height: 1; }
 .sel-home-btn:hover { opacity: 1; }
-.sel-brand { font-family: 'Cinzel Decorative', serif; font-size: 32px; color: var(--gold); letter-spacing: 0.08em; }
-.sel-subtitle { font-family: 'Cinzel', serif; font-size: 12px; color: var(--parchment-dim); letter-spacing: 0.18em; text-transform: uppercase; }
+.sel-brand { font-family: 'Cormorant Garamond', serif; font-size: 32px; color: var(--gold); letter-spacing: 0.08em; }
+.sel-subtitle { font-family: 'Cormorant Garamond', serif; font-size: 12px; color: var(--parchment-dim); letter-spacing: 0.18em; text-transform: uppercase; }
 .sel-grid { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; min-height: 60px; }
-.sel-empty { font-family: 'EB Garamond', serif; font-size: 15px; font-style: italic; color: var(--parchment-dim); opacity: 0.65; text-align: center; padding: 20px 0; }
+.sel-empty { font-family: 'Cormorant Garamond', serif; font-size: 15px; font-style: italic; color: var(--parchment-dim); opacity: 0.65; text-align: center; padding: 20px 0; }
 .sel-card {
     position: relative;
     background: var(--bg2);
@@ -2172,51 +2200,51 @@ body {
     user-select: none;
 }
 .sel-card:hover { border-color: var(--gold); background: var(--bg3); }
-.sel-card-name  { font-family: 'Cinzel', serif; font-size: 14px; color: var(--parchment); margin-bottom: 6px; word-break: break-word; }
-.sel-card-class { font-family: 'EB Garamond', serif; font-size: 12px; color: var(--parchment-dim); font-style: italic; word-break: break-word; }
+.sel-card-name  { font-family: 'Cormorant Garamond', serif; font-size: 14px; color: var(--parchment); margin-bottom: 6px; word-break: break-word; }
+.sel-card-class { font-family: 'Cormorant Garamond', serif; font-size: 12px; color: var(--parchment-dim); font-style: italic; word-break: break-word; }
 .sel-card-delete { position: absolute; top: 5px; right: 7px; background: none; border: none; color: var(--parchment-dim); cursor: pointer; font-size: 12px; opacity: 0.4; line-height: 1; padding: 2px 4px; transition: opacity 0.2s, color 0.2s; }
 .sel-card-delete:hover { opacity: 1; color: var(--fail); }
-.sel-card-campaign { font-family: 'Cinzel', serif; font-size: 9px; letter-spacing: 0.12em; color: var(--gold); margin-top: 6px; opacity: 0.85; }
-.sel-card-campaign.no-campaign { color: var(--parchment-dim); opacity: 0.4; font-style: italic; font-family: 'EB Garamond', serif; font-size: 11px; letter-spacing: 0; }
-.sel-add-btn { background: transparent; border: 1px dashed var(--gold-dim); border-radius: var(--radius); color: var(--gold-dim); font-family: 'Cinzel', serif; font-size: 13px; letter-spacing: 0.14em; padding: 10px 28px; cursor: pointer; transition: border-color 0.2s, color 0.2s; }
+.sel-card-campaign { font-family: 'Cormorant Garamond', serif; font-size: 9px; letter-spacing: 0.12em; color: var(--gold); margin-top: 6px; opacity: 0.85; }
+.sel-card-campaign.no-campaign { color: var(--parchment-dim); opacity: 0.4; font-style: italic; font-family: 'Cormorant Garamond', serif; font-size: 11px; letter-spacing: 0; }
+.sel-add-btn { background: transparent; border: 1px dashed var(--gold-dim); border-radius: var(--radius); color: var(--gold-dim); font-family: 'Cormorant Garamond', serif; font-size: 13px; letter-spacing: 0.14em; padding: 10px 28px; cursor: pointer; transition: border-color 0.2s, color 0.2s; }
 .sel-add-btn:hover { border-color: var(--gold); color: var(--gold); }
 .sel-new-form { flex-direction: column; align-items: stretch; gap: 10px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; width: 100%; max-width: 360px; }
-.sel-new-input { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--parchment); font-family: 'EB Garamond', serif; font-size: 14px; padding: 8px 12px; width: 100%; outline: none; transition: border-color 0.2s; }
+.sel-new-input { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--parchment); font-family: 'Cormorant Garamond', serif; font-size: 14px; padding: 8px 12px; width: 100%; outline: none; transition: border-color 0.2s; }
 .sel-new-input:focus { border-color: var(--gold-dim); }
 .sel-new-btns { display: flex; gap: 8px; justify-content: center; }
-.sel-confirm-btn { background: var(--gold-dim); border: none; border-radius: var(--radius); color: var(--bg); font-family: 'Cinzel', serif; font-size: 13px; letter-spacing: 0.1em; padding: 8px 20px; cursor: pointer; transition: background 0.2s; }
+.sel-confirm-btn { background: var(--gold-dim); border: none; border-radius: var(--radius); color: var(--bg); font-family: 'Cormorant Garamond', serif; font-size: 13px; letter-spacing: 0.1em; padding: 8px 20px; cursor: pointer; transition: background 0.2s; }
 .sel-confirm-btn:hover { background: var(--gold); }
-.sel-cancel-btn  { background: transparent; border: 1px solid var(--border); border-radius: var(--radius); color: var(--parchment-dim); font-family: 'Cinzel', serif; font-size: 13px; letter-spacing: 0.1em; padding: 8px 20px; cursor: pointer; transition: border-color 0.2s, color 0.2s; }
+.sel-cancel-btn  { background: transparent; border: 1px solid var(--border); border-radius: var(--radius); color: var(--parchment-dim); font-family: 'Cormorant Garamond', serif; font-size: 13px; letter-spacing: 0.1em; padding: 8px 20px; cursor: pointer; transition: border-color 0.2s, color 0.2s; }
 .sel-cancel-btn:hover { border-color: var(--parchment-dim); color: var(--parchment); }
 .sel-save-row { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border: 1px solid var(--border); border-radius: var(--radius); background: rgba(201,168,76,0.04); width: 100%; max-width: 420px; }
 .sel-save-icon { font-size: 14px; flex-shrink: 0; }
-.sel-save-label { flex: 1; font-family: 'EB Garamond', serif; font-size: 14px; color: var(--parchment-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sel-save-label { flex: 1; font-family: 'Cormorant Garamond', serif; font-size: 14px; color: var(--parchment-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sel-save-label.connected { color: var(--success); }
-.sel-save-btn { font-family: 'Cinzel', serif; font-size: 10px; letter-spacing: 0.1em; background: none; border: 1px solid var(--border); color: var(--parchment-dim); padding: 5px 10px; border-radius: var(--radius); cursor: pointer; flex-shrink: 0; transition: border-color 0.15s, color 0.15s; }
+.sel-save-btn { font-family: 'Cormorant Garamond', serif; font-size: 10px; letter-spacing: 0.1em; background: none; border: 1px solid var(--border); color: var(--parchment-dim); padding: 5px 10px; border-radius: var(--radius); cursor: pointer; flex-shrink: 0; transition: border-color 0.15s, color 0.15s; }
 .sel-save-btn:hover { border-color: var(--gold-dim); color: var(--gold); }
 /* Config section on selection screen */
 .sel-config-section { width: 100%; max-width: 420px; border: 1px solid var(--border); border-radius: var(--radius); background: rgba(201,168,76,0.03); padding: 16px; display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
-.sel-config-title { font-family: 'Cinzel', serif; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--parchment-dim); margin-bottom: 4px; }
-.sel-config-label { font-family: 'EB Garamond', serif; font-size: 13px; color: var(--parchment-dim); margin-top: 4px; }
-.sel-config-input { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--parchment); font-family: 'EB Garamond', serif; font-size: 14px; padding: 7px 10px; width: 100%; transition: border-color 0.2s; }
+.sel-config-title { font-family: 'Cormorant Garamond', serif; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--parchment-dim); margin-bottom: 4px; }
+.sel-config-label { font-family: 'Cormorant Garamond', serif; font-size: 13px; color: var(--parchment-dim); margin-top: 4px; }
+.sel-config-input { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--parchment); font-family: 'Cormorant Garamond', serif; font-size: 14px; padding: 7px 10px; width: 100%; transition: border-color 0.2s; }
 .sel-config-input:focus { outline: none; border-color: var(--gold-dim); }
-.sel-config-save-btn { margin-top: 6px; background: var(--gold-dim); border: none; border-radius: var(--radius); color: var(--bg); font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 0.1em; padding: 9px 20px; cursor: pointer; align-self: flex-end; transition: background 0.2s; }
+.sel-config-save-btn { margin-top: 6px; background: var(--gold-dim); border: none; border-radius: var(--radius); color: var(--bg); font-family: 'Cormorant Garamond', serif; font-size: 11px; letter-spacing: 0.1em; padding: 9px 20px; cursor: pointer; align-self: flex-end; transition: background 0.2s; }
 .sel-config-save-btn:hover { background: var(--gold); }
 
 /* ── GATEWAY ── */
 .gateway-panel { display: flex; flex-direction: column; align-items: center; gap: 20px; max-width: 420px; width: 100%; padding: 40px 32px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg2); }
-.gateway-title { font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--parchment-dim); margin-top: -8px; }
-.gateway-desc  { font-family: 'EB Garamond', serif; font-size: 15px; color: var(--parchment-dim); text-align: center; line-height: 1.55; margin: 0; }
-.gateway-btn { font-family: 'Cinzel', serif; font-size: 12px; letter-spacing: 0.1em; background: rgba(201,168,76,0.12); border: 1px solid var(--gold-dim); color: var(--gold-light); padding: 12px 28px; border-radius: var(--radius); cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+.gateway-title { font-family: 'Cormorant Garamond', serif; font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--parchment-dim); margin-top: -8px; }
+.gateway-desc  { font-family: 'Cormorant Garamond', serif; font-size: 15px; color: var(--parchment-dim); text-align: center; line-height: 1.55; margin: 0; }
+.gateway-btn { font-family: 'Cormorant Garamond', serif; font-size: 12px; letter-spacing: 0.1em; background: rgba(201,168,76,0.12); border: 1px solid var(--gold-dim); color: var(--gold-light); padding: 12px 28px; border-radius: var(--radius); cursor: pointer; transition: background 0.15s, border-color 0.15s; }
 .gateway-btn:hover { background: rgba(201,168,76,0.22); border-color: var(--gold); }
-.gateway-hint { font-family: 'EB Garamond', serif; font-size: 12px; font-style: italic; color: var(--parchment-dim); opacity: 0.5; text-align: center; margin: 0; }
+.gateway-hint { font-family: 'Cormorant Garamond', serif; font-size: 12px; font-style: italic; color: var(--parchment-dim); opacity: 0.5; text-align: center; margin: 0; }
 .gateway-key-box { font-family: 'Courier New', monospace; font-size: 13px; color: var(--gold-light); background: rgba(201,168,76,0.06); border: 1px solid var(--gold-dim); border-radius: var(--radius); padding: 10px 16px; text-align: center; letter-spacing: 0.04em; word-break: break-all; width: 100%; box-sizing: border-box; }
 .gateway-btn-row { display: flex; gap: 8px; width: 100%; }
-.gateway-btn-secondary { font-family: 'Cinzel', serif; font-size: 12px; letter-spacing: 0.1em; background: transparent; border: 1px solid var(--gold-dim); color: var(--parchment-dim); padding: 12px 18px; border-radius: var(--radius); cursor: pointer; transition: background 0.15s, border-color 0.15s; white-space: nowrap; }
+.gateway-btn-secondary { font-family: 'Cormorant Garamond', serif; font-size: 12px; letter-spacing: 0.1em; background: transparent; border: 1px solid var(--gold-dim); color: var(--parchment-dim); padding: 12px 18px; border-radius: var(--radius); cursor: pointer; transition: background 0.15s, border-color 0.15s; white-space: nowrap; }
 .gateway-btn-secondary:hover { background: rgba(201,168,76,0.08); border-color: var(--gold); color: var(--parchment); }
 .gateway-key-input { width: 100%; box-sizing: border-box; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--parchment); font-family: 'Courier New', monospace; font-size: 13px; padding: 10px 14px; outline: none; transition: border-color 0.15s; }
 .gateway-key-input:focus { border-color: var(--gold-dim); }
-.gateway-link-btn { background: none; border: none; color: var(--gold-dim); font-family: 'EB Garamond', serif; font-size: 12px; font-style: italic; cursor: pointer; padding: 0; text-decoration: underline; opacity: 0.7; }
+.gateway-link-btn { background: none; border: none; color: var(--gold-dim); font-family: 'Cormorant Garamond', serif; font-size: 12px; font-style: italic; cursor: pointer; padding: 0; text-decoration: underline; opacity: 0.7; }
 .gateway-link-btn:hover { opacity: 1; }
 #gateway-new, #gateway-existing { display: flex; flex-direction: column; align-items: center; gap: 16px; width: 100%; }
 #app-wrapper { flex: 1; flex-direction: column; min-height: 0; }
@@ -2225,7 +2253,7 @@ body {
 .music-unlock-prompt {
     position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
     background: var(--bg3); border: 1px solid var(--gold-dim); border-radius: var(--radius);
-    color: var(--gold); font-family: 'Cinzel', serif; font-size: 12px; letter-spacing: 0.1em;
+    color: var(--gold); font-family: 'Cormorant Garamond', serif; font-size: 12px; letter-spacing: 0.1em;
     padding: 10px 24px; cursor: pointer; z-index: 9000; display: none;
 }
 .music-unlock-prompt:hover { background: var(--gold-dim); color: var(--bg); }
@@ -2235,14 +2263,14 @@ body {
 #dddice-canvas { width: 100%; height: 100%; display: block; }
 
 /* ── SELECTION SCREEN TYPE TOGGLE ── */
-.sel-type-row { display: flex; gap: 16px; font-family: 'EB Garamond', serif; font-size: 14px; color: var(--parchment-dim); }
+.sel-type-row { display: flex; gap: 16px; font-family: 'Cormorant Garamond', serif; font-size: 14px; color: var(--parchment-dim); }
 .sel-type-label { cursor: pointer; }
-.sel-type-hint { font-family: 'EB Garamond', serif; font-size: 12px; color: var(--parchment-dim); opacity: .6; font-style: italic; }
+.sel-type-hint { font-family: 'Cormorant Garamond', serif; font-size: 12px; color: var(--parchment-dim); opacity: .6; font-style: italic; }
 
 /* ── SELECTION SCREEN BADGE ── */
 .sel-card-type {
     display: inline-block;
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 10px;
     letter-spacing: .08em;
     color: var(--gold-dim);
@@ -2257,17 +2285,16 @@ body {
    LIGHT MODE
    ═══════════════════════════════════════════ */
 body.light-mode {
-    --bg: #f0ead8;
-    --bg2: #e6dfc9;
-    --bg3: #dbd2b8;
-    --parchment: #1c1408;
-    --parchment-dim: #5a4520;
-    --gold: #8a6010;
-    --gold-light: #a07820;
-    --gold-dim: #c49840;
-    --border: rgba(100,70,10,0.2);
-    --success: #2a6e44;
-    --fail: #942418;
+    --ink:#ddd4c2; --bg:#f4efe4; --panel:#fcf9f1; --raise:#fff;
+    --line:rgba(70,56,30,.13); --line2:rgba(70,56,30,.24);
+    --text:#2c2820; --warm:#1b1710; --dim:#6c6353; --faint:#9c917a;
+    --ember:#a9620f; --ember2:#8a4f0c; --embersoft:rgba(169,98,15,.14);
+    --violet:#6a47a3; --violet2:#523784; --violetsoft:rgba(106,71,163,.13);
+    --ok:#2c8a57; --bad:#bd3528; --warn:#9c6c12;
+    --field:rgba(50,38,14,.05); --field2:rgba(50,38,14,.035);
+    --track:rgba(50,38,14,.10); --track2:rgba(50,38,14,.15);
+    --chrome1:#efe7d6; --rail:#ebe2cf; --frameShadow:rgba(70,52,22,.16);
+    --pageGlow:rgba(169,98,15,.05); --hp1:#88c6a0;
 }
 body.light-mode .topbar {
     background: linear-gradient(90deg, #e0d8c4, #d4cbaf);
@@ -2389,7 +2416,7 @@ body.light-mode .roll-btn:hover {
     border-radius: 0 0 var(--radius) 0;
 }
 .camera-label {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 11px;
     color: var(--parchment-dim);
     text-align: center;

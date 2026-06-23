@@ -1,12 +1,26 @@
 :root {
-    --gold: #c9a84c;
-    --gold-light: #e8c97a;
-    --gold-dim: #a07830;
-    --parchment: #f0e6c8;
-    --success: #4caf77;
+    /* New design tokens — overlay stays DARK in both themes (composites over video) */
+    --ink:#050608; --bg:#0b0e13; --panel:#10141b; --raise:#161b25;
+    --line:rgba(150,168,200,.10); --line2:rgba(150,168,200,.20);
+    --text:#e8ebf1; --warm:#f3ede1; --dim:#868f9f; --faint:#586273;
+    --ember:#eca456; --ember2:#f6c07e; --embersoft:rgba(236,164,86,.12);
+    --violet:#a98bdd; --violet2:#c4aef0; --violetsoft:rgba(169,139,221,.12);
+    --ok:#5bc98e; --bad:#e25a4f; --warn:#e9aa45; --hp1:#2f7d54;
+    --track:rgba(255,255,255,.06); --track2:rgba(255,255,255,.10);
+    --frameShadow:rgba(0,0,0,.9);
+    /* ── Legacy aliases → new palette ── */
+    --gold: var(--ember);
+    --gold-light: var(--ember2);
+    --gold-dim: var(--faint);
+    --parchment: var(--text);
+    --parchment-dim: var(--dim);
+    --success: var(--ok);
     --success-crit: #a8ff78;
-    --fail: #c0392b;
+    --fail: var(--bad);
     --fail-crit: #ff4444;
+    --border: var(--line);
+    --radius: 4px;
+    /* card system (unchanged — playing-card faces) */
     --card-red: #c0392b;
     --card-black: #1a1a1a;
     --card-cream: #f5f0e8;
@@ -22,7 +36,7 @@
 
 body {
     background: transparent;
-    font-family: 'EB Garamond', serif;
+    font-family: 'Archivo', sans-serif;
     width: 100vw;
     height: 100vh;
     display: flex;
@@ -62,7 +76,7 @@ body {
 }
 
 .wait-text {
-    font-family: 'Cinzel',serif;
+    font-family: 'Cormorant Garamond',serif;
     font-size: 13px;
     letter-spacing: 0.25em;
     text-transform: uppercase;
@@ -215,7 +229,7 @@ body {
     }
 
 .card-char {
-    font-family: 'Cinzel',serif;
+    font-family: 'Cormorant Garamond',serif;
     font-size: 13px;
     letter-spacing: 0.2em;
     color: var(--gold-dim);
@@ -224,7 +238,7 @@ body {
 }
 
 .card-skill {
-    font-family: 'Playfair Display',serif;
+    font-family: 'Cormorant Garamond',serif;
     font-size: 22px;
     font-style: italic;
     color: var(--parchment);
@@ -234,7 +248,7 @@ body {
 }
 
 .card-roll {
-    font-family: 'Cinzel Decorative',serif;
+    font-family: 'Cormorant Garamond',serif;
     font-size: 80px;
     font-weight: 700;
     color: var(--parchment);
@@ -296,7 +310,7 @@ body {
 }
 
 .card-verdict {
-    font-family: 'Cinzel',serif;
+    font-family: 'Cormorant Garamond',serif;
     font-weight: 900;
     letter-spacing: 0.18em;
     animation: verdictIn 0.35s 0.18s both ease-out;
@@ -353,7 +367,7 @@ body {
 }
 
 .card-crit-sub {
-    font-family: 'EB Garamond',serif;
+    font-family: 'Cormorant Garamond',serif;
     font-style: italic;
     font-size: 12px;
     letter-spacing: 0.12em;
@@ -417,7 +431,7 @@ body {
     box-shadow: 0 12px 50px rgba(0,0,0,0.8), 0 3px 10px rgba(0,0,0,0.5);
     position: relative;
     overflow: hidden;
-    font-family: 'Playfair Display', serif;
+    font-family: 'Cormorant Garamond', serif;
 }
 
     .play-card::before {
@@ -482,7 +496,7 @@ body {
 
 /* label under the card */
 .drawn-card-label {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 13px;
     letter-spacing: 0.2em;
     color: var(--gold-dim);
@@ -538,7 +552,7 @@ body {
     will-change: transform, opacity;
     transform: translateX(-50%);
     z-index: 202;
-    font-family: 'Cinzel Decorative', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-weight: 700;
     font-size: 110px;
     color: #ff2222;
@@ -623,7 +637,7 @@ body {
 }
 
 .dmg-char-name {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 13px;
     letter-spacing: 0.2em;
     color: rgba(240,230,200,0.6);
@@ -665,7 +679,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 12px;
     font-weight: 700;
     color: #fff;
@@ -786,7 +800,7 @@ body.shake {
 }
 
 .mort-text {
-    font-family: 'Cinzel Decorative',serif;
+    font-family: 'Cormorant Garamond',serif;
     font-size: 42px;
     color: #cc1111;
     letter-spacing: 0.2em;
@@ -815,7 +829,7 @@ body.shake {
 }
 
 .mort-sub {
-    font-family: 'EB Garamond',serif;
+    font-family: 'Cormorant Garamond',serif;
     font-style: italic;
     font-size: 18px;
     color: rgba(240,200,200,0.6);
@@ -850,7 +864,7 @@ body.shake {
     will-change: transform, opacity;
     transform: translateX(-50%);
     z-index: 202;
-    font-family: 'Cinzel Decorative', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-weight: 700;
     font-size: 72px;
     color: #4cff88;
@@ -900,12 +914,12 @@ body.shake {
     position: absolute;
     box-sizing: border-box;
     overflow: hidden;
-    font-family: 'EB Garamond', serif;
+    font-family: 'Cormorant Garamond', serif;
     color: var(--parchment);
 }
 
 .ow-char-name {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 1.4em;
     font-weight: 600;
     color: var(--gold);
@@ -916,32 +930,32 @@ body.shake {
 }
 
 .ow-hp-wrap { display: flex; flex-direction: column; gap: 4px; }
-.ow-hp-label { font-family: 'Cinzel', serif; font-size: 0.75em; color: var(--parchment-dim); }
+.ow-hp-label { font-family: 'Cormorant Garamond', serif; font-size: 0.75em; color: var(--parchment-dim); }
 .ow-hp-track { position: relative; height: 18px; background: rgba(0,0,0,0.5); border: 1px solid var(--border); border-radius: 3px; overflow: hidden; }
 .ow-hp-fill { position: absolute; inset: 0; right: auto; background: linear-gradient(90deg,#1a5c2a,#2e8b57); transition: width 0.8s ease; border-radius: 3px; }
 .ow-hp-fill.yellow { background: linear-gradient(90deg,#7a5500,#c8960a); }
 .ow-hp-fill.red { background: linear-gradient(90deg,#7b1a1a,#c0392b); }
-.ow-hp-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: 'Cinzel', serif; font-size: 0.7em; color: var(--parchment); text-shadow: 0 1px 3px #000; }
+.ow-hp-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: 'Cormorant Garamond', serif; font-size: 0.7em; color: var(--parchment); text-shadow: 0 1px 3px #000; }
 
 .ow-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 8px; }
 .ow-stat { display: flex; flex-direction: column; align-items: center; background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 3px; padding: 3px 4px; }
-.ow-stat-label { font-family: 'Cinzel', serif; font-size: 0.55em; color: var(--parchment-dim); }
-.ow-stat-value { font-family: 'Cinzel', serif; font-size: 0.95em; color: var(--gold); font-weight: 600; }
+.ow-stat-label { font-family: 'Cormorant Garamond', serif; font-size: 0.55em; color: var(--parchment-dim); }
+.ow-stat-value { font-family: 'Cormorant Garamond', serif; font-size: 0.95em; color: var(--gold); font-weight: 600; }
 
-.ow-protection { font-family: 'Cinzel', serif; font-size: 0.85em; color: var(--parchment); background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 3px; padding: 4px 8px; }
+.ow-protection { font-family: 'Cormorant Garamond', serif; font-size: 0.85em; color: var(--parchment); background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 3px; padding: 4px 8px; }
 
 .ow-list { display: flex; flex-direction: column; gap: 2px; }
 .ow-list-item { display: flex; justify-content: space-between; font-size: 0.8em; padding: 2px 4px; border-bottom: 1px solid rgba(201,168,76,0.08); }
 .ow-list-name { color: var(--parchment); }
-.ow-list-value { color: var(--gold); font-family: 'Cinzel', serif; font-size: 0.85em; }
+.ow-list-value { color: var(--gold); font-family: 'Cormorant Garamond', serif; font-size: 0.85em; }
 
 .ow-custom-text { font-size: 1em; line-height: 1.5; color: var(--parchment); }
 
-.ow-campaign-name { font-family: 'Cinzel Decorative', serif; font-size: 1.2em; color: var(--gold); text-shadow: 0 0 12px rgba(201,168,76,0.4); text-align: center; }
+.ow-campaign-name { font-family: 'Cormorant Garamond', serif; font-size: 1.2em; color: var(--gold); text-shadow: 0 0 12px rgba(201,168,76,0.4); text-align: center; }
 
 .ow-roll-row { display: flex; gap: 6px; align-items: center; font-size: 0.78em; padding: 2px 0; border-bottom: 1px solid rgba(201,168,76,0.08); }
 .ow-roll-char { color: var(--parchment-dim); min-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ow-roll-skill { flex: 1; color: var(--parchment); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ow-roll-result { font-family: 'Cinzel', serif; font-weight: 600; }
+.ow-roll-result { font-family: 'Cormorant Garamond', serif; font-weight: 600; }
 .ow-roll-result.success { color: var(--success); }
 .ow-roll-result.fail { color: var(--fail); }
