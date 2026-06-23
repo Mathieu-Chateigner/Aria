@@ -77,58 +77,68 @@
     <!-- APP -->
     <div id="app-wrapper" style="display:none;flex-direction:column;flex:1;">
 
-    <!-- TOP BAR -->
+    <!-- UNIFIED COMMAND BAR (topbar + bonus/malus + music merged) -->
     <div class="topbar">
-        <div class="topbar-title" onclick="switchCharacter()" title="Changer de personnage" style="cursor:pointer;">♛ ARIA</div>
+        <div class="topbar-title" onclick="switchCharacter()" title="Changer de personnage" style="cursor:pointer;">ARIA</div>
+        <div class="tb-sep"></div>
         <span class="topbar-char" id="char-display">—</span>
-        <span class="rolling-ind" id="rolling-ind">⚄ Lancer…</span>
-        <button id="btn-open-overlay-editor" class="icon-btn" title="Éditeur d'overlay" style="display:none">🎬</button>
-        <button class="icon-btn" onclick="toggleConfig()" title="Configuration">⚙</button>
-    </div>
+        <div class="tb-sep"></div>
 
-    <!-- BM BAR -->
-    <div class="bm-bar">
-        <span class="bm-bar-label">Bonus / Malus</span>
-        <div class="bm-display" id="bm-display">±0</div>
-        <div class="bm-sep"></div>
-        <button class="bm-btn plus" onclick="addBM(10)">+10</button>
-        <button class="bm-btn plus" onclick="addBM(20)">+20</button>
-        <button class="bm-btn plus" onclick="addBM(30)">+30</button>
-        <div class="bm-sep"></div>
-        <button class="bm-btn minus" onclick="addBM(-10)">-10</button>
-        <button class="bm-btn minus" onclick="addBM(-20)">-20</button>
-        <button class="bm-btn minus" onclick="addBM(-30)">-30</button>
-        <div class="bm-sep"></div>
-        <div class="bm-custom-row">
-            <input type="text" inputmode="numeric" id="bm-custom-val" placeholder="±X" oninput="this.value=this.value.replace(/[^0-9-]/g,'').replace(/(?!^)-/g,'')" />
-            <button class="bm-btn plus" onclick="addCustomBM(1)">+</button>
-            <button class="bm-btn minus" onclick="addCustomBM(-1)">−</button>
-        </div>
-        <div class="bm-sep"></div>
-        <button class="bm-btn reset-btn" onclick="resetBM()">↺ Reset</button>
-        <div class="bm-sep"></div>
-        <div class="bm-next-group">
-            <span class="bm-bar-label">Prochains jets</span>
-            <input type="text" inputmode="numeric" id="bm-next-val" class="bm-next-input" placeholder="±X" oninput="this.value=this.value.replace(/[^0-9-]/g,'').replace(/(?!^)-/g,'')" onkeydown="if(event.key==='Enter')setBMNext()" />
-            <span class="bm-next-x">×</span>
-            <input type="text" inputmode="numeric" id="bm-next-count" class="bm-next-input bm-next-count-input" placeholder="N" oninput="this.value=this.value.replace(/[^0-9]/g,'')" onkeydown="if(event.key==='Enter')setBMNext()" />
-            <button class="bm-btn" onclick="setBMNext()" title="Appliquer aux N prochains jets">✓</button>
+        <!-- modifier cluster -->
+        <div class="tb-mod">
+            <span class="tb-meta">Mod</span>
+            <button class="bm-btn minus" onclick="addBM(-20)">−20</button>
+            <button class="bm-btn minus" onclick="addBM(-10)">−10</button>
+            <div class="bm-display" id="bm-display">±0</div>
+            <button class="bm-btn plus" onclick="addBM(10)">+10</button>
+            <button class="bm-btn plus" onclick="addBM(20)">+20</button>
+            <details class="tb-pop">
+                <summary class="tb-more" title="Modificateurs avancés">⋯</summary>
+                <div class="tb-pop-panel">
+                    <div class="tb-pop-row">
+                        <button class="bm-btn minus" onclick="addBM(-30)">−30</button>
+                        <button class="bm-btn plus" onclick="addBM(30)">+30</button>
+                        <button class="bm-btn reset-btn" onclick="resetBM()">↺ Reset</button>
+                    </div>
+                    <div class="tb-pop-row bm-custom-row">
+                        <span class="bm-bar-label">Perso.</span>
+                        <input type="text" inputmode="numeric" id="bm-custom-val" placeholder="±X" oninput="this.value=this.value.replace(/[^0-9-]/g,'').replace(/(?!^)-/g,'')" />
+                        <button class="bm-btn plus" onclick="addCustomBM(1)">+</button>
+                        <button class="bm-btn minus" onclick="addCustomBM(-1)">−</button>
+                    </div>
+                    <div class="tb-pop-row bm-next-group">
+                        <span class="bm-bar-label">Prochains jets</span>
+                        <input type="text" inputmode="numeric" id="bm-next-val" class="bm-next-input" placeholder="±X" oninput="this.value=this.value.replace(/[^0-9-]/g,'').replace(/(?!^)-/g,'')" onkeydown="if(event.key==='Enter')setBMNext()" />
+                        <span class="bm-next-x">×</span>
+                        <input type="text" inputmode="numeric" id="bm-next-count" class="bm-next-input bm-next-count-input" placeholder="N" oninput="this.value=this.value.replace(/[^0-9]/g,'')" onkeydown="if(event.key==='Enter')setBMNext()" />
+                        <button class="bm-btn" onclick="setBMNext()" title="Appliquer aux N prochains jets">✓</button>
+                    </div>
+                    <div class="tb-pop-row">
+                        <button class="bm-btn hidden-roll-btn" id="hidden-roll-btn" onclick="toggleHiddenRoll()" title="Quand activé, vos jets ne sont visibles que par le MJ">Jet caché</button>
+                    </div>
+                </div>
+            </details>
             <div class="bm-next-status" id="bm-next-status" style="visibility:hidden;"></div>
         </div>
-        <div class="bm-sep"></div>
-        <span class="bm-bar-label">Karma</span>
-        <div class="karma-display" id="karma-display">0</div>
-        <div class="bm-sep"></div>
-        <button class="bm-btn hidden-roll-btn" id="hidden-roll-btn" onclick="toggleHiddenRoll()" title="Quand activé, vos jets ne sont visibles que par le MJ">🔒 Jet caché</button>
-    </div>
 
-    <!-- MUSIC BAR -->
-    <div class="music-bar" id="music-bar" style="visibility:hidden;">
-        <span class="music-bar-note">♪</span>
-        <span class="music-bar-title" id="music-bar-title">—</span>
-        <span class="music-bar-vol-icon" id="music-bar-vol-icon" onclick="toggleMusicMute()" title="Couper le son" style="cursor:pointer;user-select:none;">🔊</span>
-        <input class="music-bar-slider" id="music-bar-volume" type="range" min="0" max="100" value="80"
-            oninput="onMusicVolumeChange(this.value)" />
+        <div class="tb-karma">
+            <span class="tb-meta">Karma</span>
+            <div class="karma-display" id="karma-display">0</div>
+        </div>
+
+        <div class="tb-spacer"></div>
+
+        <!-- music mini chip -->
+        <div class="music-bar" id="music-bar" style="visibility:hidden;">
+            <span class="music-bar-vol-icon" id="music-bar-vol-icon" onclick="toggleMusicMute()" title="Couper le son" style="cursor:pointer;user-select:none;">♪</span>
+            <span class="music-bar-title" id="music-bar-title">—</span>
+            <input class="music-bar-slider" id="music-bar-volume" type="range" min="0" max="100" value="80"
+                oninput="onMusicVolumeChange(this.value)" />
+        </div>
+
+        <span class="rolling-ind" id="rolling-ind">Lancer…</span>
+        <button id="btn-open-overlay-editor" class="icon-btn" title="Éditeur d'overlay" style="display:none">▦</button>
+        <button class="icon-btn" onclick="toggleConfig()" title="Configuration">⚙</button>
     </div>
 
     <!-- MAIN -->

@@ -2320,7 +2320,7 @@ function toggleMusicMute() {
 function _updateMusicMuteIcon() {
     const ic = document.getElementById('music-bar-vol-icon');
     if (ic) {
-        ic.textContent = _musicMuted ? '🔇' : '🔊';
+        ic.textContent = _musicMuted ? '⊘' : '♪';
         ic.title = _musicMuted ? 'Réactiver le son' : 'Couper le son';
     }
 }
