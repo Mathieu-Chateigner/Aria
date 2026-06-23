@@ -1,6 +1,6 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.0.31903.59
+# Visual Studio Version 18
+VisualStudioVersion = 18.7.11911.148 stable
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "views", "views", "{B1B2C3D4-E5F6-7890-ABCD-EF1234567891}"
 	ProjectSection(SolutionItems) = preProject
@@ -34,6 +34,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Docs", "Docs", "{E1B2C3D4-E
 		Docs\bugs_and_issues.md = Docs\bugs_and_issues.md
 		Docs\console_logs.txt = Docs\console_logs.txt
 		Docs\development_plan.md = Docs\development_plan.md
+		Docs\HANDOFF_claude_code.md = Docs\HANDOFF_claude_code.md
 		Docs\README.md = Docs\README.md
 	EndProjectSection
 EndProject

@@ -1303,26 +1303,26 @@ body::after {
 .gm-pot-list { margin-top: 16px; display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; }
 .gm-pot-card {
     position: relative;
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-left: 2px solid var(--gm-accent-dim);
-    border-radius: var(--radius);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 2px solid var(--line2);
+    border-radius: 4px;
     overflow: hidden;
     transition: border-left-color .18s, box-shadow .18s;
 }
-.gm-pot-card:hover { border-left-color: var(--gm-accent); box-shadow: 0 2px 12px rgba(123,63,160,0.15); }
+.gm-pot-card:hover { border-left-color: var(--violet); }
 .gm-pot-card-header {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 40px 10px 14px;
-    background: rgba(123,63,160,0.05);
-    border-bottom: 1px solid var(--border);
+    padding: 11px 40px 11px 14px;
+    background: none;
+    border-bottom: 1px solid var(--line);
 }
-.gm-pot-card-icon { color: var(--gm-accent-dim); font-size: 13px; flex-shrink: 0; line-height: 1; }
-.gm-pot-name-input { flex: 1; background: transparent; border: none; font-family: 'Cormorant Garamond', serif; font-size: 12px; letter-spacing: .04em; color: var(--parchment); outline: none; min-width: 0; transition: color .2s; }
-.gm-pot-name-input:focus { color: var(--gm-accent-light); }
-.gm-pot-name-input::placeholder { color: var(--parchment-dim); opacity: .45; }
+.gm-pot-card-icon { color: var(--faint); font-size: 13px; flex-shrink: 0; line-height: 1; }
+.gm-pot-name-input { flex: 1; background: transparent; border: none; font-family: 'Cormorant Garamond', serif; font-size: 16px; font-weight: 600; letter-spacing: .01em; color: var(--warm); outline: none; min-width: 0; transition: color .2s; }
+.gm-pot-name-input:focus { color: var(--violet2); }
+.gm-pot-name-input::placeholder { color: var(--faint); }
 .gm-pot-chance-wrap { display: inline-flex; align-items: center; background: rgba(123,63,160,0.08); border: 1px solid var(--border); border-radius: 20px; padding: 2px 7px; gap: 0; flex-shrink: 0; transition: background .2s, border-color .2s; }
 .gm-pot-chance-wrap:focus-within { background: rgba(123,63,160,0.16); border-color: var(--gm-accent-dim); }
 .gm-pot-chance-badge { background: transparent; border: none; width: 24px; font-family: 'Cormorant Garamond', serif; font-size: 11px; color: var(--gm-accent-light); text-align: right; outline: none; padding: 0; min-width: 0; }
@@ -1384,41 +1384,43 @@ body::after {
 .gm-files-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
 .gm-file-upload-label {
     display: inline-block;
-    font-family: 'Cormorant Garamond', serif;
+    font-family: 'Archivo', sans-serif;
     font-size: 11px;
+    font-weight: 600;
     letter-spacing: .08em;
-    color: var(--parchment-dim);
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 7px 14px;
+    text-transform: uppercase;
+    color: var(--violet);
+    background: none;
+    border: 1px solid rgba(169,139,221,0.3);
+    border-radius: 3px;
+    padding: 8px 16px;
     cursor: pointer;
-    transition: border-color .2s, color .2s;
+    transition: border-color .2s, color .2s, background .2s;
 }
-.gm-file-upload-label:hover { border-color: var(--gm-accent-dim); color: var(--parchment); }
+.gm-file-upload-label:hover { border-color: var(--violet); background: var(--violetsoft); }
 .gm-file-upload-label:has(input:disabled) { opacity: .5; cursor: not-allowed; }
 .gm-files-progress {
     font-family: 'Cormorant Garamond', serif;
     font-size: 13px;
-    color: var(--parchment-dim);
+    color: var(--dim);
     font-style: italic;
     margin-bottom: 10px;
-    padding: 6px 10px;
-    background: rgba(123,63,160,0.06);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
+    padding: 7px 10px;
+    background: var(--violetsoft);
+    border: 1px solid var(--line);
+    border-radius: 3px;
 }
-.gm-files-progress.error { color: var(--fail); background: rgba(192,57,43,0.06); border-color: rgba(192,57,43,0.25); }
-.gm-files-list { display: flex; flex-direction: column; gap: 8px; }
+.gm-files-progress.error { color: var(--bad); background: rgba(226,90,79,0.06); border-color: rgba(226,90,79,0.25); }
+.gm-files-list { display: flex; flex-direction: column; gap: 7px; }
 .gm-file-card {
     display: flex;
     align-items: center;
-    gap: 10px;
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-left: 2px solid var(--gm-accent-dim);
-    border-radius: var(--radius);
-    padding: 10px 12px;
+    gap: 12px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 2px solid var(--line2);
+    border-radius: 3px;
+    padding: 12px 14px;
     transition: border-left-color .18s;
     position: relative;
     overflow: hidden;
@@ -1426,43 +1428,42 @@ body::after {
 .gm-file-card::before {
     content: '';
     position: absolute; inset: 0;
-    background: linear-gradient(90deg, rgba(123,63,160,0.05) 0%, transparent 50%);
+    background: var(--violetsoft);
     opacity: 0; transition: opacity .15s; pointer-events: none;
 }
-.gm-file-card:hover { border-left-color: var(--gm-accent); }
+.gm-file-card:hover { border-left-color: var(--violet); }
 .gm-file-card:hover::before { opacity: 1; }
-.gm-file-icon { font-size: 22px; flex-shrink: 0; width: 28px; text-align: center; }
-.gm-file-info { flex: 1; min-width: 0; }
-.gm-file-name { font-family: 'Cormorant Garamond', serif; font-size: 15px; color: var(--parchment); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gm-file-grant-status { font-family: 'Cormorant Garamond', serif; font-size: 10px; letter-spacing: .1em; color: var(--parchment-dim); margin-top: 2px; }
-.gm-file-actions { display: flex; gap: 6px; flex-shrink: 0; }
-.gm-file-btn { font-size: 16px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 8px; cursor: pointer; transition: all .15s; line-height: 1; }
-.gm-file-btn:hover { border-color: var(--gm-accent-dim); }
-.gm-file-btn.active { background: rgba(76,175,119,0.12); border-color: rgba(76,175,119,0.4); }
+.gm-file-icon { font-size: 15px; flex-shrink: 0; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--line2); border-radius: 3px; color: var(--violet); position: relative; z-index: 1; }
+.gm-file-info { flex: 1; min-width: 0; position: relative; z-index: 1; }
+.gm-file-name { font-family: 'Archivo', sans-serif; font-size: 14.5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gm-file-grant-status { font-family: ui-monospace, Menlo, monospace; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); margin-top: 3px; }
+.gm-file-actions { display: flex; gap: 6px; flex-shrink: 0; position: relative; z-index: 1; }
+.gm-file-btn { font-size: 15px; background: none; border: 1px solid var(--line2); border-radius: 3px; padding: 5px 9px; cursor: pointer; transition: border-color .15s, background .15s; line-height: 1; }
+.gm-file-btn:hover { border-color: var(--violet); }
+.gm-file-btn.active { background: rgba(91,201,142,0.12); border-color: rgba(91,201,142,0.4); }
 .gm-file-open-btn {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 11px; letter-spacing: .06em;
-    background: rgba(123,63,160,0.1);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius);
-    color: var(--gm-accent-light);
-    padding: 4px 10px;
+    font-family: 'Archivo', sans-serif;
+    font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+    background: none;
+    border: 1px solid var(--line2);
+    border-radius: 3px;
+    color: var(--violet2);
+    padding: 6px 12px;
     cursor: pointer;
-    transition: all .15s;
+    transition: background .15s, border-color .15s;
 }
-.gm-file-open-btn:hover { background: rgba(123,63,160,0.2); }
+.gm-file-open-btn:hover { background: var(--violetsoft); border-color: var(--violet); }
 .gm-file-del-btn {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 11px;
-    background: transparent;
-    border: 1px solid rgba(192,57,43,0.25);
-    border-radius: var(--radius);
-    color: rgba(192,57,43,0.6);
-    padding: 4px 8px;
+    font-size: 13px;
+    background: none;
+    border: 1px solid rgba(226,90,79,0.25);
+    border-radius: 3px;
+    color: rgba(226,90,79,0.7);
+    padding: 5px 8px;
     cursor: pointer;
-    transition: all .15s;
+    transition: background .15s, border-color .15s, color .15s;
 }
-.gm-file-del-btn:hover { background: rgba(192,57,43,0.1); border-color: rgba(192,57,43,0.5); color: var(--fail); }
+.gm-file-del-btn:hover { background: rgba(226,90,79,0.1); border-color: rgba(226,90,79,0.5); color: var(--bad); }
 
 /* File viewer modal */
 .file-viewer-modal {
@@ -1500,161 +1501,159 @@ body::after {
    MUSIQUE TAB
    ════════════════════════════════════════════ */
 .music-now-playing {
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 14px 16px;
-    margin-bottom: 14px;
+    background: linear-gradient(180deg, var(--raise), var(--panel));
+    border: 1px solid var(--line2);
+    border-radius: 5px;
+    padding: 18px 20px;
+    margin-bottom: 18px;
     position: relative;
 }
-.music-now-playing::before {
-    content: '';
-    position: absolute; top: 0; left: 0; right: 0; height: 1px;
-    background: linear-gradient(90deg, transparent, var(--gm-accent-dim), transparent);
-    opacity: 0.5;
-}
+.music-now-playing::before { content: none; }
 .music-np-title {
     font-family: 'Cormorant Garamond', serif;
-    font-size: 15px;
-    color: var(--gm-accent-light);
-    margin-bottom: 2px;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--warm);
+    margin-bottom: 3px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .music-np-playlist {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 10px;
-    letter-spacing: .08em;
-    color: var(--parchment-dim);
-    margin-bottom: 8px;
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 9.5px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin-bottom: 12px;
     min-height: 12px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.music-progress-wrap { margin-bottom: 10px; }
-.music-progress-bg { background: rgba(123,63,160,0.12); border-radius: 2px; height: 3px; overflow: hidden; }
-.music-progress-fill { background: var(--gm-accent); height: 3px; width: 0%; border-radius: 2px; transition: width 0.5s linear; }
-.music-controls { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.music-progress-wrap { margin-bottom: 14px; }
+.music-progress-bg { background: var(--track); border-radius: 2px; height: 4px; overflow: hidden; }
+.music-progress-fill { background: linear-gradient(90deg, var(--violet), var(--violet2)); height: 4px; width: 0%; border-radius: 2px; transition: width 0.5s linear; }
+.music-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .music-ctrl-btn {
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--gm-accent-light);
+    background: none;
+    border: 1px solid var(--line2);
+    border-radius: 3px;
+    color: var(--dim);
     font-size: 13px;
-    padding: 4px 10px;
+    padding: 5px 10px;
     cursor: pointer;
-    transition: background .15s, border-color .15s;
+    transition: background .15s, border-color .15s, color .15s;
     line-height: 1.4;
 }
-.music-ctrl-btn:hover { background: var(--bg3); border-color: var(--gm-accent-dim); }
-.music-ctrl-btn.active { background: var(--gm-accent-dim); border-color: var(--gm-accent); color: #fff; }
-.music-ctrl-play { background: var(--gm-accent-dim); color: #fff; border-color: var(--gm-accent-dim); font-weight: 700; padding: 4px 14px; }
-.music-ctrl-play:hover { background: var(--gm-accent); border-color: var(--gm-accent); }
-.music-fade-label { font-family: 'Cormorant Garamond', serif; font-size: 13px; color: var(--parchment-dim); }
+.music-ctrl-btn:hover { border-color: var(--violet); color: var(--text); }
+.music-ctrl-btn.active { background: var(--violetsoft); border-color: var(--violet); color: var(--violet2); }
+.music-ctrl-play { background: var(--violet); color: var(--ink); border-color: var(--violet); font-weight: 700; padding: 5px 16px; }
+.music-ctrl-play:hover { filter: brightness(1.08); }
+.music-fade-label { font-family: ui-monospace, Menlo, monospace; font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
 .music-fade-input {
-    background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
-    color: var(--parchment); font-family: 'Cormorant Garamond', serif; font-size: 13px;
-    padding: 3px 6px; width: 38px; text-align: center;
+    background: var(--field); border: 1px solid var(--line2); border-radius: 3px;
+    color: var(--text); font-family: 'Archivo', sans-serif; font-variant-numeric: tabular-nums; font-size: 13px;
+    padding: 4px 6px; width: 38px; text-align: center;
 }
-.music-fade-input:focus { outline: none; border-color: var(--gm-accent-dim); }
-.music-vol-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-.music-vol-icon { font-size: 14px; flex-shrink: 0; }
-.music-vol-slider { flex: 1; height: 4px; accent-color: var(--gm-accent); cursor: pointer; }
-.music-vol-val { font-family: 'Cormorant Garamond', serif; font-size: 11px; color: var(--parchment-dim); min-width: 26px; text-align: right; }
+.music-fade-input:focus { outline: none; border-color: var(--violet); }
+.music-vol-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.music-vol-icon { font-size: 13px; color: var(--violet); flex-shrink: 0; }
+.music-vol-slider { flex: 1; height: 4px; accent-color: var(--violet); cursor: pointer; }
+.music-vol-val { font-family: 'Archivo', sans-serif; font-variant-numeric: tabular-nums; font-size: 11px; color: var(--dim); min-width: 26px; text-align: right; }
 
-.music-section-title { font-family: 'Cormorant Garamond', serif; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--parchment-dim); margin-bottom: 6px; }
+.music-section-title { font-family: ui-monospace, Menlo, monospace; font-size: 9.5px; letter-spacing: .18em; text-transform: uppercase; color: var(--faint); margin-bottom: 8px; }
 
 /* Playlist chips bar */
 .music-playlist-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .music-pl-chip {
-    display: flex; align-items: center; gap: 5px;
-    background: var(--bg2); border: 1px solid var(--border); border-radius: 14px;
-    padding: 3px 8px 3px 5px; transition: background .12s, border-color .15s;
+    display: flex; align-items: center; gap: 6px;
+    background: none; border: 1px solid var(--line2); border-radius: 20px;
+    padding: 4px 10px 4px 6px; transition: background .12s, border-color .15s;
 }
-.music-pl-chip:hover { border-color: var(--gm-accent-dim); }
-.music-pl-chip.active { background: rgba(123,63,160,0.10); border-color: var(--gm-accent); }
-.music-pl-chip.playing { box-shadow: 0 0 0 1px var(--gm-accent-dim) inset; }
+.music-pl-chip:hover { border-color: var(--violet); }
+.music-pl-chip.active { background: var(--violetsoft); border-color: var(--violet); }
+.music-pl-chip.playing { box-shadow: 0 0 0 1px var(--violet) inset; }
 .music-pl-launch {
-    color: var(--gm-accent-light); font-size: 10px; cursor: pointer;
+    color: var(--ink); font-size: 9px; cursor: pointer;
     width: 16px; height: 16px; line-height: 16px; text-align: center; flex-shrink: 0;
-    border-radius: 50%; background: var(--bg3);
+    border-radius: 50%; background: var(--violet);
 }
-.music-pl-launch:hover { background: var(--gm-accent-dim); color: #fff; }
-.music-pl-name { font-family: 'Cormorant Garamond', serif; font-size: 13px; color: var(--parchment); cursor: pointer; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.music-pl-chip.active .music-pl-name { color: var(--gm-accent-light); }
-.music-pl-count { font-family: 'Cormorant Garamond', serif; font-size: 9px; color: var(--parchment-dim); background: var(--bg3); border-radius: 8px; padding: 0 5px; flex-shrink: 0; }
-.music-pl-edit, .music-pl-del { background: none; border: none; color: var(--parchment-dim); cursor: pointer; font-size: 10px; padding: 0 2px; opacity: .6; line-height: 1; flex-shrink: 0; }
-.music-pl-edit:hover { color: var(--gm-accent-light); opacity: 1; }
-.music-pl-del:hover:not([disabled]) { color: var(--fail); opacity: 1; }
+.music-pl-launch:hover { filter: brightness(1.1); }
+.music-pl-name { font-family: 'Archivo', sans-serif; font-size: 12px; color: var(--text); cursor: pointer; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.music-pl-chip.active .music-pl-name { color: var(--violet2); }
+.music-pl-count { font-family: 'Archivo', sans-serif; font-variant-numeric: tabular-nums; font-size: 9px; color: var(--dim); background: var(--field2); border-radius: 8px; padding: 0 5px; flex-shrink: 0; }
+.music-pl-edit, .music-pl-del { background: none; border: none; color: var(--dim); cursor: pointer; font-size: 10px; padding: 0 2px; opacity: .6; line-height: 1; flex-shrink: 0; }
+.music-pl-edit:hover { color: var(--violet2); opacity: 1; }
+.music-pl-del:hover:not([disabled]) { color: var(--bad); opacity: 1; }
 .music-pl-del[disabled] { opacity: .2; cursor: not-allowed; }
 .music-pl-add {
-    background: var(--bg2); border: 1px dashed var(--border); border-radius: 14px;
-    color: var(--gm-accent-light); cursor: pointer; font-size: 14px; line-height: 1;
-    padding: 3px 10px; transition: background .12s, border-color .15s;
+    background: none; border: 1px dashed var(--line2); border-radius: 20px;
+    color: var(--violet); cursor: pointer; font-size: 14px; line-height: 1;
+    padding: 4px 12px; transition: background .12s, border-color .15s;
 }
-.music-pl-add:hover { background: var(--bg3); border-color: var(--gm-accent); }
+.music-pl-add:hover { border-color: var(--violet); }
 
 /* ─── Monster / file group chip bar (shared) ─── */
 .group-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .group-chip {
     display: flex; align-items: center; gap: 6px;
-    background: var(--bg2); border: 1px solid var(--border); border-radius: 14px;
-    padding: 3px 6px 3px 11px; transition: border-color .12s, background .12s;
+    background: none; border: 1px solid var(--line2); border-radius: 20px;
+    padding: 4px 6px 4px 12px; transition: border-color .12s, background .12s;
 }
-.group-chip:hover { border-color: var(--gm-accent-dim); }
-.group-chip.active { background: rgba(123,63,160,0.10); border-color: var(--gm-accent); }
-.group-chip.drop-hover { border-color: var(--gm-accent); background: rgba(123,63,160,0.22); box-shadow: 0 0 0 1px var(--gm-accent) inset; }
-.group-chip-name { font-family: 'Cormorant Garamond', serif; font-size: 13px; color: var(--parchment); cursor: pointer; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.group-chip.active .group-chip-name { color: var(--gm-accent-light); }
-.group-chip-count { font-family: 'Cormorant Garamond', serif; font-size: 9px; color: var(--parchment-dim); background: var(--bg3); border-radius: 8px; padding: 0 6px; flex-shrink: 0; }
-.group-chip-edit, .group-chip-del { background: none; border: none; color: var(--parchment-dim); cursor: pointer; font-size: 10px; padding: 0 2px; opacity: .6; line-height: 1; flex-shrink: 0; }
-.group-chip-edit:hover { color: var(--gm-accent-light); opacity: 1; }
-.group-chip-del:hover { color: var(--fail); opacity: 1; }
+.group-chip:hover { border-color: var(--violet); }
+.group-chip.active { background: var(--violetsoft); border-color: var(--violet); }
+.group-chip.drop-hover { border-color: var(--violet); background: var(--violetsoft); box-shadow: 0 0 0 1px var(--violet) inset; }
+.group-chip-name { font-family: 'Archivo', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--dim); cursor: pointer; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.group-chip.active .group-chip-name { color: var(--violet2); }
+.group-chip-count { font-family: 'Archivo', sans-serif; font-variant-numeric: tabular-nums; font-size: 9px; color: var(--dim); background: var(--field2); border-radius: 8px; padding: 0 6px; flex-shrink: 0; }
+.group-chip-edit, .group-chip-del { background: none; border: none; color: var(--dim); cursor: pointer; font-size: 10px; padding: 0 2px; opacity: .6; line-height: 1; flex-shrink: 0; }
+.group-chip-edit:hover { color: var(--violet2); opacity: 1; }
+.group-chip-del:hover { color: var(--bad); opacity: 1; }
 .group-chip-add {
-    background: var(--bg2); border: 1px dashed var(--border); border-radius: 14px;
-    color: var(--gm-accent-light); cursor: pointer; font-size: 14px; line-height: 1;
-    padding: 3px 10px; transition: background .12s, border-color .15s;
+    background: none; border: 1px dashed var(--line2); border-radius: 20px;
+    color: var(--violet); cursor: pointer; font-size: 14px; line-height: 1;
+    padding: 4px 12px; transition: background .12s, border-color .15s;
 }
-.group-chip-add:hover { background: var(--bg3); border-color: var(--gm-accent); }
+.group-chip-add:hover { border-color: var(--violet); }
 /* Drag handle on each card; the rest of the card is not draggable. */
-.group-grip { cursor: grab; color: var(--gm-accent-dim); font-size: 13px; line-height: 1; flex-shrink: 0; opacity: .55; user-select: none; transition: opacity .12s, color .12s; }
-.group-grip:hover { opacity: 1; color: var(--gm-accent-light); }
+.group-grip { cursor: grab; color: var(--faint); font-size: 13px; line-height: 1; flex-shrink: 0; opacity: .55; user-select: none; transition: opacity .12s, color .12s; }
+.group-grip:hover { opacity: 1; color: var(--violet2); }
 .group-grip:active { cursor: grabbing; }
 .monster-card.dragging, .gm-file-card.dragging { opacity: .45; }
 /* Small pill showing a card's current group. */
 .group-badge {
-    font-family: 'Cormorant Garamond', serif; font-size: 9px; letter-spacing: .06em;
-    color: var(--gm-accent-light); background: rgba(123,63,160,0.14);
-    border: 1px solid var(--gm-accent-dim); border-radius: 8px;
-    padding: 1px 7px; flex-shrink: 0; white-space: nowrap; vertical-align: middle;
+    font-family: ui-monospace, Menlo, monospace; font-size: 8.5px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--violet2); background: var(--violetsoft);
+    border: 1px solid rgba(169,139,221,0.3); border-radius: 8px;
+    padding: 2px 7px; flex-shrink: 0; white-space: nowrap; vertical-align: middle;
 }
 
 .music-playlist { display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; }
 .music-track-row {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 5px 8px;
-    border-radius: var(--radius);
-    border: 1px solid transparent;
-    border-left: 2px solid transparent;
+    gap: 10px;
+    padding: 9px 14px;
+    border-radius: 3px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 2px solid var(--line2);
     cursor: default;
     transition: background .12s, border-left-color .15s;
     position: relative;
 }
-.music-track-row:hover { background: var(--bg3); border-left-color: var(--gm-accent-dim); }
-.music-track-row.active { background: rgba(123,63,160,0.08); border-color: var(--border); border-left-color: var(--gm-accent); }
-.music-track-indicator { color: var(--gm-accent-light); font-size: 11px; width: 12px; text-align: center; flex-shrink: 0; }
-.music-track-name { flex: 1; font-family: 'Cormorant Garamond', serif; font-size: 14px; color: var(--parchment); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.music-track-row.active .music-track-name { color: var(--gm-accent-light); }
-.music-track-name:hover { color: var(--gm-accent-light); }
-.music-track-badge { font-family: 'Cormorant Garamond', serif; font-size: 9px; letter-spacing: .08em; color: var(--parchment-dim); background: var(--bg3); border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; flex-shrink: 0; }
-.music-track-rename { background: none; border: none; color: var(--parchment-dim); cursor: pointer; font-size: 11px; padding: 2px 4px; opacity: .5; flex-shrink: 0; line-height: 1; }
-.music-track-rename:hover { color: var(--gm-accent-light); opacity: 1; }
-.music-track-delete { background: none; border: none; color: var(--parchment-dim); cursor: pointer; font-size: 11px; padding: 2px 4px; opacity: .5; flex-shrink: 0; line-height: 1; }
-.music-track-delete:hover { color: var(--fail); opacity: 1; }
-.music-empty { font-family: 'Cormorant Garamond', serif; font-size: 13px; color: var(--parchment-dim); padding: 10px 8px; font-style: italic; }
+.music-track-row:hover { border-left-color: var(--violet); }
+.music-track-row.active { background: var(--violetsoft); border-left-color: var(--violet); }
+.music-track-indicator { color: var(--violet2); font-size: 11px; width: 12px; text-align: center; flex-shrink: 0; }
+.music-track-name { flex: 1; font-family: 'Archivo', sans-serif; font-size: 14px; color: var(--text); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.music-track-row.active .music-track-name { color: var(--violet2); }
+.music-track-name:hover { color: var(--violet2); }
+.music-track-badge { font-family: ui-monospace, Menlo, monospace; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); background: var(--field2); border: 1px solid var(--line); border-radius: 3px; padding: 2px 5px; flex-shrink: 0; }
+.music-track-rename { background: none; border: none; color: var(--dim); cursor: pointer; font-size: 11px; padding: 2px 4px; opacity: .5; flex-shrink: 0; line-height: 1; }
+.music-track-rename:hover { color: var(--violet2); opacity: 1; }
+.music-track-delete { background: none; border: none; color: var(--dim); cursor: pointer; font-size: 11px; padding: 2px 4px; opacity: .5; flex-shrink: 0; line-height: 1; }
+.music-track-delete:hover { color: var(--bad); opacity: 1; }
+.music-empty { font-family: 'Cormorant Garamond', serif; font-size: 14px; color: var(--dim); padding: 12px 8px; font-style: italic; }
 .music-add-row { display: flex; align-items: center; gap: 8px; }
-.music-file-hint { font-family: 'Cormorant Garamond', serif; font-size: 12px; color: var(--parchment-dim); font-style: italic; }
-.music-add-status { font-family: 'Cormorant Garamond', serif; font-size: 13px; color: var(--gm-accent-light); margin-top: 8px; min-height: 18px; }
+.music-file-hint { font-family: 'Cormorant Garamond', serif; font-size: 13px; color: var(--dim); font-style: italic; }
+.music-add-status { font-family: 'Cormorant Garamond', serif; font-size: 13px; color: var(--violet2); margin-top: 8px; min-height: 18px; }
 .music-unlock-prompt {
     position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
     background: var(--bg3); border: 1px solid var(--gm-accent-dim); border-radius: var(--radius);

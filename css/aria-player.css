@@ -592,13 +592,14 @@ body::after {
 }
 .inv-money-display { display: flex; gap: 6px; }
 .inv-money-chip {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 10px;
-    letter-spacing: 1px;
-    color: var(--gold-light);
-    border: 1px solid var(--gold-dim);
-    padding: 2px 7px;
-    border-radius: 1px;
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 9.5px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ember2);
+    border: 1px solid rgba(236,164,86,0.3);
+    padding: 3px 8px;
+    border-radius: 3px;
 }
 
 /* ── TAB CONTENT ── */
@@ -1154,16 +1155,17 @@ body::after {
 .money-field { display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .money-dot   { font-size: 16px; line-height: 1; }
 .money-label {
-    font-family: 'Cormorant Garamond', serif;
+    font-family: ui-monospace, Menlo, monospace;
     font-size: 9px;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: var(--parchment-dim);
+    color: var(--faint);
 }
 .money-input {
     text-align: center;
     width: 100%;
-    font-family: 'Cormorant Garamond', serif;
+    font-family: 'Archivo', sans-serif;
+    font-variant-numeric: tabular-nums;
 }
 
 /* ── NOTES TAB ── */
@@ -1215,28 +1217,27 @@ body::after {
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 7px 10px 7px 12px;
+    padding: 9px 10px 9px 12px;
     cursor: pointer;
-    transition: background 0.1s;
-    border-bottom: 1px solid transparent;
+    transition: background 0.1s, border-color 0.1s;
+    border-left: 2px solid transparent;
 }
-.notes-item:hover { background: rgba(201,168,76,0.07); }
+.notes-item:hover { background: var(--embersoft); }
 .notes-item.active {
-    background: rgba(201,168,76,0.12);
-    border-left: 2px solid var(--gold-dim);
-    padding-left: 10px;
+    background: var(--embersoft);
+    border-left-color: var(--ember);
 }
 .notes-item-name {
     flex: 1;
-    font-family: 'Cormorant Garamond', serif;
+    font-family: 'Archivo', sans-serif;
     font-size: 14px;
-    color: var(--parchment-dim);
+    color: var(--dim);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     cursor: pointer;
 }
-.notes-item.active .notes-item-name { color: var(--gold-light); }
+.notes-item.active .notes-item-name { color: var(--text); }
 .notes-item-delete {
     background: none;
     border: none;
@@ -1478,31 +1479,34 @@ body::after {
 .deck-pattern {
     width: 88%;
     height: 88%;
-    border: 1px solid var(--border);
+    border: 1px solid rgba(236,164,86,0.25);
     border-radius: 4px;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 28px;
-    color: var(--gold-dim);
+    color: rgba(236,164,86,0.4);
 }
-.deck-count { font-family: 'Cormorant Garamond', serif; font-size: 13px; color: var(--parchment-dim); }
+.deck-count { font-family: ui-monospace, Menlo, monospace; font-size: 11px; letter-spacing: .14em; color: var(--dim); }
 .card-action-btn {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 13px;
-    padding: 5px 14px;
-    background: rgba(201,168,76,0.08);
-    border: 1px solid var(--gold-dim);
-    color: var(--gold);
+    font-family: 'Archivo', sans-serif;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: 7px 14px;
+    background: none;
+    border: 1px solid var(--line2);
+    color: var(--dim);
     cursor: pointer;
-    border-radius: var(--radius);
-    transition: all 0.15s;
+    border-radius: 3px;
+    transition: border-color .15s, color .15s, background .15s;
     visibility: hidden;
     white-space: nowrap;
 }
 .card-action-btn.visible { visibility: visible; }
-.card-action-btn:hover { background: rgba(201,168,76,0.18); }
-.card-status { font-family: 'Cormorant Garamond', serif; font-size: 13px; color: var(--parchment-dim); min-height: 18px; text-align: center; }
+.card-action-btn:hover { border-color: var(--ember); color: var(--ember2); background: var(--embersoft); }
+.card-status { font-family: ui-monospace, Menlo, monospace; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--faint); min-height: 18px; text-align: center; }
 
 /* Flip animation */
 .flip-wrap {
@@ -1613,9 +1617,9 @@ body::after {
     font-size: 26px;
     font-weight: 900;
     letter-spacing: 0.25em;
-    color: var(--gold-light);
+    color: var(--ember2);
     text-transform: uppercase;
-    text-shadow: 0 0 24px rgba(201,168,76,0.7);
+    text-shadow: 0 0 24px rgba(236,164,86,0.6);
 }
 
 /* ── CARD TRACKER ── */
@@ -1627,20 +1631,21 @@ body::after {
 .c-purple { color: var(--card-purple); }
 .rank-pills { display: flex; gap: 4px; flex-wrap: wrap; }
 .rank-pill {
-    font-family: 'Cormorant Garamond', serif;
+    font-family: 'Archivo', sans-serif;
+    font-variant-numeric: tabular-nums;
     font-size: 12px;
     padding: 2px 6px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--line2);
     border-radius: 3px;
     cursor: pointer;
     user-select: none;
-    color: var(--parchment-dim);
-    transition: all 0.15s;
+    color: var(--dim);
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
-.rank-pill:hover { border-color: var(--gold-dim); color: var(--parchment); }
-.rank-pill.drawn    { background: var(--border); border-color: var(--gold-dim); color: var(--gold); }
-.rank-pill.excluded { background: rgba(192,57,43,0.15); border-color: rgba(192,57,43,0.4); color: rgba(192,57,43,0.7); text-decoration: line-through; }
-.is-joker { border-color: rgba(123,63,160,0.4); color: var(--card-purple); }
+.rank-pill:hover { border-color: var(--ember); color: var(--text); }
+.rank-pill.drawn    { background: var(--embersoft); border-color: var(--ember); color: var(--ember2); }
+.rank-pill.excluded { background: rgba(226,90,79,0.15); border-color: rgba(226,90,79,0.4); color: rgba(226,90,79,0.8); text-decoration: line-through; }
+.is-joker { border-color: rgba(169,139,221,0.4); color: var(--card-purple); }
 
 /* ── ALCHEMY TAB ── */
 .alchemy-header {
@@ -1653,9 +1658,9 @@ body::after {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: rgba(201,168,76,0.06);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
+    background: var(--embersoft);
+    border: 1px solid var(--line);
+    border-radius: 4px;
     padding: 8px 14px;
     margin-bottom: 14px;
 }
@@ -1667,24 +1672,25 @@ body::after {
 }
 .alchemy-vials-ctrl { display: flex; align-items: center; gap: 10px; }
 .vial-btn {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--gold);
-    font-family: 'Cormorant Garamond', serif;
+    background: none;
+    border: 1px solid var(--line2);
+    color: var(--ember);
+    font-family: 'Archivo', sans-serif;
     font-size: 16px;
     width: 28px; height: 28px;
-    border-radius: var(--radius);
+    border-radius: 3px;
     cursor: pointer;
     display: flex; align-items: center; justify-content: center;
-    transition: border-color 0.15s, color 0.15s;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
-.vial-btn:hover:not(:disabled) { border-color: var(--gold); color: var(--gold-light); }
+.vial-btn:hover:not(:disabled) { border-color: var(--ember); background: var(--embersoft); }
 .vial-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 .vial-count {
-    font-family: 'Cormorant Garamond', serif;
+    font-family: 'Archivo', sans-serif;
+    font-variant-numeric: tabular-nums;
     font-size: 22px;
-    font-weight: 600;
-    color: var(--gold);
+    font-weight: 700;
+    color: var(--ember2);
     min-width: 32px;
     text-align: center;
 }
@@ -1709,28 +1715,35 @@ body::after {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 8px 4px;
-    border-bottom: 1px solid var(--border);
+    padding: 10px 14px;
+    margin-bottom: 5px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 2px solid var(--line2);
+    border-radius: 3px;
+    transition: border-left-color .15s;
 }
-.recipe-row:last-child { border-bottom: none; }
-.recipe-name { font-family: 'Cormorant Garamond', serif; font-size: 14px; color: var(--parchment); white-space: nowrap; flex-shrink: 0; }
-.recipe-meta { flex: 1; font-family: 'Cormorant Garamond', serif; font-size: 14px; font-style: italic; color: var(--parchment-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.recipe-chance { font-family: 'Cormorant Garamond', serif; font-size: 13px; color: var(--gold); white-space: nowrap; flex-shrink: 0; }
+.recipe-row:hover { border-left-color: var(--ember); }
+.recipe-name { font-family: 'Archivo', sans-serif; font-size: 15px; font-weight: 500; color: var(--text); white-space: nowrap; flex-shrink: 0; }
+.recipe-meta { flex: 1; font-family: 'Cormorant Garamond', serif; font-size: 15px; font-style: italic; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.recipe-chance { font-family: ui-monospace, Menlo, monospace; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--ember); white-space: nowrap; flex-shrink: 0; }
 .recipe-craft-btn {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 12px;
-    letter-spacing: 0.05em;
-    background: rgba(201,168,76,0.1);
-    border: 1px solid rgba(201,168,76,0.25);
-    color: var(--gold);
-    padding: 5px 12px;
-    border-radius: var(--radius);
+    font-family: 'Archivo', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: none;
+    border: 1px solid rgba(236,164,86,0.3);
+    color: var(--ember);
+    padding: 6px 12px;
+    border-radius: 3px;
     cursor: pointer;
     white-space: nowrap;
     flex-shrink: 0;
     transition: background 0.15s, border-color 0.15s;
 }
-.recipe-craft-btn:hover:not(:disabled) { background: rgba(201,168,76,0.2); border-color: var(--gold-dim); }
+.recipe-craft-btn:hover:not(:disabled) { background: var(--embersoft); border-color: var(--ember); }
 .recipe-craft-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 .alchemy-section-hdr {
     font-family: 'Cormorant Garamond', serif;
@@ -1803,30 +1816,33 @@ body::after {
 .player-file-row {
     display: flex;
     align-items: center;
-    gap: 10px;
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 10px 12px;
-    transition: border-color 0.2s;
+    gap: 12px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 2px solid var(--line2);
+    border-radius: 3px;
+    padding: 12px 14px;
+    transition: border-left-color 0.2s;
 }
-.player-file-row:hover { border-color: rgba(201,168,76,0.3); }
-.pf-icon { font-size: 22px; flex-shrink: 0; width: 28px; text-align: center; }
-.pf-name { flex: 1; min-width: 0; font-family: 'Cormorant Garamond', serif; font-size: 15px; color: var(--parchment); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.player-file-row:hover { border-left-color: var(--ember); }
+.pf-icon { font-size: 15px; flex-shrink: 0; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--line2); border-radius: 3px; color: var(--ember); }
+.pf-name { flex: 1; min-width: 0; font-family: 'Archivo', sans-serif; font-size: 14.5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pf-open-btn {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 11px;
-    letter-spacing: 0.08em;
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--parchment-dim);
-    padding: 5px 12px;
+    font-family: 'Archivo', sans-serif;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: none;
+    border: 1px solid var(--line2);
+    border-radius: 3px;
+    color: var(--dim);
+    padding: 6px 12px;
     cursor: pointer;
     flex-shrink: 0;
-    transition: all 0.15s;
+    transition: background .15s, border-color .15s, color .15s;
 }
-.pf-open-btn:hover { border-color: var(--gold-dim); color: var(--parchment); }
+.pf-open-btn:hover { border-color: var(--ember); color: var(--ember2); background: var(--embersoft); }
 
 /* File viewer modal */
 .file-viewer-modal {
@@ -1836,10 +1852,10 @@ body::after {
     transform: translateX(-50%) translateY(16px);
     width: min(96vw, 960px);
     height: calc(100vh - 80px);
-    background: var(--bg2);
-    border: 1px solid rgba(201,168,76,0.25);
+    background: var(--panel);
+    border: 1px solid var(--line2);
     border-radius: 6px;
-    box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+    box-shadow: 0 30px 80px -30px var(--frameShadow);
     z-index: 1010;
     display: flex;
     flex-direction: column;
@@ -1848,22 +1864,22 @@ body::after {
     transition: opacity 0.2s, transform 0.2s;
 }
 .file-viewer-modal.show { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); }
-.fv-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.fv-title { font-family: 'Cormorant Garamond', serif; font-size: 16px; color: var(--parchment); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+.fv-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+.fv-title { font-family: 'Cormorant Garamond', serif; font-size: 18px; font-weight: 600; color: var(--warm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
 .fv-close-btn {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 13px;
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--parchment-dim);
-    padding: 4px 10px;
+    font-family: 'Archivo', sans-serif;
+    font-size: 12px;
+    background: none;
+    border: 1px solid var(--line2);
+    border-radius: 3px;
+    color: var(--dim);
+    padding: 5px 11px;
     cursor: pointer;
     flex-shrink: 0;
     margin-left: 12px;
-    transition: all 0.15s;
+    transition: background .15s, border-color .15s, color .15s;
 }
-.fv-close-btn:hover { border-color: var(--gold-dim); color: var(--parchment); }
+.fv-close-btn:hover { border-color: var(--ember); color: var(--ember2); }
 .fv-body { flex: 1; overflow: auto; min-height: 0; display: flex; align-items: stretch; }
 .fv-iframe { width: 100%; height: 100%; border: none; display: block; }
 .fv-image { max-width: 100%; max-height: 100%; object-fit: contain; margin: auto; display: block; padding: 12px; transform-origin: 0 0; will-change: transform; cursor: zoom-in; }
