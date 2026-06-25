@@ -642,7 +642,7 @@ function switchCharacter() {
         ablyRolls = null; ablyCards = null; ablyDamage = null; ablyMusic = null;
     };
     if (ablyDamage) {
-        try { ablyDamage.publish('leave', { playerId }, () => doCloseAbly()); } catch(_){ doCloseAbly(); }
+        try { ablyDamage.publish('leave', { playerId }).then(doCloseAbly, doCloseAbly); } catch(_){ doCloseAbly(); }
     } else {
         doCloseAbly();
     }
@@ -2539,7 +2539,7 @@ function sendPresence() {
         campaignKey: character.campaignKey || '',
         ariaType: character.ariaType || 'ancient',
         streamId: sid,
-    }, err => { if (err) console.error('[ARIA] publish error:', err); });
+    }).catch(err => console.error('[ARIA] publish error:', err));
 }
 // Update the Ably status dot and text labels in the topbar and config modal.
 function setAblyStatus(ok) {
