@@ -643,7 +643,7 @@ function switchCharacter() {
     _stopSlot('A'); _stopSlot('B'); musicIsPlaying = false;
     const doCloseAbly = () => {
         if (ablyInstance) { try { ablyInstance.close(); } catch(_){} ablyInstance = null; }
-        ablyRolls = null; ablyCards = null; ablyDamage = null; ablyMusic = null;
+        ablyRolls = null; ablyRollsHidden = null; ablyCards = null; ablyDamage = null; ablyMusic = null;
     };
     if (ablyDamage) {
         try { ablyDamage.publish('leave', { playerId }).then(doCloseAbly, doCloseAbly); } catch(_){ doCloseAbly(); }
@@ -2633,7 +2633,7 @@ function saveConfig() {
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch (_) {} dddiceSDK = null; }
     clearTimeout(dddiceRollSafetyTimer);
     pendingDddiceRoll = null;
-    dddiceAPI = null; ablyRolls = null; ablyCards = null; ablyDamage = null; ablyMusic = null; ablyInstance = null;
+    dddiceAPI = null; ablyRolls = null; ablyRollsHidden = null; ablyCards = null; ablyDamage = null; ablyMusic = null; ablyInstance = null;
     if (config.dddiceKey && config.dddiceRoom) initDddice();
     if (config.ablyKey) initAbly();
 }
