@@ -567,7 +567,7 @@
 .content.split-mode .section-header { gap: 11px; margin-bottom: 13px; }
 .content.split-mode .section-title { font-size: 20px; }
 .content.split-mode .section-caption { font-size: 9.5px; letter-spacing: .14em; }
-.content.split-mode .skill-list { gap: 5px; margin-bottom: 20px; }
+.content.split-mode .skill-list { grid-template-columns: 1fr; gap: 5px; margin-bottom: 20px; }
 .content.split-mode .skill-item,
 .content.split-mode .skill-row { gap: 11px; padding: 10px 13px; }
 .content.split-mode .skill-name { font-size: 14px; }
@@ -619,9 +619,10 @@
 }
 
 /* ── SKILL LIST ── */
+/* exactement 2 colonnes (1 seule en volet etroit, voir split-mode) */
 .skill-list {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     gap: 5px;
     margin-bottom: 24px;
 }
@@ -716,13 +717,19 @@
     flex-shrink: 0;
 }
 
-/* Soigner skill highlight */
+/* Soigner skill highlight — vert pastel au survol, pour la distinguer */
 .soigner-skill {
     border-left-color: var(--success) !important;
 }
 .soigner-skill:hover {
     border-left-color: var(--success) !important;
 }
+.soigner-skill:hover::before { background: rgba(140, 214, 168, .16); }
+.soigner-skill:hover .skill-name,
+.soigner-skill:hover .skill-pct { color: #a8e6c0; }
+body.light-mode .soigner-skill:hover::before { background: rgba(44, 138, 87, .12); }
+body.light-mode .soigner-skill:hover .skill-name,
+body.light-mode .soigner-skill:hover .skill-pct { color: #26714a; }
 
 /* ═══════════════════════════════════════════
    TASK 4 — STATS TAB

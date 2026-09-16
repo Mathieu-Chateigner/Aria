@@ -27,6 +27,7 @@
 </helmet>
 <div style="{{ rootStyle }}">
 
+
   <!-- gallery masthead -->
   <div style="width:1240px;max-width:100%;display:flex;align-items:flex-end;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:14px;">
     <div>
@@ -49,8 +50,15 @@
   <!-- 01 · Clé de sauvegarde -->
   <div style="width:1240px;max-width:100%;margin-bottom:30px;">
     <div style="font-family:ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:.22em;color:var(--faint);text-transform:uppercase;margin-bottom:13px;">01 &mdash; Clé de sauvegarde</div>
-    <div class="aria-frame" style="height:560px;background:radial-gradient(120% 70% at 50% 0%, rgba(236,164,86,.05), transparent 55%), var(--bg);display:flex;align-items:center;justify-content:center;">
-      <div class="aria-grain" style="opacity:.05;"></div>
+    <div class="aria-frame" style="height:860px;background:#07080b;display:flex;align-items:center;justify-content:center;">
+      <!-- écran de lancement : entrée de donjon -->
+      <div style="position:absolute;inset:0;pointer-events:none;overflow:hidden;">
+        <canvas id="ariaStoneCv" style="position:absolute;inset:0;width:100%;height:100%;"></canvas>
+        <!-- feu + lumière -->
+        <canvas id="ariaBrazierCv" style="position:absolute;inset:0;width:100%;height:100%;"></canvas>
+        <div style="position:absolute;inset:0;box-shadow:inset 0 0 220px 46px rgba(2,3,5,.7);"></div>
+      </div>
+      <div class="aria-grain" style="opacity:.07;mix-blend-mode:overlay;"></div>
       <div style="position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;">
         <div style="font-family:'Cormorant Garamond',serif;font-size:34px;font-weight:600;letter-spacing:.2em;color:var(--warm);text-indent:.2em;margin-bottom:6px;">ARIA</div>
         <div style="width:54px;height:1px;background:linear-gradient(90deg,transparent,var(--ember),transparent);margin-bottom:40px;"></div>
@@ -449,7 +457,7 @@
             <sc-for list="{{ tracker }}" as="t" hint-placeholder-count="4">
               <div style="display:flex;align-items:center;gap:12px;">
                 <span style="font-size:18px;color:{{ t.col }};width:20px;text-align:center;">{{ t.s }}</span>
-                <div style="flex:1;height:5px;background:var(--track);border-radius:3px;overflow:hidden;"><div style="width:{{ t.used }}0%;height:100%;background:var(--dim);border-radius:3px;"></div></div>
+                <div style="flex:1;height:5px;background:var(--track);border-radius:3px;overflow:hidden;"><div style="width:{{ t.pct }}%;height:100%;background:var(--dim);border-radius:3px;"></div></div>
                 <span style="font-family:'Archivo',sans-serif;font-variant-numeric:tabular-nums;font-size:13px;color:var(--dim);min-width:42px;text-align:right;">{{ t.used }}/13</span>
               </div>
             </sc-for>
@@ -813,7 +821,7 @@
             <sc-for list="{{ tracker }}" as="t" hint-placeholder-count="4">
               <div style="display:flex;align-items:center;gap:11px;">
                 <span style="font-size:16px;color:{{ t.col }};width:18px;text-align:center;">{{ t.s }}</span>
-                <div style="flex:1;height:5px;background:var(--track);border-radius:3px;overflow:hidden;"><div style="width:{{ t.used }}0%;height:100%;background:var(--dim);border-radius:3px;"></div></div>
+                <div style="flex:1;height:5px;background:var(--track);border-radius:3px;overflow:hidden;"><div style="width:{{ t.pct }}%;height:100%;background:var(--dim);border-radius:3px;"></div></div>
                 <span style="font-family:'Archivo',sans-serif;font-variant-numeric:tabular-nums;font-size:12px;color:var(--dim);min-width:40px;text-align:right;">{{ t.used }}/13</span>
               </div>
             </sc-for>
@@ -1630,6 +1638,550 @@ Glissez un panneau du bandeau, ou l&rsquo;en-t&ecirc;te d&rsquo;un panneau ouver
     </div>
   </div>
 
+  <!-- ════════ SECTION VII · CARTE & POINTS D'INTÉRÊT ════════ -->
+  <div style="width:1240px;max-width:100%;display:flex;align-items:baseline;gap:18px;margin:30px 0 22px;padding-top:20px;border-top:1px solid var(--line2);">
+    <div style="font-family:'Cormorant Garamond',serif;font-size:15px;font-weight:600;letter-spacing:.3em;color:var(--ember);">VII</div>
+    <div style="font-family:'Cormorant Garamond',serif;font-size:30px;font-weight:600;color:var(--warm);">Carte &mdash; Points d&rsquo;int&eacute;r&ecirc;t</div>
+    <div style="flex:1;height:1px;background:var(--line);"></div>
+    <div style="font-family:ui-monospace,Menlo,monospace;font-size:10.5px;letter-spacing:.14em;color:var(--faint);text-transform:uppercase;max-width:430px;text-align:right;line-height:1.7;">Une carte, quatre spectateurs. Seul le filtre change.</div>
+  </div>
+
+  <!-- intent -->
+  <div style="width:1240px;max-width:100%;margin-bottom:26px;display:flex;gap:22px;align-items:flex-start;">
+    <div style="flex:1;font-family:'Cormorant Garamond',serif;font-size:18px;font-style:italic;color:var(--dim);line-height:1.6;max-width:720px;">Le vrai probl&egrave;me de cet &eacute;cran n&rsquo;est pas d&rsquo;afficher une carte&nbsp;: c&rsquo;est de rendre lisible <span style="color:var(--ember2);font-style:normal;">ce qu&rsquo;on ne voit pas</span>, sans le trahir. J&rsquo;ai donc con&ccedil;u un seul vocabulaire &mdash; punaise, jeton, zone &mdash; dont chaque &eacute;tat dit son statut de d&eacute;couverte, et une seule disposition&nbsp;: <span style="color:var(--ember2);font-style:normal;">carte plein cadre, fiche flottante ancr&eacute;e</span>, qui survit &agrave; un volet &eacute;troit.</div>
+    <div style="width:240px;flex-shrink:0;border-left:1px solid var(--line2);padding-left:18px;display:flex;flex-direction:column;gap:11px;">
+      <div style="font-family:ui-monospace,Menlo,monospace;font-size:9px;letter-spacing:.2em;color:var(--faint);text-transform:uppercase;">Le fil ne porte jamais</div>
+      <div style="font-family:'Archivo',sans-serif;font-size:12.5px;color:var(--text);line-height:1.45;"><span style="color:var(--violet2);">&mdash;</span>&nbsp;&nbsp;la note MJ d&rsquo;un POI</div>
+      <div style="font-family:'Archivo',sans-serif;font-size:12.5px;color:var(--text);line-height:1.45;"><span style="color:var(--violet2);">&mdash;</span>&nbsp;&nbsp;les notes priv&eacute;es des joueurs</div>
+      <div style="font-family:'Archivo',sans-serif;font-size:12.5px;color:var(--text);line-height:1.45;"><span style="color:var(--violet2);">&mdash;</span>&nbsp;&nbsp;un POI sans zone, non d&eacute;couvert</div>
+      <div style="font-family:ui-monospace,Menlo,monospace;font-size:9px;letter-spacing:.14em;color:var(--faint);text-transform:uppercase;line-height:1.7;margin-top:2px;">une zone noire dit &laquo;&nbsp;il y a quelque chose&nbsp;&raquo;<br>&mdash; c&rsquo;est un choix du MJ</div>
+    </div>
+  </div>
+
+  <!-- 27 · Onglet Carte — MJ -->
+  <div style="width:1240px;max-width:100%;margin-bottom:30px;">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:13px;">
+      <div style="font-family:ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:.22em;color:var(--faint);text-transform:uppercase;">27 &mdash; Onglet Carte &middot; MJ</div>
+      <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.12em;color:var(--violet);text-transform:uppercase;border:1px solid rgba(169,139,221,.25);border-radius:20px;padding:4px 12px;">Interactif &mdash; punaises, vue table, file &#9873;</div>
+    </div>
+    <div class="aria-frame" style="height:640px;display:flex;flex-direction:column;">
+      <div class="aria-grain" style="opacity:.05;"></div>
+
+      <!-- GM chrome -->
+      <div style="position:relative;z-index:3;display:flex;align-items:center;gap:14px;height:50px;padding:0 20px;background:linear-gradient(180deg,var(--chromeV1),var(--chromeV2));border-bottom:1px solid var(--line2);flex-shrink:0;">
+        <div style="font-family:'Cormorant Garamond',serif;font-size:19px;font-weight:600;letter-spacing:.16em;color:var(--violet);">ARIA</div>
+        <div style="width:1px;height:20px;background:var(--line);"></div>
+        <div style="display:flex;gap:20px;">
+          <span style="font-family:'Archivo',sans-serif;font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);">Monstres</span>
+          <span style="font-family:'Archivo',sans-serif;font-size:11px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--violet2);display:flex;align-items:center;gap:7px;">Carte<span style="font-family:ui-monospace,Menlo,monospace;font-size:8.5px;background:var(--violet);color:var(--ink);border-radius:9px;padding:1px 5px;">2</span></span>
+          <span style="font-family:'Archivo',sans-serif;font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);">Jets</span>
+        </div>
+        <div style="flex:1;"></div>
+        <span style="font-family:'Cormorant Garamond',serif;font-size:17px;color:var(--dim);">Campagne des Cendres</span>
+      </div>
+
+      <!-- barre de cartes -->
+      <div style="position:relative;z-index:3;display:flex;align-items:center;gap:9px;height:48px;padding:0 16px;background:var(--rail);border-bottom:1px solid var(--line2);flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:9px;font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:600;color:var(--warm);border-bottom:2px solid var(--violet);padding:0 3px 3px;">Ville de Karthis<span style="font-family:ui-monospace,Menlo,monospace;font-size:9px;letter-spacing:.1em;color:var(--faint);">4 POI</span></div>
+        <div style="display:flex;align-items:center;gap:9px;font-family:'Cormorant Garamond',serif;font-size:17px;color:var(--dim);padding:0 3px 3px;cursor:pointer;">Donjon des brumes<span style="font-family:ui-monospace,Menlo,monospace;font-size:9px;letter-spacing:.1em;color:var(--faint);">7 POI</span></div>
+        <div style="width:24px;height:24px;border:1px solid var(--line2);border-radius:3px;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:14px;cursor:pointer;">+</div>
+        <div style="flex:1;"></div>
+        <div style="display:flex;align-items:center;gap:7px;font-family:'Archivo',sans-serif;font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);border:1px solid var(--line2);border-radius:3px;padding:6px 11px;cursor:pointer;">&#8593; Image</div>
+        <div style="display:flex;align-items:center;gap:7px;font-family:'Archivo',sans-serif;font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);border:1px solid var(--line2);border-radius:3px;padding:6px 11px;cursor:pointer;">&#8599; Rouvrir la source</div>
+        <sc-if value="{{ mapTable }}" hint-placeholder-val="{{ false }}">
+          <div onClick="{{ toggleMapTable }}" style="display:flex;align-items:center;gap:7px;font-family:'Archivo',sans-serif;font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink);background:var(--violet);border:1px solid var(--violet);border-radius:3px;padding:6px 11px;cursor:pointer;">&#9673; Vue table</div>
+        </sc-if>
+        <sc-if value="{{ mapGm }}" hint-placeholder-val="{{ true }}">
+          <div onClick="{{ toggleMapTable }}" style="display:flex;align-items:center;gap:7px;font-family:'Archivo',sans-serif;font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--violet2);border:1px solid rgba(169,139,221,.4);border-radius:3px;padding:6px 11px;cursor:pointer;">&#9678; Vue table</div>
+        </sc-if>
+        <div onClick="{{ toggleQueue }}" title="Demandes de d&eacute;placement" style="display:flex;align-items:center;gap:6px;font-family:'Archivo',sans-serif;font-size:11px;font-weight:700;color:var(--ink);background:var(--ember);border-radius:3px;padding:6px 11px;cursor:pointer;">&#9873; 2</div>
+      </div>
+
+      <!-- carte plein cadre -->
+      <div style="position:relative;z-index:2;flex:1;min-height:0;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(169,139,221,.4),inset 0 0 26px rgba(9,8,4,.85);">
+        <!-- fond importé (placeholder habillé) -->
+        <div style="position:absolute;inset:0;filter:sepia(.45) saturate(.75) contrast(1.08) brightness(.92);background:radial-gradient(ellipse 38% 32% at 24% 34%,#8a7a52,transparent 70%),radial-gradient(ellipse 30% 26% at 66% 64%,#7d6f4a,transparent 72%),radial-gradient(ellipse 26% 24% at 74% 20%,#6f6344,transparent 70%),linear-gradient(160deg,#4a4430,#2e2b1e 60%,#242116);"></div>
+        <div style="position:absolute;inset:0;opacity:.12;background:repeating-linear-gradient(0deg,rgba(236,214,164,.45) 0 1px,transparent 1px 46px),repeating-linear-gradient(90deg,rgba(236,214,164,.45) 0 1px,transparent 1px 46px);"></div>
+        <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 45%,transparent 52%,rgba(9,8,4,.72) 100%);"></div>
+
+        <!-- couche zones (sous les punaises) -->
+        <sc-if value="{{ mapGm }}" hint-placeholder-val="{{ true }}">
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;">
+            <polygon points="11,19 34,16 40,34 26,45 10,38" fill="rgba(236,164,86,.10)" stroke="rgba(236,164,86,.75)" stroke-width="1" vector-effect="non-scaling-stroke"></polygon>
+            <polygon points="61,9 85,7 89,27 69,34" fill="rgba(9,8,4,.55)" stroke="rgba(122,124,134,.8)" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"></polygon>
+          </svg>
+        </sc-if>
+        <sc-if value="{{ mapTable }}" hint-placeholder-val="{{ false }}">
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;">
+            <polygon points="11,19 34,16 40,34 26,45 10,38" fill="rgba(236,164,86,.10)" stroke="rgba(236,164,86,.75)" stroke-width="1" vector-effect="non-scaling-stroke"></polygon>
+            <polygon points="61,9 85,7 89,27 69,34" fill="#050609" fill-opacity="0.97" stroke="rgba(30,32,38,.9)" stroke-width="1" vector-effect="non-scaling-stroke"></polygon>
+          </svg>
+        </sc-if>
+
+        <!-- ══ punaises ══ -->
+        <!-- Taverne du Cerf · découverte -->
+        <div onClick="{{ setSelTav }}" style="position:absolute;left:22%;top:31%;transform:translate(-50%,-9px);display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;">
+          <sc-if value="{{ selTav }}" hint-placeholder-val="{{ true }}">
+            <div style="width:17px;height:17px;border-radius:50%;background:var(--ember);box-shadow:0 0 0 3px rgba(5,6,9,.9),0 0 0 4.5px var(--warm),0 0 16px rgba(236,164,86,.75);"></div>
+          </sc-if>
+          <sc-if value="{{ notTav }}" hint-placeholder-val="{{ false }}">
+            <div style="width:13px;height:13px;border-radius:50%;background:var(--ember);box-shadow:0 0 12px rgba(236,164,86,.55);"></div>
+          </sc-if>
+          <div style="font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:600;color:var(--warm);text-shadow:0 1px 4px rgba(5,6,9,.95);white-space:nowrap;">Taverne du Cerf</div>
+          <div style="display:flex;flex-direction:column;gap:3px;align-items:center;">
+            <div style="font-family:'Archivo',sans-serif;font-size:10.5px;font-weight:600;color:var(--text);background:rgba(5,6,9,.85);border:1px solid var(--line2);border-radius:11px;padding:2px 9px;white-space:nowrap;">Alice</div>
+            <div style="font-family:'Archivo',sans-serif;font-size:10.5px;font-weight:600;color:var(--text);background:rgba(5,6,9,.85);border:1px solid var(--line2);border-radius:11px;padding:2px 9px;white-space:nowrap;">Bob</div>
+          </div>
+        </div>
+
+        <!-- Marché · découverte -->
+        <div onClick="{{ setSelMar }}" style="position:absolute;left:62%;top:63%;transform:translate(-50%,-9px);display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;">
+          <sc-if value="{{ selMar }}" hint-placeholder-val="{{ false }}">
+            <div style="width:17px;height:17px;border-radius:50%;background:var(--ember);box-shadow:0 0 0 3px rgba(5,6,9,.9),0 0 0 4.5px var(--warm),0 0 16px rgba(236,164,86,.75);"></div>
+          </sc-if>
+          <sc-if value="{{ notMar }}" hint-placeholder-val="{{ true }}">
+            <div style="width:13px;height:13px;border-radius:50%;background:var(--ember);box-shadow:0 0 12px rgba(236,164,86,.55);"></div>
+          </sc-if>
+          <div style="font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:600;color:var(--warm);text-shadow:0 1px 4px rgba(5,6,9,.95);white-space:nowrap;">March&eacute;</div>
+          <div style="font-family:'Archivo',sans-serif;font-size:10.5px;font-weight:600;color:var(--text);background:rgba(5,6,9,.85);border:1px solid var(--line2);border-radius:11px;padding:2px 9px;white-space:nowrap;">Carl</div>
+        </div>
+
+        <!-- Crypte · MJ seul (masquée en vue table) -->
+        <sc-if value="{{ mapGm }}" hint-placeholder-val="{{ true }}">
+          <div onClick="{{ setSelCry }}" style="position:absolute;left:75%;top:20%;transform:translate(-50%,-9px);display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;">
+            <sc-if value="{{ selCry }}" hint-placeholder-val="{{ false }}">
+              <div style="width:15px;height:15px;border-radius:50%;border:1.5px dashed var(--warm);box-shadow:0 0 0 3px rgba(5,6,9,.9),0 0 14px rgba(236,214,164,.4);"></div>
+            </sc-if>
+            <sc-if value="{{ notCry }}" hint-placeholder-val="{{ true }}">
+              <div style="width:13px;height:13px;border-radius:50%;border:1.5px dashed var(--faint);"></div>
+            </sc-if>
+            <div style="font-family:'Cormorant Garamond',serif;font-size:16px;font-style:italic;color:var(--faint);text-shadow:0 1px 4px rgba(5,6,9,.95);white-space:nowrap;">Crypte</div>
+          </div>
+        </sc-if>
+
+        <!-- Ruines · MJ seul -->
+        <sc-if value="{{ mapGm }}" hint-placeholder-val="{{ true }}">
+          <div onClick="{{ setSelRui }}" style="position:absolute;left:16%;top:70%;transform:translate(-50%,-9px);display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;">
+            <sc-if value="{{ selRui }}" hint-placeholder-val="{{ false }}">
+              <div style="width:15px;height:15px;border-radius:50%;border:1.5px dashed var(--warm);box-shadow:0 0 0 3px rgba(5,6,9,.9),0 0 14px rgba(236,214,164,.4);"></div>
+            </sc-if>
+            <sc-if value="{{ notRui }}" hint-placeholder-val="{{ true }}">
+              <div style="width:13px;height:13px;border-radius:50%;border:1.5px dashed var(--faint);"></div>
+            </sc-if>
+            <div style="font-family:'Cormorant Garamond',serif;font-size:16px;font-style:italic;color:var(--faint);text-shadow:0 1px 4px rgba(5,6,9,.95);white-space:nowrap;">Ruines</div>
+          </div>
+        </sc-if>
+
+        <!-- ══ fiche flottante · ancrée à côté de la punaise ══ -->
+        <sc-if value="{{ selTav }}" hint-placeholder-val="{{ true }}">
+          <div style="position:absolute;left:calc(22% + 95px);top:16%;width:326px;background:var(--raise);border:1px solid var(--line);border-top:2px solid var(--violet);border-radius:4px;box-shadow:0 22px 50px -14px rgba(0,0,0,.9);padding:15px 16px;z-index:5;">
+            <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:12px;">
+              <div style="font-family:'Cormorant Garamond',serif;font-size:21px;font-weight:600;color:var(--warm);">Taverne du Cerf</div>
+              <div style="flex:1;"></div>
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--ember);border:1px solid var(--embersoft);border-radius:20px;padding:3px 8px;">zone trac&eacute;e</span>
+            </div>
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.18em;color:var(--faint);text-transform:uppercase;margin-bottom:5px;">Description publique</div>
+            <div style="font-family:'Cormorant Garamond',serif;font-size:15px;color:var(--text);line-height:1.55;background:var(--field2);border:1px solid var(--line2);border-radius:3px;padding:9px 11px;margin-bottom:12px;">Une salle enfum&eacute;e o&ugrave; l&rsquo;on parle bas. Le barman essuie le m&ecirc;me verre depuis une heure.</div>
+            <sc-if value="{{ mapGm }}" hint-placeholder-val="{{ true }}">
+              <div style="font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.18em;color:var(--violet2);text-transform:uppercase;margin-bottom:5px;">Note MJ &middot; priv&eacute;e</div>
+              <div style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:15px;color:var(--text);line-height:1.55;background:rgba(169,139,221,.09);border:1px solid rgba(169,139,221,.3);border-radius:3px;padding:9px 11px;margin-bottom:12px;">Veldros paie le barman. Il r&eacute;p&egrave;te tout, contre deux pi&egrave;ces.</div>
+            </sc-if>
+            <sc-if value="{{ mapTable }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:center;gap:8px;border:1px dashed rgba(169,139,221,.35);border-radius:3px;padding:8px 11px;margin-bottom:12px;">
+                <span style="color:var(--violet2);font-size:11px;">&#9187;</span>
+                <span style="font-family:ui-monospace,Menlo,monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--violet2);">Note MJ &mdash; jamais dans le flux</span>
+              </div>
+            </sc-if>
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.18em;color:var(--faint);text-transform:uppercase;margin-bottom:7px;">D&eacute;couvert par</div>
+            <div style="display:flex;gap:6px;margin-bottom:13px;">
+              <div style="display:flex;align-items:center;gap:6px;font-family:'Archivo',sans-serif;font-size:11.5px;font-weight:600;color:var(--text);background:var(--embersoft);border:1px solid rgba(236,164,86,.4);border-radius:3px;padding:5px 10px;cursor:pointer;"><span style="color:var(--ember);">&#10003;</span>Alice</div>
+              <div style="display:flex;align-items:center;gap:6px;font-family:'Archivo',sans-serif;font-size:11.5px;font-weight:600;color:var(--text);background:var(--embersoft);border:1px solid rgba(236,164,86,.4);border-radius:3px;padding:5px 10px;cursor:pointer;"><span style="color:var(--ember);">&#10003;</span>Bob</div>
+              <div style="display:flex;align-items:center;gap:6px;font-family:'Archivo',sans-serif;font-size:11.5px;color:var(--faint);border:1px solid var(--line2);border-radius:3px;padding:5px 10px;cursor:pointer;"><span style="opacity:.5;">&#9723;</span>Carl</div>
+            </div>
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.18em;color:var(--faint);text-transform:uppercase;margin-bottom:7px;">Amener ici</div>
+            <div style="display:flex;gap:6px;">
+              <div style="flex:1;text-align:center;font-family:'Archivo',sans-serif;font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--faint);border:1px solid var(--line2);border-radius:3px;padding:7px 0;">Alice &middot; ici</div>
+              <div style="flex:1;text-align:center;font-family:'Archivo',sans-serif;font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--violet2);border:1px solid rgba(169,139,221,.35);border-radius:3px;padding:7px 0;cursor:pointer;">Carl</div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ selMar }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;left:calc(62% + 70px);top:34%;width:300px;background:var(--raise);border:1px solid var(--line);border-top:2px solid var(--violet);border-radius:4px;box-shadow:0 22px 50px -14px rgba(0,0,0,.9);padding:15px 16px;z-index:5;">
+            <div style="font-family:'Cormorant Garamond',serif;font-size:21px;font-weight:600;color:var(--warm);margin-bottom:12px;">March&eacute;</div>
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.18em;color:var(--faint);text-transform:uppercase;margin-bottom:5px;">Description publique</div>
+            <div style="font-family:'Cormorant Garamond',serif;font-size:15px;color:var(--text);line-height:1.55;background:var(--field2);border:1px solid var(--line2);border-radius:3px;padding:9px 11px;margin-bottom:12px;">&Eacute;tals serr&eacute;s, cordes et sel. On y trouve tout, deux fois le prix juste.</div>
+            <sc-if value="{{ mapGm }}" hint-placeholder-val="{{ true }}">
+              <div style="font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.18em;color:var(--violet2);text-transform:uppercase;margin-bottom:5px;">Note MJ &middot; priv&eacute;e</div>
+              <div style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:15px;color:var(--text);line-height:1.55;background:rgba(169,139,221,.09);border:1px solid rgba(169,139,221,.3);border-radius:3px;padding:9px 11px;margin-bottom:12px;">Le marchand de cordes a vu le sceau.</div>
+            </sc-if>
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.18em;color:var(--faint);text-transform:uppercase;margin-bottom:7px;">D&eacute;couvert par</div>
+            <div style="display:flex;gap:6px;">
+              <div style="display:flex;align-items:center;gap:6px;font-family:'Archivo',sans-serif;font-size:11.5px;color:var(--faint);border:1px solid var(--line2);border-radius:3px;padding:5px 10px;"><span style="opacity:.5;">&#9723;</span>Alice</div>
+              <div style="display:flex;align-items:center;gap:6px;font-family:'Archivo',sans-serif;font-size:11.5px;color:var(--faint);border:1px solid var(--line2);border-radius:3px;padding:5px 10px;"><span style="opacity:.5;">&#9723;</span>Bob</div>
+              <div style="display:flex;align-items:center;gap:6px;font-family:'Archivo',sans-serif;font-size:11.5px;font-weight:600;color:var(--text);background:var(--embersoft);border:1px solid rgba(236,164,86,.4);border-radius:3px;padding:5px 10px;"><span style="color:var(--ember);">&#10003;</span>Carl</div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ cardCry }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;right:calc(25% + 30px);top:12%;width:300px;background:var(--raise);border:1px solid var(--line);border-top:2px solid var(--violet);border-radius:4px;box-shadow:0 22px 50px -14px rgba(0,0,0,.9);padding:15px 16px;z-index:5;">
+            <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:12px;">
+              <div style="font-family:'Cormorant Garamond',serif;font-size:21px;font-weight:600;color:var(--warm);">Crypte</div>
+              <div style="flex:1;"></div>
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);border:1px solid var(--line2);border-radius:20px;padding:3px 8px;">secr&egrave;te</span>
+            </div>
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.18em;color:var(--faint);text-transform:uppercase;margin-bottom:5px;">Description publique</div>
+            <div style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:15px;color:var(--faint);line-height:1.55;background:var(--field2);border:1px dashed var(--line2);border-radius:3px;padding:9px 11px;margin-bottom:12px;">&mdash; vide &mdash; s&rsquo;affichera au premier joueur qui d&eacute;couvre le lieu</div>
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.18em;color:var(--violet2);text-transform:uppercase;margin-bottom:5px;">Note MJ &middot; priv&eacute;e</div>
+            <div style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:15px;color:var(--text);line-height:1.55;background:rgba(169,139,221,.09);border:1px solid rgba(169,139,221,.3);border-radius:3px;padding:9px 11px;margin-bottom:12px;">Le sceau est ici, sous la troisi&egrave;me dalle. Deux gardes.</div>
+            <div style="display:flex;align-items:center;gap:8px;border:1px dashed var(--line2);border-radius:3px;padding:8px 11px;">
+              <span style="color:var(--faint);font-size:11px;">&#9673;</span>
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);">zone trac&eacute;e &mdash; noire chez les joueurs</span>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ cardRui }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;left:calc(16% + 75px);bottom:14px;width:300px;background:var(--raise);border:1px solid var(--line);border-top:2px solid var(--violet);border-radius:4px;box-shadow:0 22px 50px -14px rgba(0,0,0,.9);padding:15px 16px;z-index:5;">
+            <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:12px;">
+              <div style="font-family:'Cormorant Garamond',serif;font-size:21px;font-weight:600;color:var(--warm);">Ruines</div>
+              <div style="flex:1;"></div>
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);border:1px solid var(--line2);border-radius:20px;padding:3px 8px;">sans zone</span>
+            </div>
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.18em;color:var(--violet2);text-transform:uppercase;margin-bottom:5px;">Note MJ &middot; priv&eacute;e</div>
+            <div style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:15px;color:var(--text);line-height:1.55;background:rgba(169,139,221,.09);border:1px solid rgba(169,139,221,.3);border-radius:3px;padding:9px 11px;margin-bottom:12px;">Rien ici pour l&rsquo;instant. R&eacute;serve pour l&rsquo;acte&nbsp;III.</div>
+            <div style="display:flex;align-items:center;gap:8px;border:1px dashed var(--line2);border-radius:3px;padding:8px 11px;">
+              <span style="color:var(--faint);font-size:11px;">&#9711;</span>
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);">invisible chez les joueurs &mdash; secret entier</span>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- file de demandes -->
+        <sc-if value="{{ queueOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;right:14px;top:12px;width:296px;background:var(--raise);border:1px solid var(--line);border-top:2px solid var(--ember);border-radius:4px;box-shadow:0 22px 50px -14px rgba(0,0,0,.9);padding:13px 14px;z-index:8;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:11px;">
+              <span style="color:var(--ember);font-size:12px;">&#9873;</span>
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);">Demandes de d&eacute;placement</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:9px;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:10px;">
+              <div style="flex:1;font-family:'Cormorant Garamond',serif;font-size:16px;color:var(--text);">Alice &rarr; <span style="color:var(--warm);">March&eacute;</span></div>
+              <div style="width:26px;height:26px;border:1px solid rgba(91,201,142,.4);border-radius:3px;display:flex;align-items:center;justify-content:center;color:var(--ok);font-size:12px;cursor:pointer;">&#10003;</div>
+              <div style="width:26px;height:26px;border:1px solid rgba(226,90,79,.35);border-radius:3px;display:flex;align-items:center;justify-content:center;color:var(--bad);font-size:12px;cursor:pointer;">&times;</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:9px;">
+              <div style="flex:1;font-family:'Cormorant Garamond',serif;font-size:16px;color:var(--text);">Carl &rarr; <span style="color:var(--warm);">Taverne du Cerf</span></div>
+              <div style="width:26px;height:26px;border:1px solid rgba(91,201,142,.4);border-radius:3px;display:flex;align-items:center;justify-content:center;color:var(--ok);font-size:12px;cursor:pointer;">&#10003;</div>
+              <div style="width:26px;height:26px;border:1px solid rgba(226,90,79,.35);border-radius:3px;display:flex;align-items:center;justify-content:center;color:var(--bad);font-size:12px;cursor:pointer;">&times;</div>
+            </div>
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-top:11px;line-height:1.7;">Accepter republie l&rsquo;&eacute;tat &mdash; aucun message d&rsquo;acceptation</div>
+          </div>
+        </sc-if>
+
+        <!-- bandeau vue table -->
+        <sc-if value="{{ mapTable }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;left:14px;bottom:14px;display:flex;align-items:center;gap:9px;background:rgba(5,6,9,.9);border:1px solid var(--violet);border-radius:20px;padding:7px 15px;z-index:6;">
+            <span style="width:7px;height:7px;border-radius:50%;background:var(--violet);box-shadow:0 0 8px var(--violet);"></span>
+            <span style="font-family:ui-monospace,Menlo,monospace;font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--violet2);">Vue table &mdash; m&ecirc;me filtre que l&rsquo;overlay</span>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+    <div style="margin-top:12px;font-family:ui-monospace,Menlo,monospace;font-size:9.5px;letter-spacing:.14em;color:var(--faint);text-transform:uppercase;line-height:1.8;">
+      Clic fond &rarr; nouveau POI &middot; glisser une punaise &rarr; x/y &middot; clic punaise &rarr; fiche ancr&eacute;e &agrave; c&ocirc;t&eacute;, jamais par-dessus &middot; <span style="color:var(--violet2);">Vue table</span> masque les punaises creuses et la note MJ
+    </div>
+  </div>
+
+  <!-- 28 · Onglet Carte — joueur -->
+  <div style="width:1240px;max-width:100%;margin-bottom:30px;">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:13px;">
+      <div style="font-family:ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:.22em;color:var(--faint);text-transform:uppercase;">28 &mdash; Onglet Carte &middot; joueur (Kaelen)</div>
+      <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.12em;color:var(--ember);text-transform:uppercase;border:1px solid var(--embersoft);border-radius:20px;padding:4px 12px;">Interactif &mdash; punaises, tiroir, demande</div>
+    </div>
+    <div class="aria-frame" style="height:640px;display:flex;flex-direction:column;">
+      <div class="aria-grain" style="opacity:.05;"></div>
+
+      <!-- player chrome -->
+      <div style="position:relative;z-index:3;display:flex;align-items:center;gap:14px;height:52px;padding:0 18px;background:linear-gradient(180deg,var(--chrome1),var(--rail));border-bottom:1px solid var(--line2);flex-shrink:0;">
+        <div style="font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:600;letter-spacing:.16em;color:var(--ember2);">ARIA</div>
+        <div style="width:1px;height:20px;background:var(--line);"></div>
+        <span style="font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:600;color:var(--text);">Kaelen Vorr</span>
+        <div style="width:1px;height:20px;background:var(--line);"></div>
+        <div style="display:flex;gap:18px;">
+          <span style="font-family:'Archivo',sans-serif;font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);">Comp&eacute;tences</span>
+          <span style="font-family:'Archivo',sans-serif;font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);">Notes</span>
+          <span style="font-family:'Archivo',sans-serif;font-size:11px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--ember2);border-bottom:2px solid var(--ember);padding-bottom:3px;">Carte</span>
+        </div>
+        <div style="flex:1;"></div>
+        <div style="display:flex;align-items:center;gap:7px;">
+          <span style="width:6px;height:6px;border-radius:50%;background:var(--ok);"></span>
+          <span style="font-family:ui-monospace,Menlo,monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);">MJ connect&eacute;</span>
+        </div>
+      </div>
+
+      <!-- carte -->
+      <div style="position:relative;z-index:2;flex:1;min-height:0;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(236,164,86,.4),inset 0 0 26px rgba(9,8,4,.85);">
+        <div style="position:absolute;inset:0;filter:sepia(.45) saturate(.75) contrast(1.08) brightness(.92);background:radial-gradient(ellipse 38% 32% at 24% 34%,#8a7a52,transparent 70%),radial-gradient(ellipse 30% 26% at 66% 64%,#7d6f4a,transparent 72%),radial-gradient(ellipse 26% 24% at 74% 20%,#6f6344,transparent 70%),linear-gradient(160deg,#4a4430,#2e2b1e 60%,#242116);"></div>
+        <div style="position:absolute;inset:0;opacity:.12;background:repeating-linear-gradient(0deg,rgba(236,214,164,.45) 0 1px,transparent 1px 46px),repeating-linear-gradient(90deg,rgba(236,214,164,.45) 0 1px,transparent 1px 46px);"></div>
+        <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 45%,transparent 52%,rgba(9,8,4,.72) 100%);"></div>
+
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;">
+          <polygon points="11,19 34,16 40,34 26,45 10,38" fill="rgba(236,164,86,.10)" stroke="rgba(236,164,86,.75)" stroke-width="1" vector-effect="non-scaling-stroke"></polygon>
+          <polygon points="61,9 85,7 89,27 69,34" fill="#050609" fill-opacity="0.97" stroke="rgba(30,32,38,.9)" stroke-width="1" vector-effect="non-scaling-stroke"></polygon>
+        </svg>
+
+        <!-- Taverne · Vous + Bob -->
+        <div onClick="{{ setPTav }}" style="position:absolute;left:22%;top:31%;transform:translate(-50%,-9px);display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;">
+          <sc-if value="{{ pTav }}" hint-placeholder-val="{{ true }}">
+            <div style="width:17px;height:17px;border-radius:50%;background:var(--ember);box-shadow:0 0 0 3px rgba(5,6,9,.9),0 0 0 4.5px var(--warm),0 0 16px rgba(236,164,86,.75);"></div>
+          </sc-if>
+          <sc-if value="{{ notPTav }}" hint-placeholder-val="{{ false }}">
+            <div style="width:13px;height:13px;border-radius:50%;background:var(--ember);box-shadow:0 0 12px rgba(236,164,86,.55);"></div>
+          </sc-if>
+          <div style="font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:600;color:var(--warm);text-shadow:0 1px 4px rgba(5,6,9,.95);white-space:nowrap;">Taverne du Cerf</div>
+          <div style="display:flex;flex-direction:column;gap:3px;align-items:center;">
+            <div style="display:flex;align-items:center;gap:5px;font-family:'Archivo',sans-serif;font-size:10.5px;font-weight:700;color:var(--ink);background:var(--ember);border-radius:11px;padding:2px 9px;white-space:nowrap;">Vous</div>
+            <div style="font-family:'Archivo',sans-serif;font-size:10.5px;font-weight:600;color:var(--text);background:rgba(5,6,9,.85);border:1px solid var(--line2);border-radius:11px;padding:2px 9px;white-space:nowrap;">Bob</div>
+          </div>
+        </div>
+
+        <!-- Marché · Carl -->
+        <div onClick="{{ setPMar }}" style="position:absolute;left:62%;top:63%;transform:translate(-50%,-9px);display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;">
+          <sc-if value="{{ pMar }}" hint-placeholder-val="{{ false }}">
+            <div style="width:17px;height:17px;border-radius:50%;background:var(--ember);box-shadow:0 0 0 3px rgba(5,6,9,.9),0 0 0 4.5px var(--warm),0 0 16px rgba(236,164,86,.75);"></div>
+          </sc-if>
+          <sc-if value="{{ notPMar }}" hint-placeholder-val="{{ true }}">
+            <div style="width:13px;height:13px;border-radius:50%;background:var(--ember);box-shadow:0 0 12px rgba(236,164,86,.55);"></div>
+          </sc-if>
+          <div style="font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:600;color:var(--warm);text-shadow:0 1px 4px rgba(5,6,9,.95);white-space:nowrap;">March&eacute;</div>
+          <div style="font-family:'Archivo',sans-serif;font-size:10.5px;font-weight:600;color:var(--text);background:rgba(5,6,9,.85);border:1px solid var(--line2);border-radius:11px;padding:2px 9px;white-space:nowrap;">Carl</div>
+        </div>
+
+        <!-- fiche flottante · lecture seule -->
+        <sc-if value="{{ pTav }}" hint-placeholder-val="{{ true }}">
+          <div style="position:absolute;left:calc(22% + 95px);top:14%;width:318px;background:var(--raise);border:1px solid var(--line);border-top:2px solid var(--ember);border-radius:4px;box-shadow:0 22px 50px -14px rgba(0,0,0,.9);padding:15px 16px;z-index:5;">
+            <div style="font-family:'Cormorant Garamond',serif;font-size:21px;font-weight:600;color:var(--warm);margin-bottom:11px;">Taverne du Cerf</div>
+            <div style="font-family:'Cormorant Garamond',serif;font-size:15px;color:var(--text);line-height:1.6;margin-bottom:13px;">Une salle enfum&eacute;e o&ugrave; l&rsquo;on parle bas. Le barman essuie le m&ecirc;me verre depuis une heure.</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.18em;color:var(--faint);text-transform:uppercase;">Ma note</span>
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:8px;letter-spacing:.14em;color:var(--faint);text-transform:uppercase;border:1px solid var(--line2);border-radius:20px;padding:2px 7px;">lecture</span>
+            </div>
+            <div style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:15px;color:var(--dim);line-height:1.55;border-left:2px solid var(--line2);padding:2px 0 2px 11px;margin-bottom:14px;">le barman louche</div>
+            <sc-if value="{{ mvIdle }}" hint-placeholder-val="{{ true }}">
+              <div onClick="{{ cycleMove }}" style="text-align:center;font-family:'Archivo',sans-serif;font-size:11.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ink);background:var(--ember);border-radius:3px;padding:10px 0;cursor:pointer;">Demander &agrave; s&rsquo;y rendre</div>
+            </sc-if>
+            <sc-if value="{{ mvSent }}" hint-placeholder-val="{{ false }}">
+              <div onClick="{{ cycleMove }}" style="display:flex;align-items:center;justify-content:center;gap:8px;font-family:'Archivo',sans-serif;font-size:11.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--dim);border:1px solid var(--line2);border-radius:3px;padding:10px 0;cursor:pointer;"><span style="width:6px;height:6px;border-radius:50%;background:var(--ember);animation:ariaPulse 1.4s infinite;"></span>Demande envoy&eacute;e&hellip;</div>
+            </sc-if>
+            <sc-if value="{{ mvDone }}" hint-placeholder-val="{{ false }}">
+              <div onClick="{{ cycleMove }}" style="display:flex;align-items:center;justify-content:center;gap:8px;font-family:'Archivo',sans-serif;font-size:11.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ok);border:1px solid rgba(91,201,142,.4);border-radius:3px;padding:10px 0;cursor:pointer;">&#10003; Vous y &ecirc;tes</div>
+            </sc-if>
+            <sc-if value="{{ mvDenied }}" hint-placeholder-val="{{ false }}">
+              <div onClick="{{ cycleMove }}" style="display:flex;align-items:center;justify-content:center;gap:8px;font-family:'Archivo',sans-serif;font-size:11.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--bad);border:1px solid rgba(226,90,79,.4);border-radius:3px;padding:10px 0;cursor:pointer;">Refus&eacute; &mdash; r&eacute;essayer</div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ pMar }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;left:calc(62% + 70px);top:32%;width:300px;background:var(--raise);border:1px solid var(--line);border-top:2px solid var(--ember);border-radius:4px;box-shadow:0 22px 50px -14px rgba(0,0,0,.9);padding:15px 16px;z-index:5;">
+            <div style="font-family:'Cormorant Garamond',serif;font-size:21px;font-weight:600;color:var(--warm);margin-bottom:11px;">March&eacute;</div>
+            <div style="font-family:'Cormorant Garamond',serif;font-size:15px;color:var(--text);line-height:1.6;margin-bottom:13px;">&Eacute;tals serr&eacute;s, cordes et sel. On y trouve tout, deux fois le prix juste.</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.18em;color:var(--faint);text-transform:uppercase;">Ma note</span>
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:8px;letter-spacing:.14em;color:var(--faint);text-transform:uppercase;border:1px solid var(--line2);border-radius:20px;padding:2px 7px;">lecture</span>
+            </div>
+            <div style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:15px;color:var(--dim);line-height:1.55;border-left:2px solid var(--line2);padding:2px 0 2px 11px;margin-bottom:14px;">acheter des cordes</div>
+            <div onClick="{{ cycleMove }}" style="text-align:center;font-family:'Archivo',sans-serif;font-size:11.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ink);background:var(--ember);border-radius:3px;padding:10px 0;cursor:pointer;">Demander &agrave; s&rsquo;y rendre</div>
+          </div>
+        </sc-if>
+      </div>
+
+      <!-- tiroir · Mes notes de carte -->
+      <div style="position:relative;z-index:4;flex-shrink:0;background:var(--rail);border-top:1px solid var(--line2);">
+        <div onClick="{{ togglePDrawer }}" style="display:flex;align-items:center;gap:10px;padding:11px 18px;cursor:pointer;">
+          <sc-if value="{{ pDrawerOpen }}" hint-placeholder-val="{{ true }}"><span style="color:var(--ember);font-size:11px;">&#9662;</span></sc-if>
+          <sc-if value="{{ pDrawerShut }}" hint-placeholder-val="{{ false }}"><span style="color:var(--dim);font-size:11px;">&#9656;</span></sc-if>
+          <span style="font-family:'Archivo',sans-serif;font-size:11.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text);">Mes notes de carte</span>
+          <span style="font-family:ui-monospace,Menlo,monospace;font-size:9px;letter-spacing:.12em;color:var(--faint);text-transform:uppercase;">2 lieux d&eacute;couverts &middot; seule zone d&rsquo;&eacute;criture</span>
+        </div>
+        <sc-if value="{{ pDrawerOpen }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:0 18px 16px;display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;align-items:center;gap:14px;">
+              <span style="width:150px;flex-shrink:0;font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:600;color:var(--warm);">Taverne du Cerf</span>
+              <input type="text" defaultValue="le barman louche" style="flex:1;min-width:0;font-family:'Cormorant Garamond',serif;font-size:15px;color:var(--text);background:var(--field2);border:1px solid var(--ember);border-radius:3px;padding:9px 12px;outline:none;">
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;">
+              <span style="width:150px;flex-shrink:0;font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:600;color:var(--warm);">March&eacute;</span>
+              <input type="text" defaultValue="acheter des cordes" style="flex:1;min-width:0;font-family:'Cormorant Garamond',serif;font-size:15px;color:var(--text);background:var(--field2);border:1px solid var(--line2);border-radius:3px;padding:9px 12px;outline:none;">
+            </div>
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.14em;color:var(--faint);text-transform:uppercase;margin-top:2px;">Enregistrement automatique &middot; un lieu retir&eacute; dispara&icirc;t de la liste, la note reste</div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+    <div style="margin-top:12px;font-family:ui-monospace,Menlo,monospace;font-size:9.5px;letter-spacing:.14em;color:var(--faint);text-transform:uppercase;line-height:1.8;">
+      La fiche lit, le tiroir &eacute;crit &mdash; clic sur une punaise met le focus sur sa ligne &middot; le quartier noir en haut &agrave; droite est un POI trac&eacute; mais non d&eacute;couvert &middot; les Ruines n&rsquo;existent pas ici
+    </div>
+  </div>
+
+  <!-- 29 · Vocabulaire -->
+  <div style="width:1240px;max-width:100%;margin-bottom:30px;">
+    <div style="font-family:ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:.22em;color:var(--faint);text-transform:uppercase;margin-bottom:13px;">29 &mdash; Vocabulaire &middot; punaises, jetons, zones</div>
+    <div class="aria-frame" style="min-height:300px;">
+      <div class="aria-grain" style="opacity:.05;"></div>
+      <div style="position:relative;z-index:2;display:grid;grid-template-columns:repeat(3,1fr);">
+
+        <!-- punaises -->
+        <div style="padding:24px;border-right:1px solid var(--line2);">
+          <div style="font-family:ui-monospace,Menlo,monospace;font-size:9px;letter-spacing:.2em;color:var(--ember);text-transform:uppercase;margin-bottom:14px;">Punaises</div>
+          <div style="display:flex;flex-direction:column;gap:16px;">
+            <div style="display:flex;align-items:center;gap:14px;">
+              <div style="width:34px;display:flex;justify-content:center;"><div style="width:13px;height:13px;border-radius:50%;background:var(--ember);box-shadow:0 0 12px rgba(236,164,86,.55);"></div></div>
+              <div><div style="font-family:'Archivo',sans-serif;font-size:12.5px;font-weight:600;color:var(--text);">Pleine</div><div style="font-family:ui-monospace,Menlo,monospace;font-size:9px;letter-spacing:.1em;color:var(--faint);text-transform:uppercase;">d&eacute;couverte par au moins un joueur</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;">
+              <div style="width:34px;display:flex;justify-content:center;"><div style="width:13px;height:13px;border-radius:50%;border:1.5px dashed var(--faint);"></div></div>
+              <div><div style="font-family:'Archivo',sans-serif;font-size:12.5px;font-weight:600;color:var(--text);">Creuse</div><div style="font-family:ui-monospace,Menlo,monospace;font-size:9px;letter-spacing:.1em;color:var(--faint);text-transform:uppercase;">connue du MJ seul &middot; vue MJ</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;">
+              <div style="width:34px;display:flex;justify-content:center;"><div style="width:17px;height:17px;border-radius:50%;background:var(--ember);box-shadow:0 0 0 3px rgba(5,6,9,.9),0 0 0 4.5px var(--warm),0 0 16px rgba(236,164,86,.75);"></div></div>
+              <div><div style="font-family:'Archivo',sans-serif;font-size:12.5px;font-weight:600;color:var(--text);">S&eacute;lectionn&eacute;e</div><div style="font-family:ui-monospace,Menlo,monospace;font-size:9px;letter-spacing:.1em;color:var(--faint);text-transform:uppercase;">fiche ouverte sur ce POI</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- jetons -->
+        <div style="padding:24px;border-right:1px solid var(--line2);">
+          <div style="font-family:ui-monospace,Menlo,monospace;font-size:9px;letter-spacing:.2em;color:var(--ember);text-transform:uppercase;margin-bottom:14px;">Jetons</div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:5px;margin-bottom:16px;">
+            <div style="width:13px;height:13px;border-radius:50%;background:var(--ember);box-shadow:0 0 12px rgba(236,164,86,.55);"></div>
+            <div style="font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:600;color:var(--warm);">Taverne du Cerf</div>
+            <div style="display:flex;flex-direction:column;gap:3px;align-items:center;">
+              <div style="font-family:'Archivo',sans-serif;font-size:10.5px;font-weight:700;color:var(--ink);background:var(--ember);border-radius:11px;padding:2px 9px;">Vous</div>
+              <div style="font-family:'Archivo',sans-serif;font-size:10.5px;font-weight:600;color:var(--text);background:rgba(5,6,9,.85);border:1px solid var(--line2);border-radius:11px;padding:2px 9px;">Bob</div>
+            </div>
+          </div>
+          <div style="font-family:'Cormorant Garamond',serif;font-size:15px;font-style:italic;color:var(--dim);line-height:1.55;">Des pastilles nomm&eacute;es, empil&eacute;es sous la punaise. Pour trois &agrave; quatre joueurs, lire &laquo;&nbsp;qui est o&ugrave;&nbsp;&raquo; sans un geste vaut mieux que la compacit&eacute;.</div>
+        </div>
+
+        <!-- zones -->
+        <div style="padding:24px;">
+          <div style="font-family:ui-monospace,Menlo,monospace;font-size:9px;letter-spacing:.2em;color:var(--ember);text-transform:uppercase;margin-bottom:14px;">Zones &middot; brouillard par quartier</div>
+          <div style="display:flex;gap:12px;margin-bottom:14px;">
+            <div style="flex:1;">
+              <div style="font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.14em;color:var(--violet2);text-transform:uppercase;margin-bottom:6px;">Vue MJ</div>
+              <svg viewBox="0 0 100 60" preserveAspectRatio="none" style="width:100%;height:74px;background:#2e2b1e;border-radius:3px;">
+                <polygon points="6,10 44,6 48,40 12,50" fill="rgba(236,164,86,.10)" stroke="rgba(236,164,86,.75)" stroke-width="1" vector-effect="non-scaling-stroke"></polygon>
+                <polygon points="55,8 94,12 90,48 58,44" fill="rgba(9,8,4,.55)" stroke="rgba(122,124,134,.8)" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"></polygon>
+              </svg>
+            </div>
+            <div style="flex:1;">
+              <div style="font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.14em;color:var(--ember);text-transform:uppercase;margin-bottom:6px;">Vue joueur</div>
+              <svg viewBox="0 0 100 60" preserveAspectRatio="none" style="width:100%;height:74px;background:#2e2b1e;border-radius:3px;">
+                <polygon points="6,10 44,6 48,40 12,50" fill="rgba(236,164,86,.10)" stroke="rgba(236,164,86,.75)" stroke-width="1" vector-effect="non-scaling-stroke"></polygon>
+                <polygon points="55,8 94,12 90,48 58,44" fill="#050609" fill-opacity="0.97" stroke="rgba(30,32,38,.9)" stroke-width="1" vector-effect="non-scaling-stroke"></polygon>
+              </svg>
+            </div>
+          </div>
+          <div style="font-family:'Cormorant Garamond',serif;font-size:15px;font-style:italic;color:var(--dim);line-height:1.55;">Le MJ voit &agrave; travers le quartier non d&eacute;couvert&nbsp;; le joueur n&rsquo;y voit qu&rsquo;un noir sans nom ni punaise. Le brouillard est <span style="color:var(--ember2);font-style:normal;">par zone</span>&nbsp;: un quartier oubli&eacute; ne reste jamais noir pour toujours.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 30 · Village à zones — survol -->
+  <div style="width:1240px;max-width:100%;margin-bottom:30px;">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:13px;">
+      <div style="font-family:ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:.22em;color:var(--faint);text-transform:uppercase;">30 &mdash; Village de Karthis &middot; zones survolables</div>
+      <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.12em;color:var(--ember);text-transform:uppercase;border:1px solid var(--embersoft);border-radius:20px;padding:4px 12px;">Interactif &mdash; survolez, cliquez, basculez la vue</div>
+    </div>
+    <div class="aria-frame" style="height:620px;display:flex;flex-direction:column;">
+      <div class="aria-grain" style="opacity:.05;"></div>
+
+      <div style="position:relative;z-index:3;display:flex;align-items:center;gap:14px;height:48px;padding:0 18px;background:linear-gradient(180deg,var(--chrome1),var(--rail));border-bottom:1px solid var(--line2);flex-shrink:0;">
+        <div style="font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:600;color:var(--warm);">Village de Karthis</div>
+        <span style="font-family:ui-monospace,Menlo,monospace;font-size:9px;letter-spacing:.14em;color:var(--faint);text-transform:uppercase;">7 quartiers &middot; 2 secrets</span>
+        <div style="flex:1;"></div>
+        <sc-if value="{{ zTable }}" hint-placeholder-val="{{ false }}">
+          <div onClick="{{ toggleZoneView }}" style="display:flex;align-items:center;gap:8px;font-family:'Archivo',sans-serif;font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ink);background:var(--violet);border:1px solid var(--violet);border-radius:20px;padding:6px 14px;cursor:pointer;">&#9673; Vue joueur</div>
+        </sc-if>
+        <sc-if value="{{ zMj }}" hint-placeholder-val="{{ true }}">
+          <div onClick="{{ toggleZoneView }}" style="display:flex;align-items:center;gap:8px;font-family:'Archivo',sans-serif;font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--violet2);border:1px solid rgba(169,139,221,.4);border-radius:20px;padding:6px 14px;cursor:pointer;">&#9678; Vue joueur</div>
+        </sc-if>
+      </div>
+
+      <div style="position:relative;z-index:2;display:flex;flex:1;min-height:0;">
+        <!-- plan -->
+        <div style="position:relative;flex:1;min-width:0;overflow:hidden;">
+          <div style="position:absolute;inset:0;filter:sepia(.4) saturate(.7) contrast(1.06) brightness(.9);background:radial-gradient(ellipse 34% 30% at 20% 22%,#8a7a52,transparent 70%),radial-gradient(ellipse 30% 28% at 50% 24%,#8d7d55,transparent 72%),radial-gradient(ellipse 28% 26% at 84% 22%,#7d6f4a,transparent 70%),radial-gradient(ellipse 28% 26% at 84% 60%,#6f6344,transparent 70%),linear-gradient(155deg,#4a4430,#2e2b1e 58%,#221f15);"></div>
+          <div style="position:absolute;inset:0;opacity:.1;background:repeating-linear-gradient(0deg,rgba(236,214,164,.45) 0 1px,transparent 1px 44px),repeating-linear-gradient(90deg,rgba(236,214,164,.45) 0 1px,transparent 1px 44px);"></div>
+          <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 45%,transparent 54%,rgba(9,8,4,.74) 100%);"></div>
+
+          <svg viewBox="0 0 1000 520" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible;">
+            <sc-for list="{{ zonesDead }}" as="z" hint-placeholder-count="0">
+              <polygon points="{{ z.pts }}" style="{{ z.style }}"></polygon>
+            </sc-for>
+            <sc-for list="{{ zonesSecret }}" as="z" hint-placeholder-count="2">
+              <polygon points="{{ z.pts }}" onClick="{{ z.onClick }}" style="{{ z.style }}" style-hover="fill:rgba(169,139,221,.16);stroke:var(--violet);stroke-width:2.5;transform:translateY(-5px);filter:drop-shadow(0 7px 16px rgba(169,139,221,.55));"></polygon>
+            </sc-for>
+            <sc-for list="{{ zonesOpen }}" as="z" hint-placeholder-count="5">
+              <polygon points="{{ z.pts }}" onClick="{{ z.onClick }}" style="{{ z.style }}" style-hover="fill:rgba(236,164,86,.20);stroke:var(--ember);stroke-width:2.5;transform:translateY(-5px);filter:drop-shadow(0 7px 16px rgba(236,164,86,.55));"></polygon>
+            </sc-for>
+          </svg>
+
+          <sc-for list="{{ zLabels }}" as="z" hint-placeholder-count="7">
+            <div style="{{ z.labelStyle }}">{{ z.nom }}</div>
+          </sc-for>
+
+          <sc-if value="{{ zTable }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;left:14px;bottom:14px;display:flex;align-items:center;gap:9px;background:rgba(5,6,9,.9);border:1px solid var(--violet);border-radius:20px;padding:7px 15px;">
+              <span style="width:7px;height:7px;border-radius:50%;background:var(--violet);box-shadow:0 0 8px var(--violet);"></span>
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--violet2);">Vue joueur &mdash; les quartiers noirs ne r&eacute;agissent pas</span>
+            </div>
+          </sc-if>
+        </div>
+
+        <!-- fiche de quartier -->
+        <div style="width:296px;flex-shrink:0;background:var(--rail);border-left:1px solid var(--line2);padding:16px 16px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;">
+          <div style="background:var(--raise);border:1px solid var(--line);border-radius:4px;padding:14px 15px;">
+            <sc-if value="{{ zCurSecret }}" hint-placeholder-val="{{ false }}">
+              <div style="height:2px;background:var(--violet);border-radius:2px;margin:-14px -15px 12px;"></div>
+            </sc-if>
+            <sc-if value="{{ zCurOpen }}" hint-placeholder-val="{{ true }}">
+              <div style="height:2px;background:var(--ember);border-radius:2px;margin:-14px -15px 12px;"></div>
+            </sc-if>
+            <div style="font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:600;color:var(--warm);margin-bottom:10px;">{{ zCur.nom }}</div>
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.18em;color:var(--faint);text-transform:uppercase;margin-bottom:5px;">Description publique</div>
+            <div style="font-family:'Cormorant Garamond',serif;font-size:15px;color:var(--text);line-height:1.55;background:var(--field2);border:1px solid var(--line2);border-radius:3px;padding:9px 11px;margin-bottom:12px;">{{ zCur.desc }}</div>
+            <sc-if value="{{ zNoteVisible }}" hint-placeholder-val="{{ true }}">
+              <div style="font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.18em;color:var(--violet2);text-transform:uppercase;margin-bottom:5px;">Note MJ &middot; priv&eacute;e</div>
+              <div style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:15px;color:var(--text);line-height:1.55;background:rgba(169,139,221,.09);border:1px solid rgba(169,139,221,.3);border-radius:3px;padding:9px 11px;margin-bottom:12px;">{{ zCur.note }}</div>
+            </sc-if>
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.18em;color:var(--faint);text-transform:uppercase;margin-bottom:5px;">D&eacute;couvert par</div>
+            <div style="font-family:'Archivo',sans-serif;font-size:12.5px;color:var(--text);">{{ zCur.qui }}</div>
+          </div>
+
+          <sc-if value="{{ zMj }}" hint-placeholder-val="{{ true }}">
+            <div style="border:1px dashed var(--line2);border-radius:4px;padding:12px 13px;">
+              <div style="font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.18em;color:var(--faint);text-transform:uppercase;margin-bottom:8px;">Quartiers secrets</div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <div style="display:flex;align-items:center;gap:8px;"><span style="width:9px;height:9px;border-radius:2px;border:1.5px dashed var(--violet);flex-shrink:0;"></span><span style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:15px;color:var(--violet2);">Chapelle br&ucirc;l&eacute;e</span></div>
+                <div style="display:flex;align-items:center;gap:8px;"><span style="width:9px;height:9px;border-radius:2px;border:1.5px dashed var(--violet);flex-shrink:0;"></span><span style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:15px;color:var(--violet2);">Souterrains</span></div>
+              </div>
+              <div style="font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.14em;color:var(--faint);text-transform:uppercase;line-height:1.7;margin-top:9px;">bascule &agrave; la d&eacute;couverte &mdash; le trac&eacute; ne bouge pas</div>
+            </div>
+          </sc-if>
+
+          <div style="margin-top:auto;font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.14em;color:var(--faint);text-transform:uppercase;line-height:1.8;">Survol &rarr; contour vif, halo, l&eacute;g&egrave;re lev&eacute;e<br>S&eacute;lection &rarr; l&rsquo;&eacute;tat reste tenu</div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:12px;font-family:ui-monospace,Menlo,monospace;font-size:9.5px;letter-spacing:.14em;color:var(--faint);text-transform:uppercase;line-height:1.8;">
+      Le survol l&egrave;ve le quartier de 5&nbsp;px et allume son contour &middot; violet tiret&eacute; = secret MJ &middot; en vue joueur les quartiers secrets deviennent noirs, sans nom, sans curseur ni r&eacute;action
+    </div>
+  </div>
+
   <!--END-->
 </div>
 </x-dc>
@@ -1640,8 +2192,19 @@ class Component extends DCLogic {
   hpColor(pct) { return pct > 50 ? 'var(--ok)' : pct > 25 ? 'var(--warn)' : 'var(--bad)'; }
 
   // ---- live combat feedback (GM Joueurs panel) ----
-  state = { players: this.basePlayers(), panes: ['skills', 'notes'], focusId: 'notes', dragId: null, drop: null, dx: 0, dy: 0, presence: 'bandeau', gmRoom: false };
+  state = { players: this.basePlayers(), panes: ['skills', 'notes'], focusId: 'notes', dragId: null, drop: null, dx: 0, dy: 0, presence: 'bandeau', gmRoom: false, mapSel: 'taverne', mapTable: false, mapQueue: false, zoneSel: 'marche', zoneTable: false, pSel: 'taverne', pDrawer: true, pMove: 'idle' };
   setPresence(m) { this.setState({ presence: m }); }
+  setMapSel(v) { this.setState({ mapSel: v }); }
+  setZone(v) { this.setState({ zoneSel: v }); }
+  toggleZoneView() { const t = !this.state.zoneTable; this.setState({ zoneTable: t, zoneSel: t && (this.state.zoneSel === 'souterrains' || this.state.zoneSel === 'chapelle') ? 'marche' : this.state.zoneSel }); }
+  setPSel(v) { this.setState({ pSel: v }); }
+  toggleMapTable() { this.setState({ mapTable: !this.state.mapTable, mapSel: this.state.mapTable ? this.state.mapSel : (this.state.mapSel === 'crypte' || this.state.mapSel === 'ruines' ? 'taverne' : this.state.mapSel) }); }
+  toggleQueue() { this.setState({ mapQueue: !this.state.mapQueue }); }
+  togglePDrawer() { this.setState({ pDrawer: !this.state.pDrawer }); }
+  cycleMove() {
+    const seq = { idle: 'sent', sent: 'done', done: 'denied', denied: 'idle' };
+    this.setState({ pMove: seq[this.state.pMove] || 'idle' });
+  }
   toggleRoom() { this.setState({ gmRoom: !this.state.gmRoom }); }
   animSeq = {};
   wsEl = null;
@@ -1700,10 +2263,627 @@ class Component extends DCLogic {
   componentDidMount() {
     window.addEventListener('mousemove', this.handleMove);
     window.addEventListener('mouseup', this.handleUp);
+    this.paintStone();
+    this.startEmbers();
   }
   componentWillUnmount() {
     window.removeEventListener('mousemove', this.handleMove);
     window.removeEventListener('mouseup', this.handleUp);
+    if (this._raf) cancelAnimationFrame(this._raf);
+    clearInterval(this._iv); clearTimeout(this._brzWatch);
+    if (this._onResize) window.removeEventListener('resize', this._onResize);
+  }
+  componentDidUpdate() {
+    const sc = document.getElementById('ariaStoneCv');
+    if (sc && sc !== this._stoneCv) this.paintStone();
+    const cv = document.getElementById('ariaBrazierCv');
+    if (cv && cv !== this._cv) { if (this._raf) cancelAnimationFrame(this._raf); clearInterval(this._iv); this.startEmbers(); }
+  }
+  // ---- procedural masonry: big shapes -> edges (bevel/chip) -> surface noise -> wear
+  paintStone(tries = 0) {
+    const cv = document.getElementById('ariaStoneCv');
+    if (!cv || !cv.clientWidth) { if (tries < 40) setTimeout(() => this.paintStone(tries + 1), 100); return; }
+    const w = cv.clientWidth, h = cv.clientHeight, dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    const c = cv.getContext('2d');
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this._stoneCv = cv; this._stoneW = w; this._stoneH = h;
+
+    let sd = 20260916 >>> 0;
+    const rnd = () => { sd = (sd * 1664525 + 1013904223) >>> 0; return sd / 4294967296; };
+    const rr = (a, b) => a + rnd() * (b - a);
+    const col = (l, s) => 'hsl(214,' + (s == null ? rr(5, 11) : s).toFixed(1) + '%,' + l.toFixed(1) + '%)';
+
+    const FLOOR = 132, AW = 988, AH = 668, OW = 884, OH = 612;
+    const cx = w / 2, R_OUT = AW / 2, R_IN = OW / 2;
+    const springY = h - FLOOR - (AH - R_OUT);
+    const PX = 511, PW = 58, PH = 300, CAPW = 78, CAPH = 16, BOWLH = 26;
+
+    // mortar bed
+    c.fillStyle = '#080a0d'; c.fillRect(0, 0, w, h);
+    const bed = c.createLinearGradient(0, 0, 0, h);
+    bed.addColorStop(0, '#0e1116'); bed.addColorStop(1, '#070809');
+    c.fillStyle = bed; c.fillRect(0, 0, w, h);
+
+    // one stone face: jittered quad + bevel + pitting + wear
+    const face = (x, y, bw, bh, L, opt) => {
+      const o = opt || {}, j = o.jit == null ? 1.6 : o.jit;
+      const p = [
+        [x + rr(0, j), y + rr(0, j)],
+        [x + bw - rr(0, j), y + rr(0, j)],
+        [x + bw - rr(0, j), y + bh - rr(0, j)],
+        [x + rr(0, j), y + bh - rr(0, j)],
+      ];
+      c.beginPath();
+      c.moveTo(p[0][0], p[0][1]);
+      c.lineTo((p[0][0] + p[1][0]) / 2 + rr(-j, j), (p[0][1] + p[1][1]) / 2 + rr(-j, j));
+      c.lineTo(p[1][0], p[1][1]);
+      c.lineTo((p[1][0] + p[2][0]) / 2 + rr(-j, j), (p[1][1] + p[2][1]) / 2 + rr(-j, j));
+      c.lineTo(p[2][0], p[2][1]);
+      c.lineTo((p[2][0] + p[3][0]) / 2 + rr(-j, j), (p[2][1] + p[3][1]) / 2 + rr(-j, j));
+      c.lineTo(p[3][0], p[3][1]);
+      c.lineTo((p[3][0] + p[0][0]) / 2 + rr(-j, j), (p[3][1] + p[0][1]) / 2 + rr(-j, j));
+      c.closePath();
+      c.save(); c.clip();
+      const Lv = L + rr(-3.2, 3.2);
+      c.fillStyle = col(Lv); c.fillRect(x - 2, y - 2, bw + 4, bh + 4);
+      // face undulation
+      for (let i = 0; i < 5; i++) {
+        const gx = x + rr(0, bw), gy = y + rr(0, bh), gr = rr(bh * 0.4, bh * 1.5);
+        const g = c.createRadialGradient(gx, gy, 0, gx, gy, gr);
+        const up = rnd() > 0.5;
+        g.addColorStop(0, up ? 'rgba(206,220,238,' + rr(0.02, 0.055).toFixed(3) + ')' : 'rgba(0,0,0,' + rr(0.05, 0.13).toFixed(3) + ')');
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        c.fillStyle = g; c.fillRect(x - 2, y - 2, bw + 4, bh + 4);
+      }
+      // pitting + grit
+      const pits = Math.round(bw * bh / 210);
+      for (let i = 0; i < pits; i++) {
+        const px = x + rr(1, bw - 1), py = y + rr(1, bh - 1), pr = rr(0.4, 1.5);
+        c.fillStyle = rnd() > 0.72 ? 'rgba(210,222,238,' + rr(0.03, 0.09).toFixed(3) + ')' : 'rgba(0,0,0,' + rr(0.06, 0.2).toFixed(3) + ')';
+        c.beginPath(); c.arc(px, py, pr, 0, 6.2832); c.fill();
+      }
+      // hairline crack
+      if (rnd() < 0.22) {
+        c.strokeStyle = 'rgba(0,0,0,' + rr(0.16, 0.34).toFixed(2) + ')'; c.lineWidth = rr(0.6, 1.2);
+        let ax = x + rr(2, bw - 2), ay = y + rr(0, 2);
+        c.beginPath(); c.moveTo(ax, ay);
+        const segs = Math.round(rr(3, 6));
+        for (let i = 0; i < segs; i++) { ax += rr(-7, 7); ay += bh / segs; c.lineTo(ax, ay); }
+        c.stroke();
+      }
+      // bevel: lit top/left edge, shaded bottom/right
+      c.strokeStyle = 'rgba(214,226,242,.085)'; c.lineWidth = 1.4;
+      c.beginPath(); c.moveTo(x, y + bh - 1); c.lineTo(x, y + 1); c.lineTo(x + bw, y + 1); c.stroke();
+      c.strokeStyle = 'rgba(0,0,0,.5)'; c.lineWidth = 1.8;
+      c.beginPath(); c.moveTo(x + bw - 1, y); c.lineTo(x + bw - 1, y + bh); c.lineTo(x, y + bh - 1); c.stroke();
+      // chipped corner
+      if (rnd() < 0.3) {
+        const cw = rr(4, 11), corner = Math.floor(rnd() * 4);
+        const pts = [[x, y], [x + bw, y], [x + bw, y + bh], [x, y + bh]][corner];
+        c.fillStyle = 'rgba(0,0,0,.42)';
+        c.beginPath();
+        c.moveTo(pts[0] + (corner === 1 || corner === 2 ? -cw : cw), pts[1]);
+        c.lineTo(pts[0], pts[1] + (corner >= 2 ? -cw : cw));
+        c.lineTo(pts[0], pts[1]); c.closePath(); c.fill();
+      }
+      c.restore();
+    };
+
+    // ---- wall: coursed ashlar, offsets never repeating
+    for (let y = -20; y < h; ) {
+      const bh = rr(44, 62);
+      let x = -rr(20, 160);
+      while (x < w) {
+        const bw = rr(82, 186);
+        face(x, y, bw, bh, rr(11.5, 16.5));
+        x += bw + rr(3.5, 6);
+      }
+      y += bh + rr(3.5, 6);
+    }
+
+    // ---- portal: voussoirs around the head, jambs below the springline
+    for (let a = 180, i = 0; a < 360; i++) {
+      const step = rr(6.4, 9.2), a2 = Math.min(a + step, 360);
+      const r0 = R_IN + rr(0, 3), r1 = R_OUT - rr(0, 3);
+      const t0 = a * Math.PI / 180, t1 = a2 * Math.PI / 180;
+      c.beginPath();
+      c.arc(cx, springY, r0, t0, t1);
+      c.arc(cx, springY, r1, t1, t0, true);
+      c.closePath();
+      c.save(); c.clip();
+      const L = rr(13, 18.5);
+      c.fillStyle = col(L); c.fillRect(cx - R_OUT - 4, springY - R_OUT - 4, AW + 8, R_OUT + 8);
+      const mid = (t0 + t1) / 2, mx = cx + Math.cos(mid) * (r0 + r1) / 2, my = springY + Math.sin(mid) * (r0 + r1) / 2;
+      const g = c.createRadialGradient(mx, my, 0, mx, my, (r1 - r0) * 1.1);
+      g.addColorStop(0, 'rgba(208,222,240,.05)'); g.addColorStop(1, 'rgba(0,0,0,.24)');
+      c.fillStyle = g; c.fillRect(cx - R_OUT - 4, springY - R_OUT - 4, AW + 8, R_OUT + 8);
+      for (let k = 0; k < 26; k++) {
+        c.fillStyle = 'rgba(0,0,0,' + rr(0.05, 0.18).toFixed(3) + ')';
+        c.beginPath(); c.arc(mx + rr(-26, 26), my + rr(-26, 26), rr(0.4, 1.4), 0, 6.2832); c.fill();
+      }
+      c.restore();
+      // joint between voussoirs
+      c.strokeStyle = 'rgba(0,0,0,.62)'; c.lineWidth = 2.4;
+      c.beginPath(); c.moveTo(cx + Math.cos(t1) * r0, springY + Math.sin(t1) * r0); c.lineTo(cx + Math.cos(t1) * r1, springY + Math.sin(t1) * r1); c.stroke();
+      a = a2;
+      if (a >= 360) break;
+    }
+    // jambs
+    for (const side of [-1, 1]) {
+      for (let y = springY; y < h - FLOOR; ) {
+        const bh = rr(40, 58), x = side < 0 ? cx - R_OUT : cx + R_IN;
+        face(x + rr(0, 2), y, R_OUT - R_IN - rr(1, 3), Math.min(bh, h - FLOOR - y), rr(12.5, 17.5));
+        y += bh + rr(3.5, 5);
+      }
+    }
+
+    // ---- opening: the dark beyond
+    c.save();
+    c.beginPath();
+    c.moveTo(cx - R_IN, h - FLOOR);
+    c.lineTo(cx - R_IN, springY);
+    c.arc(cx, springY, R_IN, Math.PI, 0);
+    c.lineTo(cx + R_IN, h - FLOOR);
+    c.closePath();
+    c.clip();
+    const vd = c.createLinearGradient(0, springY - R_IN, 0, h - FLOOR);
+    vd.addColorStop(0, '#04050a'); vd.addColorStop(1, '#010103');
+    c.fillStyle = vd; c.fillRect(cx - R_IN, springY - R_IN, OW, OH + 40);
+    const dg = c.createRadialGradient(cx, h - FLOOR, 0, cx, h - FLOOR, 420);
+    dg.addColorStop(0, 'rgba(98,76,148,.16)'); dg.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = dg; c.fillRect(cx - R_IN, springY - R_IN, OW, OH + 40);
+    // reveal AO around the opening edge
+    c.strokeStyle = 'rgba(0,0,0,.85)'; c.lineWidth = 26; c.filter = 'none';
+    c.beginPath();
+    c.moveTo(cx - R_IN, h - FLOOR); c.lineTo(cx - R_IN, springY);
+    c.arc(cx, springY, R_IN, Math.PI, 0); c.lineTo(cx + R_IN, h - FLOOR);
+    c.stroke();
+    c.restore();
+
+    // ---- pillars, caps, bowls
+    for (const side of [-1, 1]) {
+      const x0 = cx + side * PX - PW / 2;
+      for (let y = h - FLOOR - PH; y < h - FLOOR; ) {
+        const bh = rr(38, 52);
+        face(x0 + rr(0, 1.5), y, PW - rr(0, 2), Math.min(bh, h - FLOOR - y), rr(12, 17));
+        y += bh + rr(3, 4.5);
+      }
+      const capY = h - FLOOR - PH - CAPH;
+      face(cx + side * PX - CAPW / 2, capY, CAPW, CAPH, 17.5, { jit: 1 });
+      // bowl
+      const bY = capY - BOWLH, bw = 52;
+      c.save();
+      c.beginPath();
+      c.moveTo(cx + side * PX - bw / 2, bY);
+      c.lineTo(cx + side * PX + bw / 2, bY);
+      c.lineTo(cx + side * PX + bw / 2 - 8, bY + BOWLH);
+      c.lineTo(cx + side * PX - bw / 2 + 8, bY + BOWLH);
+      c.closePath(); c.clip();
+      c.fillStyle = col(16); c.fillRect(cx + side * PX - 30, bY, 60, BOWLH);
+      const bg = c.createLinearGradient(0, bY, 0, bY + BOWLH);
+      bg.addColorStop(0, 'rgba(226,232,244,.10)'); bg.addColorStop(1, 'rgba(0,0,0,.6)');
+      c.fillStyle = bg; c.fillRect(cx + side * PX - 30, bY, 60, BOWLH);
+      for (let k = 0; k < 40; k++) {
+        c.fillStyle = 'rgba(0,0,0,' + rr(0.06, 0.22).toFixed(3) + ')';
+        c.beginPath(); c.arc(cx + side * PX + rr(-26, 26), bY + rr(0, BOWLH), rr(0.4, 1.4), 0, 6.2832); c.fill();
+      }
+      c.restore();
+      // charred rim + soot plume up the wall
+      c.fillStyle = 'rgba(8,7,9,.5)';
+      c.beginPath(); c.ellipse(cx + side * PX, bY + 1, bw / 2 - 1, 4, 0, 0, 6.2832); c.fill();
+      for (let k = 0; k < 16; k++) {
+        const yy = bY - 20 - k * 20, sp = 20 + k * 5.5;
+        const sg = c.createRadialGradient(cx + side * PX, yy, 0, cx + side * PX, yy, sp);
+        sg.addColorStop(0, 'rgba(7,6,8,' + (0.2 - k * 0.011).toFixed(3) + ')');
+        sg.addColorStop(1, 'rgba(7,6,8,0)');
+        c.fillStyle = sg; c.beginPath(); c.arc(cx + side * PX, yy, sp, 0, 6.2832); c.fill();
+      }
+    }
+
+    // ---- floor flagstones
+    c.save();
+    c.beginPath(); c.rect(0, h - FLOOR, w, FLOOR); c.clip();
+    c.fillStyle = '#07080b'; c.fillRect(0, h - FLOOR, w, FLOOR);
+    for (let y = h - FLOOR; y < h; ) {
+      const bh = rr(34, 46);
+      let x = -rr(10, 120);
+      while (x < w) {
+        const bw = rr(86, 160);
+        face(x, y, bw, bh, rr(10, 15));
+        x += bw + rr(4, 7);
+      }
+      y += bh + rr(4, 7);
+    }
+    // AO where floor meets wall
+    const fao = c.createLinearGradient(0, h - FLOOR, 0, h - FLOOR + 46);
+    fao.addColorStop(0, 'rgba(0,0,0,.72)'); fao.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = fao; c.fillRect(0, h - FLOOR, w, 46);
+    c.restore();
+
+    // solid-masonry test: nothing may be painted inside the opening
+    const inOpening = (x, y, pad) => {
+      const p = pad || 0;
+      if (y > h - FLOOR - p) return false;
+      if (Math.abs(x - cx) > R_IN - p) return false;
+      if (y >= springY) return true;
+      const dx = x - cx, dy = y - springY;
+      return Math.sqrt(dx * dx + dy * dy) < R_IN - p;
+    };
+    const onSolid = (fn, pad) => {   // rejection sampling, bounded
+      for (let t = 0; t < 40; t++) {
+        const x = rr(0, w), y = rr(0, h);
+        if (!inOpening(x, y, -(pad || 0))) return fn(x, y);
+      }
+    };
+    // ---- structural cracks: run across several courses, branch, catch light on one lip
+    const crack = (x, y, len, dir, depth) => {
+      let px0 = x, py0 = y, ang = dir;
+      const pts = [[px0, py0]];
+      const segs = Math.round(len / rr(12, 22));
+      for (let i = 0; i < segs; i++) {
+        ang += rr(-0.42, 0.42);
+        px0 += Math.cos(ang) * (len / segs); py0 += Math.sin(ang) * (len / segs);
+        pts.push([px0, py0]);
+      }
+      c.lineCap = 'round';
+      c.strokeStyle = 'rgba(206,220,238,.05)'; c.lineWidth = rr(1, 2);
+      c.beginPath(); c.moveTo(pts[0][0] - 1.5, pts[0][1] - 1.5);
+      for (const p of pts) c.lineTo(p[0] - 1.5, p[1] - 1.5);
+      c.stroke();
+      c.strokeStyle = 'rgba(0,0,0,' + rr(0.5, 0.82).toFixed(2) + ')'; c.lineWidth = rr(1.4, 3.4);
+      c.beginPath(); c.moveTo(pts[0][0], pts[0][1]);
+      for (const p of pts) c.lineTo(p[0], p[1]);
+      c.stroke();
+      if (depth > 0) {
+        for (let b = 0; b < Math.round(rr(1, 3)); b++) {
+          const p = pts[Math.floor(rr(1, pts.length - 1))];
+          crack(p[0], p[1], len * rr(0.25, 0.5), ang + rr(-1.1, 1.1), depth - 1);
+        }
+      }
+    };
+    for (let i = 0; i < 9; i++) {
+      for (let t = 0; t < 30; t++) {
+        const x = rr(0, w), y = rr(-10, h * 0.55);
+        if (inOpening(x, y, -30)) continue;
+        crack(x, y, rr(120, 380), rr(1.0, 2.1), 2); break;
+      }
+    }
+    for (let i = 0; i < 5; i++) {
+      for (let t = 0; t < 30; t++) {
+        const x = rr(0, w), y = rr(h - FLOOR - 220, h - FLOOR);
+        if (inOpening(x, y, -30)) continue;
+        crack(x, y, rr(80, 200), rr(-1.4, -1.9), 1); break;
+      }
+    }
+
+    // ---- broken stone: missing chunks and shallow spalling
+    const chunk = (x, y, rad) => {
+      const pts = [], n = Math.round(rr(7, 11));
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * 6.2832, rp = rad * rr(0.5, 1.15);
+        pts.push([x + Math.cos(a) * rp, y + Math.sin(a) * rp * rr(0.6, 1)]);
+      }
+      c.beginPath(); c.moveTo(pts[0][0], pts[0][1]);
+      for (const p of pts) c.lineTo(p[0], p[1]);
+      c.closePath();
+      c.save(); c.clip();
+      c.fillStyle = '#05060a'; c.fillRect(x - rad * 2, y - rad * 2, rad * 4, rad * 4);
+      const dg2 = c.createRadialGradient(x - rad * 0.3, y - rad * 0.5, 0, x, y, rad * 1.3);
+      dg2.addColorStop(0, 'rgba(58,64,76,.5)'); dg2.addColorStop(0.5, 'rgba(14,16,20,.6)'); dg2.addColorStop(1, 'rgba(0,0,0,.85)');
+      c.fillStyle = dg2; c.fillRect(x - rad * 2, y - rad * 2, rad * 4, rad * 4);
+      for (let k = 0; k < 30; k++) {
+        c.fillStyle = 'rgba(0,0,0,' + rr(0.1, 0.3).toFixed(2) + ')';
+        c.beginPath(); c.arc(x + rr(-rad, rad), y + rr(-rad, rad), rr(0.5, 2), 0, 6.2832); c.fill();
+      }
+      c.restore();
+      // fractured lip catching the light
+      c.strokeStyle = 'rgba(214,226,242,.1)'; c.lineWidth = 1.6;
+      c.beginPath();
+      for (let i = 0; i < pts.length / 2; i++) c.lineTo(pts[i][0], pts[i][1] - 1.5);
+      c.stroke();
+    };
+    for (let i = 0; i < 11; i++) {
+      for (let t = 0; t < 30; t++) {
+        const x = rr(30, w - 30), y = rr(20, h - FLOOR - 30), rad = rr(9, 26);
+        if (inOpening(x, y, -(rad + 12))) continue;
+        chunk(x, y, rad); break;
+      }
+    }
+    for (let i = 0; i < 6; i++) {   // spalled faces: paler fresh stone under the weathered skin
+      let x = 0, y = 0, rad = 0, ok = false;
+      for (let t = 0; t < 30; t++) {
+        x = rr(40, w - 40); y = rr(30, h - FLOOR - 40); rad = rr(16, 40);
+        if (!inOpening(x, y, -(rad + 12))) { ok = true; break; }
+      }
+      if (!ok) continue;
+      c.save();
+      c.beginPath();
+      for (let k = 0, n = 9; k < n; k++) { const a = (k / n) * 6.2832; c.lineTo(x + Math.cos(a) * rad * rr(0.6, 1.1), y + Math.sin(a) * rad * rr(0.5, 1)); }
+      c.closePath(); c.clip();
+      c.fillStyle = col(rr(17, 21), 7); c.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+      const sp = c.createRadialGradient(x, y - rad * 0.4, 0, x, y, rad * 1.2);
+      sp.addColorStop(0, 'rgba(220,230,244,.06)'); sp.addColorStop(1, 'rgba(0,0,0,.4)');
+      c.fillStyle = sp; c.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+      c.restore();
+      c.strokeStyle = 'rgba(0,0,0,.45)'; c.lineWidth = 1.2; c.stroke();
+    }
+
+    // ---- moss: settles in joints, in shade, and low on the wall
+    const mossPatch = (x, y, spread, density) => {
+      for (let i = 0; i < density; i++) {
+        const mx = x + rr(-spread, spread), my = y + rr(-spread * 0.4, spread * 0.4);
+        const rad = rr(1.6, 8);
+        const g = c.createRadialGradient(mx, my, 0, mx, my, rad);
+        const hue = rr(88, 132), sat = rr(16, 34), lig = rr(11, 23);
+        g.addColorStop(0, 'hsla(' + hue.toFixed(0) + ',' + sat.toFixed(0) + '%,' + lig.toFixed(0) + '%,' + rr(0.3, 0.7).toFixed(2) + ')');
+        g.addColorStop(1, 'hsla(' + hue.toFixed(0) + ',' + sat.toFixed(0) + '%,' + (lig * 0.6).toFixed(0) + '%,0)');
+        c.fillStyle = g;
+        c.beginPath(); c.ellipse(mx, my, rad, rad * rr(0.5, 0.9), rr(0, 3), 0, 6.2832); c.fill();
+      }
+      for (let i = 0; i < density / 3; i++) {   // lit fuzz on top of the cushion
+        c.fillStyle = 'hsla(' + rr(78, 108).toFixed(0) + ',' + rr(22, 40).toFixed(0) + '%,' + rr(24, 34).toFixed(0) + '%,' + rr(0.12, 0.3).toFixed(2) + ')';
+        c.beginPath(); c.arc(x + rr(-spread, spread), y + rr(-spread * 0.4, spread * 0.2), rr(0.5, 2), 0, 6.2832); c.fill();
+      }
+    };
+    // 1. along the wall-floor junction, where water sits — the heaviest growth
+    for (let x = -20; x < w + 20; x += rr(40, 110)) {
+      if (inOpening(x, h - FLOOR - 10, -20)) continue;
+      mossPatch(x, h - FLOOR - rr(2, 16), rr(26, 64), Math.round(rr(60, 130)));
+    }
+    // 2. seated in horizontal joints on the lower wall, fading upward
+    for (let i = 0; i < 22; i++) {
+      for (let t = 0; t < 30; t++) {
+        const x = rr(0, w), y = h - FLOOR - Math.pow(rnd(), 1.8) * (h - FLOOR) * 0.72;
+        if (inOpening(x, y, -26)) continue;
+        mossPatch(x, y, rr(14, 44), Math.round(rr(26, 70))); break;
+      }
+    }
+    // 3. creeping along the outside of the portal reveal, both haunches
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 7; i++) {
+        const a = Math.PI + side * rr(0.08, 1.5);
+        const rad = R_IN + rr(6, 44);
+        mossPatch(cx + Math.cos(a) * rad, springY + Math.sin(a) * rad, rr(12, 30), Math.round(rr(22, 54)));
+      }
+      // base of each jamb and each pillar
+      mossPatch(cx + side * (R_IN + rr(10, 46)), h - FLOOR - rr(0, 14), rr(18, 40), Math.round(rr(40, 90)));
+      mossPatch(cx + side * PX + rr(-24, 24), h - FLOOR - rr(0, 12), rr(20, 38), Math.round(rr(40, 80)));
+      // on the pillar cap ledge, where debris collects
+      mossPatch(cx + side * PX + rr(-30, 30), h - FLOOR - PH - CAPH + rr(0, 8), rr(14, 30), Math.round(rr(20, 46)));
+    }
+
+    // ---- hanging greenery: strands falling off ledges and the arch
+    const leaf = (x, y, r2, ang, hue, alpha) => {
+      c.save(); c.translate(x, y); c.rotate(ang);
+      const g = c.createLinearGradient(0, -r2, 0, r2);
+      g.addColorStop(0, 'hsla(' + hue.toFixed(0) + ',' + rr(24, 44).toFixed(0) + '%,' + rr(20, 32).toFixed(0) + '%,' + alpha.toFixed(2) + ')');
+      g.addColorStop(1, 'hsla(' + hue.toFixed(0) + ',' + rr(20, 36).toFixed(0) + '%,' + rr(9, 16).toFixed(0) + '%,' + alpha.toFixed(2) + ')');
+      c.fillStyle = g;
+      c.beginPath(); c.ellipse(0, 0, r2 * rr(0.4, 0.62), r2, 0, 0, 6.2832); c.fill();
+      c.restore();
+    };
+    const vine = (x, y, len, lean) => {
+      const hue = rr(84, 128), steps = Math.round(len / 9);
+      let vx = x, vy = y, drift = lean;
+      c.strokeStyle = 'hsla(' + hue.toFixed(0) + ',26%,14%,.75)'; c.lineWidth = rr(1, 2.2); c.lineCap = 'round';
+      c.beginPath(); c.moveTo(vx, vy);
+      const pts = [];
+      for (let i = 0; i < steps; i++) {
+        drift += rr(-0.12, 0.12);
+        vx += drift * 3.2; vy += 9;
+        c.lineTo(vx, vy); pts.push([vx, vy, drift]);
+      }
+      c.stroke();
+      for (const p of pts) {
+        if (rnd() < 0.62) {
+          const side = rnd() > 0.5 ? 1 : -1;
+          leaf(p[0] + side * rr(1, 5), p[1] + rr(-2, 2), rr(2.6, 6.4), side * rr(0.5, 1.5) + p[2] * 0.4, hue, rr(0.45, 0.85));
+        }
+      }
+      // tip droop
+      leaf(vx, vy + 3, rr(3, 6), rr(-0.3, 0.3), hue, rr(0.4, 0.7));
+    };
+    // off the arch extrados
+    for (let i = 0; i < 16; i++) {
+      const a = Math.PI + rr(0.12, Math.PI - 0.12);
+      const ax = cx + Math.cos(a) * (R_OUT - rr(2, 16)), ay = springY + Math.sin(a) * (R_OUT - rr(2, 16));
+      vine(ax, ay, rr(26, 110), rr(-0.5, 0.5));
+    }
+    // off the pillar caps and bowls' ledge
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 4; i++) vine(cx + side * PX + rr(-38, 38), h - FLOOR - PH - CAPH + rr(0, 6), rr(28, 96), rr(-0.4, 0.4));
+    }
+    // off high wall ledges — solid stone only, and never over the opening
+    for (let i = 0; i < 14; i++) {
+      for (let t = 0; t < 30; t++) {
+        const x = rr(0, w), y = rr(20, h * 0.55), len = rr(24, 90);
+        if (inOpening(x, y, -10) || inOpening(x, y + len, -10)) continue;
+        vine(x, y, len, rr(-0.5, 0.5)); break;
+      }
+    }
+
+    // ---- global grain (fine + coarse), keeps the stone from reading as vector
+    const N = 160, nc = document.createElement('canvas'); nc.width = N; nc.height = N;
+    const nx = nc.getContext('2d'), id = nx.createImageData(N, N), dd = id.data;
+    for (let i = 0; i < dd.length; i += 4) {
+      const v = 90 + Math.floor(rnd() * 90);
+      dd[i] = dd[i + 1] = dd[i + 2] = v; dd[i + 3] = 26;
+    }
+    nx.putImageData(id, 0, 0);
+    c.globalCompositeOperation = 'overlay';
+    for (const sc of [1, 2.6]) {
+      c.globalAlpha = sc === 1 ? 0.5 : 0.32;
+      for (let y = 0; y < h; y += N * sc) for (let x = 0; x < w; x += N * sc) c.drawImage(nc, x, y, N * sc, N * sc);
+    }
+    c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
+
+    // ---- ambient occlusion: corners and the deep bottom
+    const vg = c.createRadialGradient(cx, h * 0.5, Math.min(w, h) * 0.28, cx, h * 0.5, Math.max(w, h) * 0.78);
+    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(2,3,5,.72)');
+    c.fillStyle = vg; c.fillRect(0, 0, w, h);
+  }
+  startEmbers(tries = 0) {
+    const cv = document.getElementById('ariaBrazierCv');
+    if (!cv || !cv.clientWidth) {
+      if (tries < 40) setTimeout(() => this.startEmbers(tries + 1), 100);
+      return;
+    }
+    const ctx = cv.getContext('2d');
+    let w = 0, h = 0, dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const fit = () => {
+      w = cv.clientWidth; h = cv.clientHeight;
+      cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    this._onResize = fit; window.addEventListener('resize', fit); fit();
+    // brazier emitters sit on the two pillar bowls (geometry mirrors the template)
+    const emitters = () => [
+      { x: w / 2 - 511, y: h - 474, ph: 0 },
+      { x: w / 2 + 511, y: h - 474, ph: 2.3 },
+    ];
+    const newFlame = (e) => ({
+      e, x: e.x + (Math.random() - 0.5) * 22, y: e.y + 2 + (Math.random() - 0.5) * 5,
+      r: 7 + Math.random() * 13,
+      vy: 0.46 + Math.random() * 0.8,
+      vx: (Math.random() - 0.5) * 0.22,
+      life: 0, span: 560 + Math.random() * 720,
+      hot: Math.random(), wob: 0.5 + Math.random() * 1.4,
+    });
+    const newSmoke = (e) => ({
+      e, x: e.x + (Math.random() - 0.5) * 18, y: e.y - 70 - Math.random() * 40,
+      r: 12 + Math.random() * 16,
+      vy: 0.34 + Math.random() * 0.4,
+      vx: (Math.random() - 0.5) * 0.18,
+      ph: Math.random() * 6.28,
+      life: 0, span: 2600 + Math.random() * 2400,
+    });
+    const newSpark = (e) => ({
+      e, x: e.x + (Math.random() - 0.5) * 16, y: e.y - 6,
+      r: 0.5 + Math.random() * 1.1,
+      vy: 0.5 + Math.random() * 1.1,
+      vx: (Math.random() - 0.5) * 0.4,
+      ph: Math.random() * 6.28,
+      life: 0, span: 1300 + Math.random() * 1900,
+    });
+    let em = emitters();
+    let flames = [], sparks = [], smoke = [];
+    for (const e of em) {
+      for (let i = 0; i < 46; i++) { const f = newFlame(e); f.life = Math.random() * f.span; flames.push(f); }
+      for (let i = 0; i < 9; i++) { const s = newSpark(e); s.life = Math.random() * s.span; s.y -= Math.random() * 140; sparks.push(s); }
+      for (let i = 0; i < 12; i++) { const m = newSmoke(e); m.life = Math.random() * m.span; smoke.push(m); }
+    }
+    const reseat = this._onResize;
+    this._onResize = () => { reseat(); if (this._stoneCv && this._stoneCv.clientWidth !== this._stoneW) this.paintStone(); em = emitters(); flames.forEach((f, i) => f.e = em[i % 2]); sparks.forEach((s, i) => s.e = em[i % 2]); smoke.forEach((m, i) => m.e = em[i % 2]); };
+    window.removeEventListener('resize', reseat); window.addEventListener('resize', this._onResize);
+
+    let last = performance.now(), frames = 0, mode = 'raf';
+    const tick = (t) => {
+      try {
+      const dt = Math.min(t - last, 48); last = t;
+      ctx.clearRect(0, 0, w, h);
+      ctx.globalCompositeOperation = 'lighter';
+
+      // ---- animated light: flickering pools on wall, arch and floor
+      em.forEach((e, i) => {
+        const fl = 0.78
+          + 0.13 * Math.sin(t * 0.0042 + e.ph)
+          + 0.07 * Math.sin(t * 0.0131 + e.ph * 2.1)
+          + 0.05 * Math.sin(t * 0.0307 + e.ph * 3.7);
+        const R = 340 * (0.94 + fl * 0.1);
+        const halo = ctx.createRadialGradient(e.x, e.y - 10, 0, e.x, e.y - 10, R);
+        halo.addColorStop(0, 'rgba(255,196,118,' + (0.20 * fl).toFixed(3) + ')');
+        halo.addColorStop(0.28, 'rgba(238,150,70,' + (0.10 * fl).toFixed(3) + ')');
+        halo.addColorStop(0.62, 'rgba(190,104,48,' + (0.036 * fl).toFixed(3) + ')');
+        halo.addColorStop(1, 'rgba(160,80,40,0)');
+        ctx.fillStyle = halo;
+        ctx.beginPath(); ctx.arc(e.x, e.y - 10, R, 0, 6.2832); ctx.fill();
+
+        // grazing light on the stone right above the bowl
+        const graze = ctx.createRadialGradient(e.x, e.y - 34, 0, e.x, e.y - 34, 118 * (0.9 + fl * 0.14));
+        graze.addColorStop(0, 'rgba(255,186,104,' + (0.15 * fl).toFixed(3) + ')');
+        graze.addColorStop(1, 'rgba(255,150,70,0)');
+        ctx.fillStyle = graze;
+        ctx.beginPath(); ctx.arc(e.x, e.y - 34, 118, 0, 6.2832); ctx.fill();
+        // embers glowing inside the bowl
+        const bowl = ctx.createRadialGradient(e.x, e.y + 4, 0, e.x, e.y + 4, 26);
+        bowl.addColorStop(0, 'rgba(255,214,150,' + (0.5 * fl).toFixed(3) + ')');
+        bowl.addColorStop(0.5, 'rgba(240,124,48,' + (0.22 * fl).toFixed(3) + ')');
+        bowl.addColorStop(1, 'rgba(200,70,26,0)');
+        ctx.fillStyle = bowl;
+        ctx.beginPath(); ctx.ellipse(e.x, e.y + 4, 26, 12, 0, 0, 6.2832); ctx.fill();
+      });
+
+      // ---- flame body
+      for (const f of flames) {
+        f.life += dt;
+        if (f.life > f.span) { Object.assign(f, newFlame(f.e)); }
+        const k = f.life / f.span;
+        f.y -= f.vy * dt * 0.06 * (1 + k * 2.1);
+        f.x += (f.vx + Math.sin(f.life * 0.0075 * f.wob + f.hot * 6) * 0.3) * dt * 0.06;
+        const a = Math.pow(Math.sin(Math.min(k, 1) * Math.PI), 0.8) * (0.44 - k * 0.2);
+        const rr = f.r * (0.55 + Math.sin(Math.min(k, 1) * 2.6) * 0.62) * (1 - k * 0.3);
+        if (a <= 0.01 || rr <= 0.3) continue;
+        const dx = f.x + (f.e.x - f.x) * k * k * 0.85;   // flame necks in as it rises
+        const g = ctx.createRadialGradient(dx, f.y, 0, dx, f.y, rr);
+        const core = k < 0.2 ? 'rgba(255,248,226,' : k < 0.42 ? 'rgba(255,214,142,' : k < 0.68 ? 'rgba(252,160,74,' : 'rgba(214,92,38,';
+        g.addColorStop(0, core + (a * 0.9).toFixed(3) + ')');
+        g.addColorStop(0.45, 'rgba(236,128,50,' + (a * 0.34).toFixed(3) + ')');
+        g.addColorStop(1, 'rgba(176,60,22,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.ellipse(dx, f.y, rr * (1 - k * 0.3), rr * (1 + k * 0.5), 0, 0, 6.2832); ctx.fill();
+      }
+
+      // ---- rising sparks
+      for (const s of sparks) {
+        s.life += dt;
+        if (s.life > s.span || s.y < -10) Object.assign(s, newSpark(s.e));
+        s.y -= s.vy * dt * 0.06;
+        s.x += (s.vx + Math.sin(s.ph + s.life * 0.0016) * 0.3) * dt * 0.05;
+        const k = s.life / s.span;
+        const a = Math.sin(Math.min(k, 1) * Math.PI) * 0.55;
+        if (a <= 0.01) continue;
+        const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r * 6);
+        g.addColorStop(0, 'rgba(255,208,140,' + (a * 0.9).toFixed(3) + ')');
+        g.addColorStop(0.4, 'rgba(236,150,74,' + (a * 0.26).toFixed(3) + ')');
+        g.addColorStop(1, 'rgba(236,150,74,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.r * 6, 0, 6.2832); ctx.fill();
+      }
+
+      ctx.globalCompositeOperation = 'source-over';
+      // ---- smoke: thins the light it passes through
+      for (const m of smoke) {
+        m.life += dt;
+        if (m.life > m.span || m.y < -60) Object.assign(m, newSmoke(m.e));
+        m.y -= m.vy * dt * 0.06;
+        m.x += (m.vx + Math.sin(m.ph + m.life * 0.0009) * 0.24) * dt * 0.05;
+        const k = m.life / m.span;
+        const a = Math.sin(Math.min(k, 1) * Math.PI) * 0.09;
+        const rr = m.r * (1 + k * 2.4);
+        if (a <= 0.004) continue;
+        const g = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, rr);
+        g.addColorStop(0, 'rgba(22,20,24,' + (a).toFixed(3) + ')');
+        g.addColorStop(1, 'rgba(22,20,24,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(m.x, m.y, rr, 0, 6.2832); ctx.fill();
+      }
+      frames++;
+      } catch (err) { return; }
+      if (mode === 'raf') this._raf = requestAnimationFrame(tick);
+    };
+    this._cv = cv;
+    this._raf = requestAnimationFrame(tick);
+    // watchdog: some hosts pause rAF (hidden/offscreen iframe) — fall back to a timer
+    clearTimeout(this._brzWatch);
+    this._brzWatch = setTimeout(() => {
+      if (frames === 0) {
+        mode = 'timer';
+        if (this._raf) cancelAnimationFrame(this._raf);
+        clearInterval(this._iv);
+        this._iv = setInterval(() => tick(performance.now()), 34);
+      }
+    }, 600);
   }
   basePlayers() {
     return [
@@ -1904,7 +3084,7 @@ class Component extends DCLogic {
       { who: 'Brogan Tael', skill: 'Parade', roll: 91, seuil: 60, type: 'fail', txt: 'Échec', t: '1 min' },
       { who: 'Syle Aubevent', skill: 'd6', roll: 4, seuil: null, type: 'die', txt: 'Dé', t: '2 min' },
     ].map(r => ({ ...r, color: r.type === 'crit' ? 'var(--ember)' : r.type === 'fail' ? 'var(--bad)' : r.type === 'die' ? 'var(--dim)' : 'var(--ok)' }));
-    const tracker = ['♠', '♥', '♦', '♣'].map((s, i) => ({ s, used: [9, 6, 11, 8][i], col: i === 1 || i === 2 ? 'var(--bad)' : 'var(--text)' }));
+    const tracker = ['♠', '♥', '♦', '♣'].map((s, i) => { const used = [9, 6, 11, 8][i]; return { s, used, pct: Math.round(used / 13 * 100), col: i === 1 || i === 2 ? 'var(--bad)' : 'var(--text)' }; });
     const tracks = [
       { title: 'Taverne — ambiance', dur: '3:42', playing: true },
       { title: 'Combat — tension', dur: '2:15' }, { title: 'Forêt nocturne', dur: '5:08' },
@@ -2087,6 +3267,92 @@ class Component extends DCLogic {
       },
     }));
 
+    // ===== CARTE & POI =====
+    const ms = this.state.mapSel, mapTable = this.state.mapTable, mapGm = !mapTable;
+    const selTav = ms === 'taverne', selMar = ms === 'marche', selCry = ms === 'crypte', selRui = ms === 'ruines';
+    const cardCry = selCry && mapGm, cardRui = selRui && mapGm;
+    const setSelTav = () => this.setMapSel('taverne');
+    const setSelMar = () => this.setMapSel('marche');
+    const setSelCry = () => this.setMapSel('crypte');
+    const setSelRui = () => this.setMapSel('ruines');
+    const queueOpen = this.state.mapQueue, queueShut = !queueOpen;
+    // joueur
+    const ps = this.state.pSel;
+    const pTav = ps === 'taverne', pMar = ps === 'marche';
+    const setPTav = () => this.setPSel('taverne');
+    const setPMar = () => this.setPSel('marche');
+    const pDrawerOpen = this.state.pDrawer, pDrawerShut = !pDrawerOpen;
+    const mv = this.state.pMove;
+    const mvIdle = mv === 'idle', mvSent = mv === 'sent', mvDone = mv === 'done', mvDenied = mv === 'denied';
+
+    // ===== VILLAGE · ZONES SURVOLABLES =====
+    const zTable = this.state.zoneTable, zMj = !zTable;
+    const zoneDefs = [
+      { id: 'noble', nom: 'Quartier noble', pts: '62,38 300,28 332,152 92,178', lx: 19.5, ly: 19, secret: false,
+        desc: 'Hautes fen\u00eatres, gardes priv\u00e9s. On n\u2019y entre pas sans invitation.', note: 'Le conseiller Orvan y loge \u2014 il sait pour le sceau.', qui: 'Alice \u00b7 Bob' },
+      { id: 'marche', nom: 'Place du march\u00e9', pts: '352,58 604,48 642,192 382,212', lx: 49.5, ly: 22, secret: false,
+        desc: '\u00c9tals serr\u00e9s, cordes et sel. Le c\u0153ur bruyant du village.', note: 'Le marchand de cordes a vu le sceau passer.', qui: 'Alice \u00b7 Bob \u00b7 Carl' },
+      { id: 'temple', nom: 'Temple de Sylve', pts: '682,44 942,58 952,182 702,176', lx: 82, ly: 20, secret: false,
+        desc: 'Pierre p\u00e2le et encens froid. Les cloches n\u2019ont pas sonn\u00e9 depuis l\u2019automne.', note: 'La pr\u00eatresse ment sur la nuit du 12.', qui: 'Carl' },
+      { id: 'tanneurs', nom: 'Quartier des tanneurs', pts: '72,214 322,204 352,338 96,360', lx: 21, ly: 54, secret: false,
+        desc: 'L\u2019odeur pr\u00e9vient avant la ruelle. Peu de lanternes, beaucoup d\u2019oreilles.', note: 'Planque de la Main grise, deuxi\u00e8me cour.', qui: 'Bob' },
+      { id: 'port', nom: 'Le port', pts: '702,218 950,212 962,378 712,384', lx: 83, ly: 57, secret: false,
+        desc: 'Quatre pontons, deux barques. L\u2019eau sent la vase et le go\u00e9mon.', note: 'Le passeur part \u00e0 l\u2019aube, pay\u00e9 par Veldros.', qui: 'Alice' },
+      { id: 'chapelle', nom: 'Chapelle br\u00fbl\u00e9e', pts: '392,248 620,238 652,368 402,390', lx: 51, ly: 61, secret: true,
+        desc: '\u2014 vide \u2014 s\u2019affichera \u00e0 la d\u00e9couverte', note: 'Entr\u00e9e de la crypte sous l\u2019autel. Deux gardes.', qui: 'personne' },
+      { id: 'souterrains', nom: 'Souterrains', pts: '132,400 432,414 422,492 142,480', lx: 27, ly: 86, secret: true,
+        desc: '\u2014 vide \u2014 s\u2019affichera \u00e0 la d\u00e9couverte', note: 'R\u00e9seau complet sous le village. R\u00e9serve pour l\u2019acte III.', qui: 'personne' },
+    ];
+    const zBase = (secret) => ({
+      cursor: 'pointer', transition: 'transform .2s cubic-bezier(.2,.8,.3,1), filter .2s, fill .2s, stroke .2s, stroke-width .2s',
+      fill: secret ? 'rgba(9,8,4,.58)' : 'rgba(236,164,86,.09)',
+      stroke: secret ? 'rgba(169,139,221,.75)' : 'rgba(236,164,86,.55)',
+      strokeWidth: 1.5, strokeDasharray: secret ? '7 5' : 'none',
+    });
+    const zHover = (secret) => ({
+      fill: secret ? 'rgba(169,139,221,.16)' : 'rgba(236,164,86,.20)',
+      stroke: secret ? 'var(--violet)' : 'var(--ember)', strokeWidth: 2.5,
+      transform: 'translateY(-5px)',
+      filter: 'drop-shadow(0 7px 16px ' + (secret ? 'rgba(169,139,221,.55)' : 'rgba(236,164,86,.55)') + ')',
+    });
+    const zSelStyle = (secret) => ({
+      cursor: 'pointer', transition: 'transform .2s cubic-bezier(.2,.8,.3,1), filter .2s',
+      fill: secret ? 'rgba(169,139,221,.20)' : 'rgba(236,164,86,.24)',
+      stroke: secret ? 'var(--violet)' : 'var(--ember)', strokeWidth: 3, strokeDasharray: secret ? '7 5' : 'none',
+      transform: 'translateY(-5px)',
+      filter: 'drop-shadow(0 8px 18px ' + (secret ? 'rgba(169,139,221,.6)' : 'rgba(236,164,86,.6)') + ')',
+    });
+    const zDead = { cursor: 'default', fill: '#050609', fillOpacity: .97, stroke: 'rgba(30,32,38,.9)', strokeWidth: 1.5 };
+    const zsel = this.state.zoneSel;
+    const zones = zoneDefs
+      .map(z => {
+        const dead = z.secret && zTable;
+        const on = z.id === zsel;
+        return { ...z, dead, live: !dead, isSel: on,
+          style: dead ? zDead : (on ? zSelStyle(z.secret) : zBase(z.secret)),
+          hover: dead ? null : zHover(z.secret),
+          onClick: dead ? null : () => this.setZone(z.id),
+          labelStyle: {
+            position: 'absolute', left: z.lx + '%', top: z.ly + '%', transform: 'translate(-50%,-50%)',
+            pointerEvents: 'none', textAlign: 'center', whiteSpace: 'nowrap',
+            fontFamily: "'Cormorant Garamond',serif", fontWeight: 600,
+            fontSize: on ? '19px' : '17px',
+            fontStyle: z.secret ? 'italic' : 'normal',
+            color: z.secret ? 'var(--violet2)' : (on ? 'var(--warm)' : 'rgba(236,214,164,.88)'),
+            textShadow: '0 1px 5px rgba(5,6,9,.95)', transition: 'font-size .18s, color .18s',
+          },
+        };
+      });
+    const zLabels = zones.filter(z => !z.dead);
+    const zonesOpen = zones.filter(z => !z.secret);
+    const zonesSecret = zones.filter(z => z.secret && z.live);
+    const zonesDead = zones.filter(z => z.dead);
+    const zHidden = zoneDefs.filter(z => z.secret && zTable);
+    const zCur = zoneDefs.find(z => z.id === zsel) || zoneDefs[1];
+    const zCurSecret = !!zCur.secret, zCurOpen = !zCurSecret;
+    const zCardTop = { borderTop: '2px solid ' + (zCurSecret ? 'var(--violet)' : 'var(--ember)') };
+    const zNoteVisible = zMj;
+
     const grain = (this.props.grain ?? true) ? 0.05 : 0;
 
     // ===== THEME =====
@@ -2094,6 +3360,7 @@ class Component extends DCLogic {
     const pal = this.palette(theme);
     const rootStyle = {
       minHeight: '100vh', width: 'max-content', minWidth: '100%',
+      position: 'relative', isolation: 'isolate',
       padding: '52px 48px 110px', fontFamily: "'Archivo',sans-serif",
       background: `radial-gradient(120% 50% at 50% -5%, ${pal.pageGlow}, transparent 55%), ${pal.ink}`,
       color: pal.text,
@@ -2139,6 +3406,15 @@ class Component extends DCLogic {
       showReduit, showBandeau, showTablee, notReduit, notBandeau, notTablee,
       setReduit, setBandeau, setTablee, feedBg,
       gmCast, gmRoom, gmRoomOff: !gmRoom, toggleRoom: () => this.toggleRoom(),
+      zones, zLabels, zonesOpen, zonesSecret, zonesDead, zHidden, zTable, zMj, zCur, zCurSecret, zCurOpen, zNoteVisible,
+      toggleZoneView: () => this.toggleZoneView(),
+      mapTable, mapGm, selTav, selMar, selCry, selRui, cardCry, cardRui,
+      notTav: !selTav, notMar: !selMar, notCry: !selCry, notRui: !selRui,
+      setSelTav, setSelMar, setSelCry, setSelRui,
+      queueOpen, queueShut, toggleQueue: () => this.toggleQueue(), toggleMapTable: () => this.toggleMapTable(),
+      pTav, pMar, notPTav: !pTav, notPMar: !pMar, setPTav, setPMar,
+      pDrawerOpen, pDrawerShut, togglePDrawer: () => this.togglePDrawer(),
+      mvIdle, mvSent, mvDone, mvDenied, cycleMove: () => this.cycleMove(),
       damageAll: () => this.damageAll(), healAll: () => this.healAll(), resetPlayers: () => this.resetPlayers(),
       ...rollStates[rr],
       // section dividers + builder-rendered frames are filled by template-side markup;
