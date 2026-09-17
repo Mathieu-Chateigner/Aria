@@ -11,6 +11,7 @@
 // transparent) or the overlay editor (fully covered by opaque panels).
 
 function ariaDungeonBg(container) {
+    container.style.pointerEvents = 'none';
     const layer = document.createElement('div');
     layer.style.cssText = 'position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0;';
     const stoneCv = document.createElement('canvas');
