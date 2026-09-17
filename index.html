@@ -57,6 +57,7 @@
 
         /* ── Header ── */
         .header {
+            position: relative;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -91,6 +92,7 @@
 
         /* ── Cards ── */
         .cards {
+            position: relative;
             display: flex;
             gap: 22px;
             flex-wrap: wrap;
@@ -161,6 +163,7 @@
 
         /* ── Footer ── */
         .footer {
+            position: relative;
             font-family: ui-monospace, Menlo, monospace;
             font-size: 10px;
             letter-spacing: .18em;
@@ -172,6 +175,7 @@
 
         /* ── Config button ── */
         .config-btn {
+            position: relative;
             background: none;
             border: 1px solid var(--line2);
             border-radius: var(--radius);
@@ -288,6 +292,8 @@
 </head>
 <body>
 
+    <div id="dungeon-bg-root" style="position:fixed;inset:0;z-index:0;"></div>
+
     <div class="header">
         <div class="brand">ARIA</div>
         <div class="tagline">Système de jeu de rôle sur table</div>
@@ -332,6 +338,7 @@
         </div>
     </div>
 
+    <script src="js/aria-dungeon-bg.js"></script>
     <script>
         (function () {
             const cfg = JSON.parse(localStorage.getItem('aria-config') || '{}');

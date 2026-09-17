@@ -1274,6 +1274,7 @@ function showGateway() {
     const cancel = document.getElementById('gateway-cancel');
     if (cancel) cancel.style.display = saveKey ? '' : 'none';
     document.getElementById('file-gateway').style.display = 'flex';
+    if (window.ariaDungeonBg) window.ariaDungeonBg.setActive(true);
 }
 
 // Hide the file-gateway panel.

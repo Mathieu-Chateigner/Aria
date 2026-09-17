@@ -468,12 +468,14 @@ function showSelectionScreen() {
     document.getElementById('new-char-form').style.display = 'none';
     renderSelectionScreen();
     updateSaveKeyStatus();
+    if (window.ariaDungeonBg) window.ariaDungeonBg.setActive(true);
 }
 
 // Switch the UI to the main app view.
 function showApp() {
     document.getElementById('selection-screen').style.display = 'none';
     document.getElementById('app-wrapper').style.display = 'flex';
+    if (window.ariaDungeonBg) window.ariaDungeonBg.setActive(false);
 }
 
 // Remembered across reloads so a refresh comes straight back into the character.

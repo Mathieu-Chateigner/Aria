@@ -475,6 +475,7 @@ function showSelectionScreen() {
     document.getElementById('new-campaign-form').style.display = 'none';
     renderCampaignScreen();
     updateSaveKeyStatus();
+    if (window.ariaDungeonBg) window.ariaDungeonBg.setActive(true);
 }
 
 // Copy a join code to the clipboard from a campaign card element, showing feedback.
@@ -490,6 +491,7 @@ function copyJoinCodeFromCard(node, code) {
 function showApp() {
     document.getElementById('selection-screen').style.display = 'none';
     document.getElementById('app-wrapper').style.display = 'flex';
+    if (window.ariaDungeonBg) window.ariaDungeonBg.setActive(false);
 }
 
 // Remembered across reloads so a refresh comes straight back into the campaign.
