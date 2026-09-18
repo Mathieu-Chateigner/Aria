@@ -1500,9 +1500,9 @@ function renderSkills() {
         div.dataset.skillIdx = idx;
         div.style.borderColor = 'rgba(236,164,86,.3)';
         fill(div,
-            el('span', { className: 'skill-link', style: { color: 'var(--ember2)' }, textContent: 'Spéciale' }),
-            el('span', { className: 'skill-name', textContent: sp.name },
-                sp.desc && el('span', { style: { fontSize: '12px', color: 'var(--parchment-dim)' }, textContent: ` — ${sp.desc}` })),
+            el('div', { className: 'skill-name-wrap' },
+                el('span', { className: 'skill-name', textContent: sp.name }),
+                sp.desc && el('span', { className: 'skill-desc', textContent: sp.desc })),
             bonus && el('span', { className: 'skill-mod', style: { color: 'var(--ember2)' }, title: 'Modificateur permanent',
                 textContent: `${bonus > 0 ? '+' : ''}${bonus}` }),
             el('span', { className: 'skill-pct', style: { color: 'var(--ember2)' }, textContent: eff + '%' }));
@@ -2809,14 +2809,6 @@ function renderPotions() {
     const vials = character.vials ?? 0;
 
     container.innerHTML = '';
-
-    // Vials counter
-    container.append(el('div', { className: 'alchemy-vials' },
-        el('span', { className: 'alchemy-vials-label', textContent: 'Fioles vides' }),
-        el('div', { className: 'alchemy-vials-ctrl' },
-            el('button', { className: 'qty-btn', textContent: '−', disabled: vials <= 0, onclick: () => changeVials(-1) }),
-            el('span', { className: 'vial-count', textContent: vials }),
-            el('button', { className: 'qty-btn', textContent: '+', onclick: () => changeVials(1) }))));
 
     // Recipes section — card grid (design frame 09)
     if (recipes.length) {

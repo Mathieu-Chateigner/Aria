@@ -217,7 +217,6 @@
                     <span class="section-icon">⚔</span>
                     <span class="section-title">Compétences</span>
                     <div class="section-rule"></div>
-                    <span class="section-caption">cliquer pour lancer</span>
                 </div>
                 <div class="skill-list" id="skill-list"></div>
                 <div class="section-header">
@@ -234,10 +233,11 @@
                     <span class="section-icon">✦</span>
                     <span class="section-title">Caractéristiques</span>
                     <div class="section-rule"></div>
+                </div>
+                <div class="stat-caption">
                     <span class="mult-bar-label">Multiplicateur</span>
                     <div class="mult-bar-btns" id="mult-bar-btns"></div>
                 </div>
-                <div class="stat-caption">cliquer une caractéristique pour lancer (valeur × multiplicateur)</div>
                 <div class="stat-grid" id="stat-grid"></div>
             </div>
 
@@ -245,7 +245,6 @@
             <div class="tab-content" id="tab-free">
                 <div class="free-roll-layout">
                 <div class="free-roll-form">
-                    <div class="free-roll-caption">Joueur / Jet libre</div>
                     <div>
                         <div class="field-label">Nom du jet</div>
                         <input class="free-input" id="free-name" placeholder="ex: Perception" />
@@ -444,7 +443,8 @@
                         </div>
                     </div>
 
-                    <!-- Protection -->
+                    <!-- Protection + Armes side by side -->
+                    <div class="cs-pair">
                     <div class="cs-block">
                         <div class="cs-block-title">Protection</div>
                         <div class="cs-block-body">
@@ -455,9 +455,8 @@
                         </div>
                     </div>
 
-                    <!-- Armes -->
                     <div class="cs-block">
-                        <div class="cs-block-title">Armes <span class="cs-hint">— ex&nbsp;: 1d6+2, 2d8</span></div>
+                        <div class="cs-block-title">Armes</div>
                         <div class="cs-col-hdr cs-weapons-hdr">
                             <span class="editor-label">Nom</span>
                             <span class="editor-label center">Dégâts</span>
@@ -467,10 +466,11 @@
                         <div class="cs-list-body" id="weapons-editor-list"></div>
                         <div class="cs-block-footer"><button class="add-skill-btn" onclick="addWeapon()">+ Ajouter une arme</button></div>
                     </div>
+                    </div><!-- /.cs-pair -->
 
                     <!-- Compétences -->
                     <div class="cs-block">
-                        <div class="cs-block-title">Compétences — seuil (%) · mod (±)</div>
+                        <div class="cs-block-title">Compétences</div>
                         <div class="cs-skills-grid" id="skills-editor-list"></div>
                     </div>
 
@@ -485,7 +485,7 @@
                             <span></span>
                         </div>
                         <div class="cs-list-body" id="specials-editor-list"></div>
-                        <div class="cs-block-footer"><button class="add-skill-btn" onclick="addSpecialRow()">+ Ajouter</button></div>
+                        <div class="cs-block-footer"><button class="add-skill-btn" onclick="addSpecialRow()">+ Ajouter une compétence spéciale</button></div>
                     </div>
 
                     <span class="cs-save-status" id="cs-save-status">✓ Sauvegardé</span>

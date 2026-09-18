@@ -238,13 +238,13 @@ body.dock-dragging .tab-btn, body.dock-dragging .split-pane-hdr { cursor: grabbi
     color: var(--warm);
     text-transform: none;
 }
-.notes-add-btn:hover { background: rgba(var(--accent-rgb), 0.12); border-color: var(--gold-dim); }
+.notes-add-btn:hover { background: rgba(var(--accent-rgb), 0.12); }
 .notes-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
 /* One notes widget for both panels — the two copies had drifted (GM padding 7px vs
    player 9px, and two different ways of marking the active row). */
 .notes-add-btn {
     background: none;
-    border: 1px solid var(--line2);
+    border: none;
     color: var(--gold);
     font-size: 15px;
     line-height: 1;
@@ -252,7 +252,7 @@ body.dock-dragging .tab-btn, body.dock-dragging .split-pane-hdr { cursor: grabbi
     border-radius: 3px;
     cursor: pointer;
     display: flex; align-items: center; justify-content: center;
-    transition: background 0.12s, border-color 0.12s;
+    transition: background 0.12s;
     padding: 0 0 1px 0;
 }
 .notes-item {

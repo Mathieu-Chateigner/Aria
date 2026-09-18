@@ -469,11 +469,12 @@
     border-left: 2px solid var(--line2);
     padding: 8px 0 8px 11px;
     margin-bottom: 5px;
-    transition: border-color 0.18s;
+    border-radius: 3px;
+    transition: border-color 0.18s, background 0.18s;
 }
 .weap-row:last-child { margin-bottom: 0; }
 .weap-row.weap-rollable { cursor: pointer; }
-.weap-row.weap-rollable:hover { border-left-color: var(--ember); }
+.weap-row.weap-rollable:hover { border-left-color: var(--ember); background: var(--embersoft); }
 .weap-name { font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 16px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .weap-dmg { display: flex; align-items: center; gap: 6px; font-family: 'Archivo', sans-serif; font-size: 13px; color: var(--dim); flex-shrink: 0; }
 .weap-roll-hint {
@@ -679,6 +680,23 @@
     flex-shrink: 0;
     position: relative;
 }
+.skill-name-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    position: relative;
+}
+.skill-name-wrap .skill-name { flex: none; }
+.skill-desc {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 12px;
+    color: var(--parchment-dim, var(--faint));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 .skill-bar-wrap {
     width: 56px;
     height: 3px;
@@ -775,11 +793,9 @@ body.light-mode .soigner-skill:hover .skill-pct { color: #26714a; }
     margin-bottom: 20px;
 }
 .stat-caption {
-    font-family: ui-monospace, Menlo, monospace;
-    font-size: 9.5px;
-    letter-spacing: .16em;
-    text-transform: uppercase;
-    color: var(--faint);
+    display: flex;
+    align-items: center;
+    gap: 8px;
     margin-bottom: 14px;
 }
 .stat-card {
@@ -1123,7 +1139,7 @@ body.light-mode .rh-date::-webkit-calendar-picker-indicator { filter: none; }
 }
 .qty-btn {
     background: none;
-    border: 1px solid var(--line2);
+    border: none;
     color: var(--dim);
     font-family: 'Archivo', sans-serif;
     font-size: 15px;
@@ -1135,9 +1151,9 @@ body.light-mode .rh-date::-webkit-calendar-picker-indicator { filter: none; }
     justify-content: center;
     border-radius: 3px;
     cursor: pointer;
-    transition: border-color 0.15s, color 0.15s, background 0.15s;
+    transition: color 0.15s, background 0.15s;
 }
-.qty-btn:hover:not(:disabled) { border-color: var(--ember); color: var(--ember2); background: var(--embersoft); }
+.qty-btn:hover:not(:disabled) { color: var(--ember2); background: var(--embersoft); }
 .qty-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 .inv-add-btn { margin-top: 14px; }
 /* Money — one box per denomination, label + (− value +), value editable */
@@ -1214,15 +1230,16 @@ body.light-mode .rh-date::-webkit-calendar-picker-indicator { filter: none; }
     letter-spacing: .1em;
     text-transform: uppercase;
     background: none;
-    border: 1px dashed var(--line2);
+    border: none;
     color: var(--ember);
     padding: 9px 16px;
     border-radius: 3px;
     cursor: pointer;
-    transition: border-color 0.18s, color 0.18s;
-    width: 100%;
+    transition: color 0.18s;
+    width: auto;
+    display: inline-block;
 }
-.add-skill-btn:hover { border-color: var(--ember); color: var(--ember2); }
+.add-skill-btn:hover { color: var(--ember2); }
 .del-btn {
     background: none;
     border: none;
