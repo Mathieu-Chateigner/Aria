@@ -802,7 +802,7 @@ function renderWidgetContent(widget) {
     switch (widget.type) {
         case 'character_name': {
             // Lower-third nameplate — dark glass plate + accent edge (design frame 20)
-            const p = [...presenceCache.values()][0];
+            const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
             const name = p ? esc(p.name) : '—';
             const cls = (p && p.charClass) ? `<div class="ow-np-class">${esc(p.charClass)}</div>` : '';
             return `<div class="ow-nameplate"><div class="ow-np-edge"></div><div class="ow-np-body"><div class="ow-np-name">${name}</div>${cls}</div></div>`;

@@ -9,11 +9,33 @@ const OVERLAY_ID = OWNER_TYPE + '_' + OWNER_ID;
 const ariaConfig = JSON.parse(localStorage.getItem('aria-config') || '{}');
 const ABLY_KEY   = ariaConfig.ablyKey || '';
 
+// Same-origin lookup for the join code, so the preview iframe and test-event
+// publishers land on the campaign-scoped channels the real overlay listens to
+// (see "Per-campaign channel scoping" in CLAUDE.md) instead of the global ones.
+function getCampaignCode() {
+    try {
+        if (OWNER_TYPE === 'gm') {
+            const camps = JSON.parse(localStorage.getItem('aria-gm-campaigns') || '[]');
+            return (camps.find(c => c.id === OWNER_ID)?.joinCode || '').toUpperCase();
+        }
+        const chars = JSON.parse(localStorage.getItem('aria-characters') || '[]');
+        return (chars.find(c => c.id === OWNER_ID)?.campaignKey || '').toUpperCase();
+    } catch (_) { return ''; }
+}
+const CAMPAIGN = getCampaignCode();
+function campaignChannel(base) { return CAMPAIGN ? `${base}-${CAMPAIGN}` : base; }
+
 let widgets       = [];
 let selectedId    = null;
 let gridSnap      = false;
+let ablyClient    = null;
 let ablyChannel   = null;
 let autoSaveTimer = null;
+
+// Widget types whose render picks a single player from presence — 'character_name'
+// used to always show the first one connected. This is the list that gets a "Joueur
+// lié" picker in the props panel instead.
+const LINKABLE_TYPES = ['character_name', 'hp_bar', 'stats', 'protection', 'skills', 'weapons', 'inventory', 'potions'];
 
 const WIDGET_DEFS = {
     persistent: [
@@ -66,8 +88,8 @@ async function init() {
         OWNER_TYPE === 'player' ? 'Joueur — ' + OWNER_ID : 'MJ — ' + OWNER_ID;
 
     if (ABLY_KEY) {
-        const ably = new Ably.Realtime({ key: ABLY_KEY, transports: ['web_socket'] });
-        ablyChannel = ably.channels.get('aria-overlay-config');
+        ablyClient = new Ably.Realtime({ key: ABLY_KEY, transports: ['web_socket'] });
+        ablyChannel = ablyClient.channels.get('aria-overlay-config');
     }
 
     resizeCanvas();
@@ -76,6 +98,7 @@ async function init() {
     renderCanvas();
     bindTopbarButtons();
     bindPropsPanel();
+    initPreview();
 
     const canvas = document.getElementById('editor-canvas');
     canvas.addEventListener('mousedown', e => { if (e.target === canvas) selectWidget(null); });
@@ -280,6 +303,47 @@ function syncPropsPanel() {
         document.getElementById('prop-stream-id').value = widget.config?.streamId || '';
         refreshStreamPicker();
     }
+    const hasCharId = LINKABLE_TYPES.includes(widget.type);
+    document.getElementById('prop-charid-wrap').style.display = hasCharId ? '' : 'none';
+    if (hasCharId) refreshCharIdPicker(widget.config?.charId || '');
+}
+
+// Same source as availableStreams(), but the charId rather than the derived
+// stream id — the "Joueur lié" picker locks a widget to one player instead of
+// falling back to whichever presence entry arrives first.
+function availablePlayers() {
+    const out = [];
+    if (OWNER_TYPE === 'gm' && OWNER_ID) {
+        let known = {};
+        try { known = JSON.parse(localStorage.getItem('aria-gm-known-players-' + OWNER_ID) || '{}'); } catch (_) {}
+        Object.values(known).forEach(p => {
+            if (!p?.charId) return;
+            out.push({ charId: p.charId, label: p.name || p.charId });
+        });
+    } else if (OWNER_ID) {
+        let chars = [];
+        try { chars = JSON.parse(localStorage.getItem('aria-characters') || '[]'); } catch (_) {}
+        const me = chars.find(c => c.id === OWNER_ID);
+        out.push({ charId: OWNER_ID, label: (me?.name || 'Vous') + ' (vous)' });
+    }
+    return out;
+}
+
+function refreshCharIdPicker(current) {
+    const pick = document.getElementById('prop-charid-pick');
+    if (!pick) return;
+    pick.innerHTML = '';
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = '— auto (1er joueur connu) —';
+    pick.appendChild(none);
+    availablePlayers().forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.charId;
+        opt.textContent = p.label;   // textContent: names come from presence payloads
+        pick.appendChild(opt);
+    });
+    pick.value = [...pick.options].some(o => o.value === current) ? current : '';
 }
 
 // Stream IDs are derived from UUIDs (player: 'aria_' + charId[0..8], GM:
@@ -376,6 +440,13 @@ function bindPropsPanel() {
         scheduleAutoSave();
     });
 
+    document.getElementById('prop-charid-pick').addEventListener('change', () => {
+        const widget = widgets.find(w => w.id === selectedId);
+        if (!widget) return;
+        widget.config.charId = document.getElementById('prop-charid-pick').value;
+        scheduleAutoSave();
+    });
+
     document.getElementById('btn-delete-widget').addEventListener('click', () => {
         if (!selectedId) return;
         widgets = widgets.filter(w => w.id !== selectedId);
@@ -407,6 +478,77 @@ async function saveConfig() {
     const orig = btn.textContent;
     btn.textContent = '✓ Sauvegardé';
     setTimeout(() => { btn.textContent = orig; }, 1200);
+}
+
+// ── PREVIEW ───────────────────────────────────
+// Live "what the overlay shows" panel. Rather than re-implementing overlay
+// rendering here, embed the real aria-overlay.html for this owner/campaign —
+// it already listens to the same layout-update channel this editor publishes
+// on, plus every game channel, so it stays live with zero extra sync code.
+function buildPreviewUrl() {
+    const p = new URLSearchParams({ mode: OWNER_TYPE, ably: ABLY_KEY, overlay: OVERLAY_ID });
+    if (CAMPAIGN) p.set('campaign', CAMPAIGN);
+    return '../views/aria-overlay.html?' + p.toString();
+}
+
+const TEST_EVENTS = [
+    { label: 'Succès',          fn: () => testRoll(45, 60, true)  },
+    { label: 'Échec',           fn: () => testRoll(75, 60, false) },
+    { label: 'Critique succès', fn: () => testRoll(5, 60, true)   },
+    { label: 'Critique échec',  fn: () => testRoll(95, 60, false) },
+    { label: 'Dé simple',       fn: () => testRoll(4, null, null, 'd6') },
+    { label: 'Carte tirée',     fn: () => testPublish('aria-cards', 'draw', { cardId: 'A-spades' }) },
+    { label: 'Dégâts',          fn: () => testDamage(6) },
+    { label: 'Soin',            fn: () => testHeal(6) },
+    { label: 'Écran MORT',      fn: () => testDamage(999) },
+];
+
+function initPreview() {
+    document.getElementById('preview-frame').src = buildPreviewUrl();
+    const wrap = document.getElementById('preview-tests');
+    wrap.innerHTML = '';
+    TEST_EVENTS.forEach(t => {
+        const btn = document.createElement('button');
+        btn.className = 'test-btn';
+        btn.type = 'button';
+        btn.textContent = t.label;
+        btn.addEventListener('click', t.fn);
+        wrap.appendChild(btn);
+    });
+}
+
+function testPlayer() {
+    const players = availablePlayers();
+    return players[0] || { charId: 'test-char', label: 'Joueur test' };
+}
+
+function testPublish(baseChannel, event, data) {
+    if (!ablyClient) return;
+    ablyClient.channels.get(campaignChannel(baseChannel)).publish(event, data);
+}
+
+function testRoll(roll, threshold, success, skillName) {
+    const p = testPlayer();
+    testPublish('aria-rolls', 'roll', {
+        skillName: skillName || 'Compétence test', threshold, roll, success,
+        char: p.label, bonusMalus: 0, playerId: 'preview',
+    });
+}
+
+function testDamage(damage) {
+    const p = testPlayer();
+    const maxHP = 20;
+    const hpBefore = Math.min(maxHP, damage + 8);
+    const hpAfter = Math.max(0, hpBefore - damage);
+    testPublish('aria-damage', 'damage', { targetId: p.charId, damage, hpBefore, hpAfter, maxHP, charName: p.label, source: 'gm' });
+}
+
+function testHeal(amount) {
+    const p = testPlayer();
+    const maxHP = 20;
+    const hpBefore = Math.max(0, maxHP - amount - 4);
+    const hpAfter = Math.min(maxHP, hpBefore + amount);
+    testPublish('aria-damage', 'heal', { targetId: p.charId, amount, hpBefore, hpAfter, maxHP, charName: p.label, source: 'gm' });
 }
 
 document.addEventListener('DOMContentLoaded', init);

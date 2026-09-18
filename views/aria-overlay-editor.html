@@ -76,8 +76,25 @@
                     <div id="prop-stream-hint" class="props-hint"></div>
                 </div>
 
+                <div id="prop-charid-wrap" style="display:none">
+                    <label class="props-label">Joueur lié</label>
+                    <select id="prop-charid-pick" class="props-input">
+                        <option value="">— auto (1er joueur connu) —</option>
+                    </select>
+                    <div class="props-hint">Fige ce widget sur un joueur précis plutôt que le premier connecté.</div>
+                </div>
+
                 <button id="btn-delete-widget" class="btn-danger">Supprimer</button>
             </div>
+        </div>
+
+        <div id="editor-preview">
+            <div class="palette-section-label">Aperçu (ce que l'overlay affiche)</div>
+            <div id="preview-frame-wrap">
+                <iframe id="preview-frame" title="Aperçu overlay"></iframe>
+            </div>
+            <div class="palette-section-label" style="margin-top:14px">Événements test</div>
+            <div id="preview-tests"></div>
         </div>
     </div>
 
