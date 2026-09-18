@@ -919,6 +919,25 @@ body.shake {
     }
 }
 
+/* ── EVENT WIDGET POSITIONING BOX ──────────────
+   The roll card / drawn card / damage-heal numbers / HP bar were each built with
+   their own centering trick (body's flex-center, or position:fixed + left:50% +
+   translateX(-50%)) baked in for a fixed spot on screen. The editor's x/y/w/h now
+   need to place them anywhere, so each is wrapped in this box instead of having
+   the editor write left/top straight onto the element:
+   - unconfigured (no matching widget in the layout): stays inset:0 with no
+     transform, so the wrapped element's own legacy centering resolves against
+     the full viewport exactly as it always did.
+   - configured: aria-overlay.js sets this box's own left/top/width/height from
+     the widget, and gives it `transform: translate(0) scale(n)` — any transform
+     makes it the containing block for its position:fixed descendants (so their
+     left:50%/bottom:60px/etc. resolve against THIS box instead of the viewport)
+     and the scale resizes the whole card/number as one image when the widget is
+     resized, without touching a single font-size in this file. */
+.ow-event-box { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+#pos-roll-card, #pos-drawn-card { z-index: 10; }
+#pos-dmg-number, #pos-heal-number, #pos-dmg-hpbar { z-index: 202; }
+
 /* ── PERSISTENT WIDGET LAYER ─────────────────── */
 #overlay-widgets {
     position: fixed;

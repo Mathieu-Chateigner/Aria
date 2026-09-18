@@ -16,14 +16,16 @@
     <!-- damage fx -->
     <div id="dmg-vignette"></div>
     <canvas id="dmg-canvas"></canvas>
-    <div id="dmg-number"></div>
-    <div id="heal-number"></div>
-    <div id="dmg-hpbar-wrap">
-        <div class="dmg-char-name" id="dmg-char-name"></div>
-        <div class="dmg-hpbar-track">
-            <div class="dmg-hpbar-ghost" id="dmg-hpbar-ghost"></div>
-            <div class="dmg-hpbar-fill" id="dmg-hpbar-fill"></div>
-            <div class="dmg-hpbar-text" id="dmg-hpbar-text"></div>
+    <div class="ow-event-box" id="pos-dmg-number"><div id="dmg-number"></div></div>
+    <div class="ow-event-box" id="pos-heal-number"><div id="heal-number"></div></div>
+    <div class="ow-event-box" id="pos-dmg-hpbar">
+        <div id="dmg-hpbar-wrap">
+            <div class="dmg-char-name" id="dmg-char-name"></div>
+            <div class="dmg-hpbar-track">
+                <div class="dmg-hpbar-ghost" id="dmg-hpbar-ghost"></div>
+                <div class="dmg-hpbar-fill" id="dmg-hpbar-fill"></div>
+                <div class="dmg-hpbar-text" id="dmg-hpbar-text"></div>
+            </div>
         </div>
     </div>
     <div id="dmg-mort">
@@ -43,24 +45,28 @@
     </div>
 
     <!-- DICE ROLL CARD -->
-    <div id="roll-card">
-        <div class="corner tl"></div>
-        <div class="corner tr"></div>
-        <div class="corner bl"></div>
-        <div class="corner br"></div>
-        <div class="card-char" id="card-char"></div>
-        <div class="card-skill" id="card-skill"></div>
-        <div class="card-roll" id="card-roll"></div>
-        <div class="card-divider"></div>
-        <div class="card-verdict" id="card-verdict"></div>
-        <div class="card-crit-sub" id="card-crit-sub"></div>
-        <div class="card-bonus" id="card-bonus"></div>
+    <div class="ow-event-box" id="pos-roll-card">
+        <div id="roll-card">
+            <div class="corner tl"></div>
+            <div class="corner tr"></div>
+            <div class="corner bl"></div>
+            <div class="corner br"></div>
+            <div class="card-char" id="card-char"></div>
+            <div class="card-skill" id="card-skill"></div>
+            <div class="card-roll" id="card-roll"></div>
+            <div class="card-divider"></div>
+            <div class="card-verdict" id="card-verdict"></div>
+            <div class="card-crit-sub" id="card-crit-sub"></div>
+            <div class="card-bonus" id="card-bonus"></div>
+        </div>
     </div>
 
     <!-- DRAWN PLAYING CARD -->
-    <div id="drawn-card-overlay">
-        <div class="play-card" id="play-card"></div>
-        <div class="drawn-card-label" id="drawn-card-label"></div>
+    <div class="ow-event-box" id="pos-drawn-card">
+        <div id="drawn-card-overlay">
+            <div class="play-card" id="play-card"></div>
+            <div class="drawn-card-label" id="drawn-card-label"></div>
+        </div>
     </div>
 
     <script src="../js/aria-supabase.js"></script>

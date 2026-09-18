@@ -787,13 +787,33 @@ function getEventWidgetStyle(type) {
     return { left: widget.x + '%', top: widget.y + '%', width: widget.w + '%', height: widget.h + '%' };
 }
 
-// Apply an event widget's position from the overlay config to a DOM element.
+// The editor's WIDGET_DEFS default w/h for each event type — the size the fixed
+// px font-sizes/paddings in aria-overlay.css were designed to look right at.
+// Resizing the widget away from this scales the whole card/number as one image
+// (see .ow-event-box in aria-overlay.css). Keep in sync with WIDGET_DEFS.event
+// in aria-overlay-editor.js if those defaults ever change.
+const EVENT_BASE_SIZE = {
+    roll_card:        { w: 35, h: 40 },
+    card_draw:        { w: 15, h: 25 },
+    damage_number:    { w: 15, h: 12 },
+    heal_number:      { w: 15, h: 12 },
+    hp_bar_animation: { w: 35, h: 12 },
+};
+
+// Apply an event widget's position/size (and derived scale) from the overlay
+// config to its .ow-event-box wrapper. Unconfigured (no matching widget) clears
+// the transform, which drops the wrapper back to its CSS default (inset:0, no
+// containing block) so the wrapped element's own legacy centering still works.
 function applyEventWidgetPosition(elId, widgetType) {
-    const style = getEventWidgetStyle(widgetType);
-    if (!style) return;
     const el = document.getElementById(elId);
     if (!el) return;
+    const style = getEventWidgetStyle(widgetType);
+    if (!style) { el.style.cssText = ''; return; }
     Object.assign(el.style, style);
+    const base = EVENT_BASE_SIZE[widgetType];
+    const widget = overlayConfig.widgets.find(w => w.type === widgetType && w.category === 'event');
+    const scale = base && widget ? Math.max(0.3, Math.min(3, Math.min(widget.w / base.w, widget.h / base.h))) : 1;
+    el.style.transform = `translate(0) scale(${scale})`;
 }
 
 // Return the inner HTML for a given overlay widget based on live presence/roll data.
@@ -934,11 +954,11 @@ function renderWidgetLayer() {
         else if (widget.type === 'camera') syncCameraWidget(el, widget, live);
         else                               el.innerHTML = renderWidgetContent(widget);
     }
-    applyEventWidgetPosition('roll-card', 'roll_card');
-    applyEventWidgetPosition('drawn-card-overlay', 'card_draw');
-    applyEventWidgetPosition('dmg-hpbar-wrap', 'hp_bar_animation');
-    applyEventWidgetPosition('dmg-number', 'damage_number');
-    applyEventWidgetPosition('heal-number', 'heal_number');
+    applyEventWidgetPosition('pos-roll-card', 'roll_card');
+    applyEventWidgetPosition('pos-drawn-card', 'card_draw');
+    applyEventWidgetPosition('pos-dmg-hpbar', 'hp_bar_animation');
+    applyEventWidgetPosition('pos-dmg-number', 'damage_number');
+    applyEventWidgetPosition('pos-heal-number', 'heal_number');
     applyEventWidgetPosition('dmg-mort', 'mort_screen');
 }
 
