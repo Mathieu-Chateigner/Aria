@@ -112,13 +112,22 @@ async function init() {
     });
 }
 
-// Resize the editor canvas to maintain 16:9 aspect ratio within its wrapper.
+// Resize the editor canvas AND the live preview frame to the same pixel size —
+// widget positions are percentages, so the two only look comparable ("what the
+// overlay shows") when both boxes are literally the same size, not just both 16:9.
 function resizeCanvas() {
-    const wrap = document.getElementById('editor-canvas-wrap');
-    const canvas = document.getElementById('editor-canvas');
-    const w = Math.min(wrap.clientWidth - 32, (wrap.clientHeight - 32) * 16 / 9);
+    const wrap        = document.getElementById('editor-canvas-wrap');
+    const previewWrap  = document.getElementById('editor-preview');
+    const canvas       = document.getElementById('editor-canvas');
+    const previewFrame = document.getElementById('preview-frame-wrap');
+    const availW = Math.min(wrap.clientWidth - 32, previewWrap.clientWidth - 28);
+    const availH = wrap.clientHeight - 32;
+    const w = Math.min(availW, availH * 16 / 9);
+    const h = w * 9 / 16;
     canvas.style.width  = w + 'px';
-    canvas.style.height = (w * 9 / 16) + 'px';
+    canvas.style.height = h + 'px';
+    previewFrame.style.width  = w + 'px';
+    previewFrame.style.height = h + 'px';
 }
 
 // Bind click handlers for the Save and Grid Snap topbar buttons.

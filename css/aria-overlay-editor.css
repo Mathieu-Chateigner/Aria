@@ -28,6 +28,12 @@
 
 html, body { height: 100%; background: var(--ink); color: var(--text); font-family: 'Archivo', sans-serif; font-size: 14px; overflow: hidden; -webkit-font-smoothing: antialiased; }
 
+/* Same themed scrollbar as the player/GM panels (aria-panel.css) — this page doesn't load that sheet. */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #1c2230; border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: var(--faint); }
+
 #editor-topbar { height: 52px; background: linear-gradient(180deg, var(--chromeV1), var(--chromeV2)); border-bottom: 1px solid var(--line2); display: flex; align-items: center; padding: 0 20px; gap: 14px; flex-shrink: 0; }
 #editor-title { font-family: 'Cormorant Garamond', serif; font-size: 18px; color: var(--violet2); font-weight: 600; }
 #editor-owner-label { flex: 1; font-family: ui-monospace, Menlo, monospace; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--faint); }
@@ -82,9 +88,14 @@ html, body { height: 100%; background: var(--ink); color: var(--text); font-fami
 .props-textarea { width: 100%; height: 80px; background: var(--field); border: 1px solid var(--line2); border-radius: 3px; color: var(--text); padding: 7px 9px; font-size: 13px; font-family: 'Archivo', sans-serif; resize: vertical; }
 .props-textarea:focus { outline: none; border-color: var(--ember); }
 
-#editor-preview { width: 320px; flex-shrink: 0; background: var(--railV); border-left: 1px solid var(--line2); overflow-y: auto; padding: 16px 14px; }
-#preview-frame-wrap { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; border: 1px solid var(--line2); border-radius: 4px; overflow: hidden; }
+#editor-preview { flex: 1 1 0; min-width: 260px; background: var(--railV); border-left: 1px solid var(--line2); overflow-y: auto; padding: 16px 14px; display: flex; flex-direction: column; }
+/* Mirrors #editor-canvas-wrap: the frame is centered both axes in the space
+   above the test-event buttons, same as the canvas is centered in its wrap. */
+#preview-canvas-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+#preview-frame-wrap { position: relative; aspect-ratio: 16 / 9; background: #000; border: 1px solid var(--line2); border-radius: 4px; overflow: hidden; flex-shrink: 0; }
 #preview-frame { width: 100%; height: 100%; border: none; }
+#preview-tests-wrap { flex-shrink: 0; width: 100%; }
+#preview-canvas-wrap .palette-section-label { margin-bottom: 0; }
 #preview-tests { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .test-btn { background: var(--panel); border: 1px solid var(--line); border-radius: 3px; padding: 7px 10px; font-family: 'Archivo', sans-serif; font-size: 11px; color: var(--text); cursor: pointer; transition: border-color 0.15s, background 0.15s; }
 .test-btn:hover { border-color: var(--violet); background: var(--field2); }
