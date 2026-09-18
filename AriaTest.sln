@@ -2,7 +2,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "views", "views", "{B1B2C3D4-E5F6-7890-ABCD-EF1234567891}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "views", "views", "{8CD7A0C3-6D79-4290-85AF-84C6EE957D2D}"
 	ProjectSection(SolutionItems) = preProject
 		views\aria-gm.html = views\aria-gm.html
 		views\aria-overlay-editor.html = views\aria-overlay-editor.html
@@ -10,34 +10,37 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "views", "views", "{B1B2C3D4
 		views\aria-player.html = views\aria-player.html
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "css", "css", "{C1B2C3D4-E5F6-7890-ABCD-EF1234567892}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "css", "css", "{5874BCC7-76C4-4D38-AE5D-21CE2F62971C}"
 	ProjectSection(SolutionItems) = preProject
 		css\aria-gm.css = css\aria-gm.css
 		css\aria-overlay-editor.css = css\aria-overlay-editor.css
 		css\aria-overlay.css = css\aria-overlay.css
+		css\aria-panel.css = css\aria-panel.css
 		css\aria-player.css = css\aria-player.css
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "js", "js", "{D1B2C3D4-E5F6-7890-ABCD-EF1234567893}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "js", "js", "{EB9BD0E8-9EE2-405F-957C-8B16AC488C2E}"
 	ProjectSection(SolutionItems) = preProject
 		js\aria-gm.js = js\aria-gm.js
 		js\aria-overlay-editor.js = js\aria-overlay-editor.js
 		js\aria-overlay.js = js\aria-overlay.js
 		js\aria-player.js = js\aria-player.js
+		js\aria-shared.js = js\aria-shared.js
+		js\aria-shared.selfcheck.js = js\aria-shared.selfcheck.js
 		js\aria-supabase.js = js\aria-supabase.js
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Docs", "Docs", "{E1B2C3D4-E5F6-7890-ABCD-EF1234567894}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Docs", "Docs", "{4D86993F-F027-4DFC-9965-2CF49ABFAA7E}"
 	ProjectSection(SolutionItems) = preProject
-		Docs\superpowers\specs\2026-05-06-vdo-ninja-camera-design.md = Docs\superpowers\specs\2026-05-06-vdo-ninja-camera-design.md
+		specs\2026-08-28-carte-points-interet-design.md = specs\2026-08-28-carte-points-interet-design.md
+		plans\2026-08-29-carte-points-interet.md = plans\2026-08-29-carte-points-interet.md
 		Docs\Aide aux combats.pdf = Docs\Aide aux combats.pdf
-		Docs\bugs_and_issues.md = Docs\bugs_and_issues.md
-		Docs\console_logs.txt = Docs\console_logs.txt
-		Docs\development_plan.md = Docs\development_plan.md
+		Docs\console_logs_gm.txt = Docs\console_logs_gm.txt
+		Docs\console_logs_player.txt = Docs\console_logs_player.txt
 		Docs\README.md = Docs\README.md
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{8EC462FD-D22E-90A8-E5CE-7E832BA40C5D}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{D1486D02-2582-410B-8A71-7902EBAC5E7E}"
 	ProjectSection(SolutionItems) = preProject
 		.gitignore = .gitignore
 		.nojekyll = .nojekyll
@@ -55,6 +58,6 @@ Global
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {9DDAF9AB-6B46-43B3-80AF-42CA2E5005A5}
+		SolutionGuid = {7A37A857-B5F7-489A-A553-2004F1DDA92B}
 	EndGlobalSection
 EndGlobal

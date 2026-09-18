@@ -6,50 +6,61 @@
     <title>ARIA – Maître de Jeu</title>
     <script>const VERSION = '0.1.6';</script>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHRleHQgeD0iMTYiIHk9IjI4IiBmb250LXNpemU9IjMwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjYzlhODRjIj7imZs8L3RleHQ+PC9zdmc+">
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Cinzel+Decorative:wght@700&family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Playfair+Display:ital,wght@0,700;1,400&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Archivo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+    <link rel="stylesheet" href="../css/aria-panel.css">
     <link rel="stylesheet" href="../css/aria-gm.css">
 </head>
 <body>
 
-    <!-- SAVE KEY GATEWAY -->
-    <div id="file-gateway" style="position:fixed;inset:0;background:var(--bg);display:none;align-items:center;justify-content:center;z-index:10000;">
-        <div class="gateway-panel">
-            <div class="sel-brand" style="color:var(--gm-accent);">♛ ARIA</div>
-            <!-- New key panel -->
-            <div id="gateway-new">
-                <div class="gateway-title">Clé de sauvegarde</div>
-                <p class="gateway-desc">Votre clé identifie votre progression. Notez-la précieusement — elle sera nécessaire sur un autre appareil.</p>
-                <div class="gateway-key-box" id="gateway-key-display"></div>
-                <div class="gateway-btn-row">
-                    <button class="gateway-btn-secondary" id="gateway-copy-btn" onclick="copyGatewayKey()">Copier</button>
-                    <button class="gateway-btn" onclick="confirmNewKey()">Continuer →</button>
+    <!-- Dungeon-entrance background — behind the gateway/selection screens only.
+         Paused (setActive(false)) once the app panel is shown; see aria-shared.js. -->
+    <div id="dungeon-bg-root" style="position:fixed;inset:0;z-index:9998;"></div>
+
+    <!-- SAVE KEY GATEWAY (two-panel: Nouvelle clé | Clé existante — design frame 01) -->
+    <div id="file-gateway" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:10000;padding:24px;overflow-y:auto;">
+        <div class="gateway-shell">
+            <div class="gateway-brand">ARIA</div>
+            <div class="gateway-brand-rule"></div>
+            <div class="gateway-cols">
+                <!-- New key panel -->
+                <div class="gateway-card" id="gateway-new">
+                    <div class="gateway-eyebrow ember">Nouvelle clé</div>
+                    <div class="gateway-card-title">Clé de sauvegarde</div>
+                    <p class="gateway-desc">Votre clé identifie votre progression. Notez-la précieusement — elle sera nécessaire sur un autre appareil.</p>
+                    <div class="gateway-key-box" id="gateway-key-display"></div>
+                    <div class="gateway-btn-row">
+                        <button class="gateway-btn-secondary" id="gateway-copy-btn" onclick="copyGatewayKey()">Copier</button>
+                        <button class="gateway-btn" onclick="confirmNewKey()">Continuer →</button>
+                    </div>
                 </div>
-                <p class="gateway-hint">Déjà une clé ? <button class="gateway-link-btn" onclick="showGatewayExisting()">Saisir une clé existante</button></p>
+                <!-- Existing key panel -->
+                <div class="gateway-card" id="gateway-existing">
+                    <div class="gateway-eyebrow">Clé existante</div>
+                    <div class="gateway-card-title">Retrouver une partie</div>
+                    <p class="gateway-desc">Saisissez votre clé pour retrouver votre progression sur cet appareil.</p>
+                    <input class="gateway-key-input" id="gateway-key-input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" onkeydown="if(event.key==='Enter')submitExistingKey()" />
+                    <button class="gateway-btn-secondary gateway-btn-full" onclick="submitExistingKey()">Charger →</button>
+                </div>
             </div>
-            <!-- Existing key panel -->
-            <div id="gateway-existing" style="display:none;">
-                <div class="gateway-title">Clé de sauvegarde</div>
-                <p class="gateway-desc">Saisissez votre clé pour retrouver votre progression.</p>
-                <input class="gateway-key-input" id="gateway-key-input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" onkeydown="if(event.key==='Enter')submitExistingKey()" />
-                <button class="gateway-btn" style="margin-top:8px;width:100%;" onclick="submitExistingKey()">Charger →</button>
-                <p class="gateway-hint"><button class="gateway-link-btn" onclick="showGateway()">← Nouvelle clé</button> &nbsp;·&nbsp; <button class="gateway-link-btn" onclick="cancelGateway()">Annuler</button></p>
-            </div>
+            <button class="gateway-cancel" id="gateway-cancel" onclick="cancelGateway()" style="display:none;">Annuler</button>
         </div>
     </div>
 
     <!-- SELECTION SCREEN -->
-    <div id="selection-screen" style="position:fixed;inset:0;background:var(--bg);display:none;align-items:center;justify-content:center;z-index:9999;overflow-y:auto;padding:24px;">
+    <div id="selection-screen" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:9999;overflow-y:auto;padding:24px;">
         <div class="sel-container">
             <a class="sel-home-btn" href="../" title="Accueil">⌂</a>
-            <div class="sel-brand">♛ ARIA</div>
-            <div class="sel-subtitle" style="color:var(--gm-accent);">Choisissez une campagne</div>
+            <div class="sel-brand">ARIA</div>
+            <div class="sel-subtitle">Choisissez une campagne</div>
             <div class="sel-grid" id="campaign-grid"></div>
             <div class="sel-new-form" id="new-campaign-form" style="display:none;">
                 <input class="sel-new-input" id="new-campaign-name" placeholder="Nom de la campagne" onkeydown="if(event.key==='Enter')confirmCreateCampaign()" />
                 <div class="sel-type-row">
-                    <label class="sel-type-label"><input type="radio" name="new-campaign-type" value="ancient" checked> ⚔ Médiéval</label>
-                    <label class="sel-type-label"><input type="radio" name="new-campaign-type" value="contemporary"> 🕵 Contemporain</label>
+                    <label class="sel-type-label"><input type="radio" name="new-campaign-type" value="ancient" checked> Médiéval</label>
+                    <label class="sel-type-label"><input type="radio" name="new-campaign-type" value="contemporary"> Contemporain</label>
                 </div>
                 <div class="sel-new-btns">
                     <button class="sel-confirm-btn" onclick="confirmCreateCampaign()">Créer</button>
@@ -58,7 +69,7 @@
             </div>
             <button class="sel-add-btn" onclick="createCampaign()">+ Nouvelle campagne</button>
             <div class="sel-save-row">
-                <span class="sel-save-icon">💾</span>
+                <span class="sel-save-icon">Clé</span>
                 <span class="sel-save-label" id="sel-save-label">—</span>
                 <button class="sel-save-btn" onclick="copySaveKey()">Copier</button>
                 <button class="sel-save-btn" onclick="changeSaveKey()">Changer…</button>
@@ -66,14 +77,37 @@
         </div>
     </div>
 
+    <!-- VDO.ninja push iframe (MJ) — same rules as the player's: full-viewport but
+         opacity:0, never display:none. It used to live inside the Joueurs tab, whose
+         .tab-content goes display:none on every tab switch, which can block camera
+         capture. Outside #app-wrapper so no tab/pane layout can ever hide it. -->
+    <iframe id="vdo-gm-push-frame" style="position:fixed;top:0;left:0;width:100%;height:100%;border:none;pointer-events:none;opacity:0;" allow="camera; microphone; autoplay; fullscreen; display-capture; picture-in-picture; screen-wake-lock; encrypted-media" allowfullscreen></iframe>
+
     <!-- APP -->
     <div id="app-wrapper" style="display:none;flex-direction:column;flex:1;">
 
     <!-- TOP BAR -->
     <div class="topbar">
-        <div class="topbar-title" onclick="switchCampaign()" title="Changer de campagne" style="cursor:pointer;">♛ ARIA</div>
+        <div class="topbar-title" onclick="switchCampaign()" title="Changer de campagne" style="cursor:pointer;">ARIA</div>
+        <span class="topbar-mj">MJ</span>
         <input class="campaign-name-input" id="campaign-display" value="" placeholder="Campagne" onblur="saveCampaignName(this)" onkeydown="if(event.key==='Enter')this.blur()" />
-        <button id="btn-open-overlay-editor" class="icon-btn" title="Éditeur d'overlay" style="display:none">🎬</button>
+        <!-- presence: "Lire la table" toggle — enlarges player faces (design frame 26) -->
+        <span class="tb-presence-label">Présence</span>
+        <button class="tb-read-table" id="tb-read-table" onclick="toggleReadTable()" title="Agrandir les visages des joueurs">
+            <span class="trt-icon">⌗</span> Lire la table<span class="trt-on">· on</span>
+        </button>
+        <!-- camera kill switch — the GM decides the room, this decides whether the GM
+             publishes into it. Shown only while a room is active (cam.renderToggle). -->
+        <button class="tb-cam-toggle" id="tb-cam-toggle" onclick="cam.toggle()" style="display:none;" title="Couper ma caméra">📹</button>
+        <!-- music mini chip (design frame 12) — shows the now-playing track -->
+        <div class="tb-music-chip" id="tb-music-chip" style="visibility:hidden;" title="Piste en cours">
+            <span class="tb-music-note">♪</span>
+            <span class="tb-music-title" id="tb-music-title">—</span>
+        </div>
+        <div class="tb-sep"></div>
+        <!-- join code chip (design frame 12) — click to copy -->
+        <div class="topbar-joincode" id="tb-joincode" onclick="copyJoinCode()" title="Code de campagne — cliquer pour copier" style="display:none;">—</div>
+        <button id="btn-open-overlay-editor" class="icon-btn" title="Éditeur d'overlay" style="display:none">▦</button>
         <button class="icon-btn" onclick="toggleConfig()" title="Configuration">⚙</button>
     </div>
 
@@ -81,26 +115,30 @@
     <div class="main">
         <div class="content">
             <div class="tabs">
-                <button class="tab-btn active" onclick="switchTab('tab-players',this)">♟ Joueurs</button>
-                <button class="tab-btn" onclick="switchTab('tab-monsters',this)">☠ Monstres</button>
-                <button class="tab-btn" onclick="switchTab('tab-rolls',this)">⚄ Jets</button>
-                <button class="tab-btn" onclick="switchTab('tab-gm-roll',this)">⚅ Jet MJ</button>
-                <button class="tab-btn" onclick="switchTab('tab-cards',this)">♠ Cartes</button>
-                <button class="tab-btn" onclick="switchTab('tab-alchemy',this)">⚗ Alchimie</button>
-                <button class="tab-btn" onclick="switchTab('tab-files',this)">✉ Fichiers</button>
-                <button class="tab-btn" onclick="switchTab('tab-music',this)">♪ Musique</button>
-                <button class="tab-btn" onclick="switchTab('tab-gm-notes',this)">✎ Notes</button>
+                <button class="tab-btn active" data-tab="tab-players" onclick="switchTab('tab-players',this)">Joueurs</button>
+                <button class="tab-btn" data-tab="tab-monsters" onclick="switchTab('tab-monsters',this)">Monstres</button>
+                <button class="tab-btn" data-tab="tab-map" onclick="switchTab('tab-map',this)">Carte</button>
+                <button class="tab-btn" data-tab="tab-gm-roll" onclick="switchTab('tab-gm-roll',this)">Jets</button>
+                <button class="tab-btn" data-tab="tab-cards" onclick="switchTab('tab-cards',this)">Cartes</button>
+                <button class="tab-btn" data-tab="tab-alchemy" onclick="switchTab('tab-alchemy',this)">Alchimie</button>
+                <button class="tab-btn" data-tab="tab-files" onclick="switchTab('tab-files',this)">Fichiers</button>
+                <button class="tab-btn" data-tab="tab-music" onclick="switchTab('tab-music',this)">Musique</button>
+                <button class="tab-btn" data-tab="tab-gm-notes" onclick="switchTab('tab-gm-notes',this)">Notes</button>
             </div>
+
+            <!-- Split-view pane headers and dividers (design frames 22-24) are
+                 generated by updateSplitChrome() in aria-gm.js. -->
 
             <!-- JOUEURS -->
             <div class="tab-content active" id="tab-players">
                 <div class="gm-bulk-bar">
                     <span class="field-label" style="margin:0;white-space:nowrap;">Tous les joueurs</span>
                     <input class="gm-input" id="bulk-dmg-input" type="text" inputmode="numeric" placeholder="Dégâts" style="width:80px;" oninput="this.value=this.value.replace(/[^0-9]/g,'')" onkeydown="if(event.key==='Enter')bulkDamageAll()" />
-                    <button class="gm-action-btn gm-action-dmg" onclick="bulkDamageAll()">⚔ Tous</button>
+                    <button class="gm-action-btn gm-action-dmg" onclick="bulkDamageAll()">Infliger</button>
                     <input class="gm-input" id="bulk-heal-input" type="text" inputmode="numeric" placeholder="Soins" style="width:80px;" oninput="this.value=this.value.replace(/[^0-9]/g,'')" onkeydown="if(event.key==='Enter')bulkHealAll()" />
-                    <button class="gm-action-btn gm-action-heal" onclick="bulkHealAll()">♥ Tous</button>
+                    <button class="gm-action-btn gm-action-heal" onclick="bulkHealAll()">Soigner</button>
                 </div>
+                <select id="gm-cam-device-pick" class="gm-input" style="display:none;margin-top:10px;max-width:280px;" title="Caméra à diffuser"></select>
                 <div id="gm-self-view-section" style="display:none;margin-top:10px;">
                     <div class="section-header">
                         <span class="section-icon">📹</span>
@@ -119,8 +157,10 @@
                 <div class="no-players" id="no-players">En attente de joueurs… <br><span style="font-size:13px;opacity:.6;">Les joueurs apparaissent automatiquement dès qu'ils ouvrent aria-player.html</span></div>
             </div>
 
-            <!-- MONSTRES -->
+            <!-- MONSTRES — add-form as left rail + monster list (design frame 13) -->
             <div class="tab-content" id="tab-monsters">
+                <div class="gm-two-col">
+                <div class="gm-col-rail">
                 <!-- Add Monster Form -->
                 <div class="add-monster-form">
                     <h3>+ Nouveau monstre</h3>
@@ -161,7 +201,9 @@
                         </div>
                     </div>
                 </div>
+                </div><!-- /.gm-col-rail -->
 
+                <div class="gm-col-main">
                 <!-- Monsters list -->
                 <div class="section-header" style="margin-top:4px;">
                     <span class="section-icon">☠</span>
@@ -170,44 +212,35 @@
                 </div>
                 <div class="group-bar" id="monster-group-bar"></div>
                 <div class="monsters-grid" id="monsters-grid">
-                    <div style="font-family:'EB Garamond',serif;font-size:15px;font-style:italic;color:var(--parchment-dim);opacity:.5;text-align:center;padding:20px;" id="no-monsters">Aucun monstre actif</div>
+                    <div style="font-family:'Cormorant Garamond',serif;font-size:15px;font-style:italic;color:var(--parchment-dim);opacity:.5;text-align:center;padding:20px;" id="no-monsters">Aucun monstre actif</div>
                 </div>
+                </div><!-- /.gm-col-main -->
+                </div><!-- /.gm-two-col -->
             </div>
 
-            <!-- JETS -->
-            <div class="tab-content" id="tab-rolls">
-                <div class="rolls-header">
-                    <div class="section-header" style="margin-bottom:0;flex:1;">
-                        <span class="section-icon">🎲</span>
-                        <span class="section-title">Fil des jets</span>
-                        <div class="section-rule"></div>
-                    </div>
-                    <button class="clear-btn" onclick="clearRolls()">Effacer</button>
-                </div>
-                <div class="rh-filter-bar" id="gm-roll-filter-bar">
-                    <button class="rf-pill active" id="gm-rfp-all"     onclick="toggleGMRollFilter('all')">Tous</button>
-                    <button class="rf-pill"        id="gm-rfp-success" onclick="toggleGMRollFilter('success')">Succès</button>
-                    <button class="rf-pill"        id="gm-rfp-fail"    onclick="toggleGMRollFilter('fail')">Échec</button>
-                    <button class="rf-pill"        id="gm-rfp-crit"    onclick="toggleGMRollFilter('crit')">Critique</button>
-                    <button class="rf-pill"        id="gm-rfp-die"     onclick="toggleGMRollFilter('die')">Dés</button>
-                    <div class="rf-player-group" id="gm-player-pills"></div>
-                </div>
-                <div class="rolls-feed" id="rolls-feed">
-                    <div class="rolls-empty">En attente de jets…</div>
-                </div>
+            <!-- CARTE — POI map shell; image + pins land in tasks 4/5 -->
+            <div class="tab-content map-tab" id="tab-map">
+                <div class="map-bar" id="map-group-bar"></div>
+                <div class="map-toolbar" id="map-toolbar"></div>
+                <input type="file" id="map-image-input" accept="image/*" style="display:none"
+                       onchange="handleMapImageUpload(this)">
+                <span class="map-upload-status" id="map-upload-status"></span>
+                <div class="map-stage" id="map-stage"></div>
             </div>
 
-            <!-- JET MJ -->
+            <!-- JETS — roll console (left) + live feed (right), fused -->
             <div class="tab-content" id="tab-gm-roll">
-                <div class="gm-roll-section">
-                    <div>
+                <div class="gm-jets-layout">
+                    <!-- LEFT: roll console -->
+                    <div class="gm-jets-console">
+                        <div class="gm-console-caption">Console de jet</div>
                         <div class="gm-roll-form">
                             <h3>Jet libre</h3>
                             <label class="field-label">Nom du jet</label>
                             <input class="gm-input" id="gm-free-name" placeholder="ex: Perception" />
                             <label class="field-label">Seuil (%)</label>
                             <input class="gm-input" id="gm-free-threshold" type="text" inputmode="numeric" placeholder="50" oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
-                            <button class="gm-roll-btn" onclick="doGMFreeRoll()">⚄ Lancer</button>
+                            <button class="gm-roll-btn" onclick="doGMFreeRoll()">Lancer</button>
                         </div>
                         <div class="gm-roll-form" style="margin-top:12px;">
                             <h3>Combat — Monstre</h3>
@@ -229,20 +262,18 @@
                             </div>
                             <label class="field-label">Seuil (%)</label>
                             <input class="gm-input" id="gm-monster-threshold" type="text" inputmode="numeric" placeholder="50" oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
-                            <button class="gm-roll-btn" onclick="doGMMonsterRoll()">⚄ Lancer l'attaque</button>
+                            <button class="gm-roll-btn" onclick="doGMMonsterRoll()">Lancer l'attaque</button>
                             <div class="gm-combat-sep"></div>
                             <div class="gm-combat-row">
                                 <input class="gm-input" id="gm-monster-dmg-input" type="text" inputmode="numeric" placeholder="Dégâts" oninput="this.value=this.value.replace(/[^0-9]/g,'')" onkeydown="if(event.key==='Enter')doGMMonsterDamage()" />
-                                <button class="gm-action-btn gm-action-dmg" onclick="doGMMonsterDamage()">⚔ Attaquer</button>
+                                <button class="gm-action-btn gm-action-dmg" onclick="doGMMonsterDamage()">Attaquer</button>
                             </div>
                             <div class="gm-combat-row">
                                 <input class="gm-input" id="gm-monster-heal-input" type="text" inputmode="numeric" placeholder="Soins" oninput="this.value=this.value.replace(/[^0-9]/g,'')" onkeydown="if(event.key==='Enter')doGMMonsterHeal()" />
-                                <button class="gm-action-btn gm-action-heal" onclick="doGMMonsterHeal()">♥ Soigner</button>
+                                <button class="gm-action-btn gm-action-heal" onclick="doGMMonsterHeal()">Soigner</button>
                             </div>
                         </div>
-                    </div>
-                    <div>
-                        <div class="section-title">Dés simples</div>
+                        <div class="section-title" style="margin-top:16px;">Dés simples</div>
                         <div class="gm-dice-tray">
                             <button class="die-btn" onclick="gmRollDie(4)">d4</button>
                             <button class="die-btn" onclick="gmRollDie(6)">d6</button>
@@ -254,32 +285,55 @@
                         <div class="gm-die-result" id="gm-die-result"></div>
                         <div class="section-title" style="margin-top:16px;">Résultat</div>
                         <div class="gm-roll-result" id="gm-roll-result">
-                            <div style="font-family:'EB Garamond',serif;font-size:14px;font-style:italic;color:var(--parchment-dim);opacity:.5;">Pas encore de jet</div>
+                            <div style="font-family:'Cormorant Garamond',serif;font-size:14px;font-style:italic;color:var(--parchment-dim);opacity:.5;">Pas encore de jet</div>
+                        </div>
+                    </div>
+                    <!-- RIGHT: live roll feed -->
+                    <div class="gm-jets-feed">
+                        <div class="rolls-header">
+                            <div class="section-header" style="margin-bottom:0;flex:1;">
+                                <span class="section-title">Fil des jets</span>
+                                <div class="section-rule"></div>
+                            </div>
+                            <button class="clear-btn" onclick="clearRolls()">Effacer</button>
+                        </div>
+                        <div class="rh-filter-bar" id="gm-roll-filter-bar">
+                            <button class="rf-pill active" id="gm-rfp-all"     onclick="toggleGMRollFilter('all')">Tous</button>
+                            <button class="rf-pill"        id="gm-rfp-success" onclick="toggleGMRollFilter('success')">Succès</button>
+                            <button class="rf-pill"        id="gm-rfp-fail"    onclick="toggleGMRollFilter('fail')">Échec</button>
+                            <button class="rf-pill"        id="gm-rfp-crit"    onclick="toggleGMRollFilter('crit')">Critique</button>
+                            <button class="rf-pill"        id="gm-rfp-die"     onclick="toggleGMRollFilter('die')">Dés</button>
+                            <div class="rf-player-group" id="gm-player-pills"></div>
+                        </div>
+                        <div class="rolls-feed" id="rolls-feed">
+                            <div class="rolls-empty">En attente de jets…</div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- CARTES -->
+            <!-- CARTES — Deck MJ as left rail + player draws (design frame 15) -->
             <div class="tab-content" id="tab-cards">
+                <div class="gm-two-col">
+                <div class="gm-col-rail">
                 <!-- GM private deck -->
                 <div class="gm-own-deck-section">
-                    <div class="section-title" style="margin-bottom:12px;">Deck MJ <span style="font-size:11px;color:var(--parchment-dim);font-family:'EB Garamond',serif;font-style:italic;">(privé)</span></div>
+                    <div class="section-title" style="margin-bottom:12px;">Deck MJ <span style="font-size:11px;color:var(--parchment-dim);font-family:'Cormorant Garamond',serif;font-style:italic;">(privé)</span></div>
                     <div class="card-tab-layout">
                         <div class="card-deck-col">
-                            <div class="deck-wrap" id="gm-deck-wrap" onclick="gmDrawCard()">
+                            <div class="deck-wrap" id="gm-deck-wrap" onclick="gmDeck.draw()">
                                 <div class="deck-back"><div class="deck-pattern">♛</div></div>
                             </div>
                             <div class="deck-count" id="gm-deck-count">54 cartes</div>
-                            <button class="card-action-btn" id="gm-reshuffle-btn" onclick="gmManualReshuffle(false)">↺ Mélanger</button>
-                            <button class="card-action-btn" id="gm-reshuffle-remaining-btn" onclick="gmManualReshuffle(true)">↺ Restant</button>
-                            <button class="card-action-btn" id="gm-clear-exclusions-btn" onclick="gmClearExclusions()">✕ Exclusions</button>
+                            <button class="card-action-btn" id="gm-reshuffle-btn" onclick="gmDeck.reshuffle(false)">↺ Mélanger</button>
+                            <button class="card-action-btn" id="gm-reshuffle-remaining-btn" onclick="gmDeck.reshuffle(true)">↺ Restant</button>
+                            <button class="card-action-btn" id="gm-clear-exclusions-btn" onclick="gmDeck.clearExclusions()">✕ Exclusions</button>
                             <div class="card-status" id="gm-card-status"></div>
                         </div>
                         <div class="card-stage">
                             <div class="flip-wrap hidden" id="gm-flip-wrap">
                                 <div class="flip-inner">
-                                    <div class="card-back-face"><div class="deck-pattern" style="border-color:rgba(201,168,76,.25);">♛</div></div>
+                                    <div class="card-back-face"><div class="deck-pattern" style="border-color:rgba(169,139,221,.25);">♛</div></div>
                                     <div id="gm-drawn-card"></div>
                                 </div>
                             </div>
@@ -290,13 +344,17 @@
                         </div>
                     </div>
                 </div>
+                </div><!-- /.gm-col-rail -->
+
+                <div class="gm-col-main">
+                <div class="gm-card-live-caption">Tirages joueurs — en direct</div>
                 <!-- Player draw display -->
                 <div class="gm-card-display">
                     <div class="gm-card-info" id="gm-card-info">En attente d'un tirage joueur…</div>
                     <div class="card-stage">
                         <div class="flip-wrap hidden" id="flip-wrap">
                             <div class="flip-inner">
-                                <div class="card-back-face"><div class="deck-pattern" style="border-color:rgba(201,168,76,.25);">♛</div></div>
+                                <div class="card-back-face"><div class="deck-pattern" style="border-color:rgba(169,139,221,.25);">♛</div></div>
                                 <div id="drawn-card"></div>
                             </div>
                         </div>
@@ -311,9 +369,13 @@
                         <div class="rolls-empty">Aucun tirage pour l'instant…</div>
                     </div>
                 </div>
+                </div><!-- /.gm-col-main -->
+                </div><!-- /.gm-two-col -->
             </div>
-            <!-- ALCHIMIE -->
+            <!-- ALCHIMIE — potion form as left rail + grimoire (design frame 16) -->
             <div class="tab-content" id="tab-alchemy">
+                <div class="gm-two-col">
+                <div class="gm-col-rail">
                 <div class="add-monster-form">
                     <h3>+ Nouvelle potion</h3>
                     <div class="gm-pot-form-grid">
@@ -342,9 +404,15 @@
                         </div>
                     </div>
                 </div>
+                </div><!-- /.gm-col-rail -->
+
+                <div class="gm-col-main">
+                <div class="gm-card-live-caption">Grimoire — accorder aux joueurs</div>
                 <div class="gm-pot-list" id="gm-pot-list">
                     <div class="alchemy-empty" id="gm-pot-empty">Aucune potion dans le grimoire.</div>
                 </div>
+                </div><!-- /.gm-col-main -->
+                </div><!-- /.gm-two-col -->
             </div>
             <!-- FICHIERS -->
             <div class="tab-content" id="tab-files">
@@ -385,7 +453,7 @@
                         <span class="music-fade-label">s</span>
                     </div>
                     <div class="music-vol-row">
-                        <span class="music-vol-icon">🔊</span>
+                        <span class="music-vol-icon">♪</span>
                         <input type="range" class="music-vol-slider" id="music-gm-volume" min="0" max="100" value="80"
                             oninput="onGMMusicVolumeChange(this.value)" />
                         <span class="music-vol-val" id="music-gm-vol-val">80</span>
@@ -410,7 +478,7 @@
                 </div>
                 <div class="music-add-row" style="margin-top:6px;">
                     <label class="gm-action-btn" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
-                        📁 Importer un fichier
+                        Importer un fichier
                         <input type="file" id="music-file-input" accept=".mp3,.ogg,.wav,.flac" style="display:none;"
                             onchange="musicUploadFile(this)" />
                     </label>
@@ -424,13 +492,13 @@
                     <div class="notes-sidebar">
                         <div class="notes-sidebar-header">
                             <span class="notes-sidebar-title">Notes</span>
-                            <button class="notes-add-btn" onclick="addGMNote()" title="Nouvelle note">+</button>
+                            <button class="notes-add-btn" onclick="gmNotes.add()" title="Nouvelle note">+</button>
                         </div>
                         <div class="notes-list" id="gm-notes-list"></div>
                     </div>
                     <div class="notes-editor">
-                        <input class="notes-name-input" id="gm-notes-name-input" placeholder="Nom de la note…" oninput="renameCurrentGMNote()" />
-                        <textarea class="notes-area" id="gm-notes-area" placeholder="Contenu…" oninput="saveCurrentGMNote()"></textarea>
+                        <input class="notes-name-input" id="gm-notes-name-input" placeholder="Nom de la note…" oninput="gmNotes.rename()" />
+                        <textarea class="notes-area" id="gm-notes-area" placeholder="Contenu…" oninput="gmNotes.save()"></textarea>
                     </div>
                 </div>
             </div>
@@ -468,7 +536,7 @@
         <label class="config-label">VDO.ninja Room</label>
         <input class="config-input" id="cfg-vdo-room" placeholder="ex: mon-groupe" />
         <label class="config-label">Mot de passe VDO (optionnel)</label>
-        <input class="config-input" id="cfg-vdo-room-password" placeholder="laisser vide si aucun" />
+        <input class="config-input" id="cfg-vdo-room-password" type="password" autocomplete="off" placeholder="laisser vide si aucun" />
         <div class="config-theme-row">
             <span class="config-label" style="margin-bottom:0;">Mode clair</span>
             <label class="theme-toggle">
@@ -477,29 +545,40 @@
             </label>
         </div>
         <button class="config-save-btn" onclick="saveConfig()">Reconnecter</button>
-        <button class="config-save-btn" style="margin-top:8px;background:rgba(201,168,76,.08);" onclick="copyOverlayUrl()">📋 Copier URL Overlay (OBS)</button>
+        <button class="config-save-btn" style="margin-top:8px;background:rgba(169,139,221,.10);" onclick="copyOverlayUrl()">Copier URL Overlay (OBS)</button>
     </div>
 
 
     </div><!-- /#app-wrapper -->
 
     <!-- GM FILE VIEWER MODAL -->
-    <div class="modal-scrim" id="gm-file-viewer-scrim" onclick="closeGmFileViewer()"></div>
+    <div class="modal-scrim" id="gm-file-viewer-scrim" onclick="fileViewer.close()"></div>
     <div class="file-viewer-modal" id="gm-file-viewer-modal">
         <div class="fv-header">
             <div class="fv-title" id="gm-fv-title"></div>
-            <button class="fv-close-btn" onclick="closeGmFileViewer()">✕</button>
+            <button class="fv-close-btn" onclick="fileViewer.close()">✕</button>
         </div>
         <div class="fv-body" id="gm-fv-body"></div>
     </div>
 
     <div class="shuffle-overlay" id="gm-shuffle-overlay"></div>
 
+    <!-- DRAG-TO-DOCK FX (design frame 24) — ghost chip follows the cursor; the drop
+         overlay darkens the targeted half of the content region -->
+    <div id="dock-overlay">
+        <div class="dock-plus">+</div>
+        <div class="dock-label" id="dock-label"></div>
+        <div class="dock-hint">déposer ici</div>
+    </div>
+    <div id="drag-ghost"><span class="dg-icon">⌗</span><span id="drag-ghost-label"></span></div>
+
     <!-- Hidden YouTube IFrame players for music crossfade -->
     <div id="yt-player-a" style="position:fixed;top:-2px;left:-2px;width:1px;height:1px;overflow:hidden;pointer-events:none;opacity:0;"></div>
     <div id="yt-player-b" style="position:fixed;top:-2px;left:-4px;width:1px;height:1px;overflow:hidden;pointer-events:none;opacity:0;"></div>
 
+    <script src="../js/aria-dungeon-bg.js"></script>
     <script src="../js/aria-supabase.js"></script>
+    <script src="../js/aria-shared.js"></script>
     <script src="../js/aria-gm.js"></script>
 </body>
 </html>

@@ -14,10 +14,152 @@ function campaignChannel(base) { return CAMPAIGN ? `${base}-${CAMPAIGN}` : base;
 // interpolated field below must be escaped to prevent on-stream XSS in OBS.
 function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
+let mapState = null;
+// The overlay already knows whose it is: a player overlay shows that character's view, a
+// GM overlay the table's. GM notes are in neither — they are never in the payload at all.
+const MAP_CHAR_ID = OVERLAY_ID.startsWith('player_') ? OVERLAY_ID.slice(7) : null;
+
 let overlayConfig = { widgets: [] };
+// Set once a layout-update has been applied. loadOverlayConfig() runs at startup and
+// awaits Supabase; the editor publishes over Ably and writes to the DB concurrently,
+// so a layout-update arriving during that round-trip is newer than anything the read
+// can return — and letting the stale row land would drop the OBS output back to the
+// previous layout until the next edit.
+let layoutFromAbly = false;
+// Live participants, keyed by charId — a projection of the `aria-presence` channel's
+// presence set, re-read whole on every change. The overlay only observes: it never
+// enters the set, so it needs no clientId.
+//
+// What this replaces: a 60s last-seen cache, a per-character session registry, a 10s
+// prune sweep and a `leave` subscription, all of which existed to answer "is this
+// player still here" from a stream of heartbeats. Ably answers it. In particular a
+// player closing one of two tabs no longer removes their face from the OBS output,
+// because the other tab is still a member of the set.
 const presenceCache = new Map();
 const rollHistory = [];
 const ROLL_HISTORY_MAX = 20;
+
+// VDO.ninja room + password, cached from the GM's gm-presence broadcast. Camera
+// widgets need them: streams pushed into a password-protected room are encrypted
+// and a bare ?view=SID viewer stays black without &room + &password (&solo is
+// required alongside &room or VDO.ninja shows its join page instead of the stream).
+let vdoRoom = '';
+let vdoRoomPassword = '';
+// VDO.ninja sanitizes stream ids to [A-Za-z0-9_] before publishing, so a stream
+// pushed as `aria-11b0286b` is announced as `aria_11b0286b`. Apply the same rule to
+// every id we view or compare — a widget config saved by an older editor, or a peer
+// on an older build, still carries hyphens and would never match.
+const sidSafe = s => String(s || '').replace(/\W+/g, '_');
+
+function vdoCamSrc(sid) {
+    let src = `https://vdo.ninja/?view=${encodeURIComponent(sidSafe(sid))}&autoplay&cleanoutput&transparent`;
+    if (vdoRoom) src += `&solo&room=${encodeURIComponent(vdoRoom)}`;
+    if (vdoRoomPassword) src += `&password=${encodeURIComponent(vdoRoomPassword)}`;
+    return src;
+}
+// The GM's own stream, taken from its presence member. Needed to decide whether a
+// camera widget pointed at the GM is live, since the GM is kept out of presenceCache
+// (that map is players). It goes when the GM leaves the set — a crash or a lost
+// network is reported by Ably like any other departure, so no silence timer is
+// needed to catch the case where a "session over" message would never have arrived.
+let gmLiveStreamId = '';
+// Stream IDs currently being pushed: the live players in the presence set, plus the
+// GM. A widget pointing anywhere else is showing a stream nobody publishes.
+function liveStreamIds() {
+    const live = new Set();
+    if (gmLiveStreamId) live.add(sidSafe(gmLiveStreamId));
+    presenceCache.forEach(p => { if (p.streamId) live.add(sidSafe(p.streamId)); });
+    return live;
+}
+// Bring one camera widget's element in line with the current room/liveness, doing
+// the least possible to the DOM: a live iframe whose src is already right is left
+// completely alone. Anything else (re-creating it, or even re-assigning the same
+// src) tears down the WebRTC connection and blacks the tile out on stream for a
+// second or two. `live` is a liveStreamIds() set, passed in so a caller looping
+// over many widgets computes it once.
+function syncCameraWidget(el, widget, live) {
+    const sid = sidSafe(widget.config?.streamId);
+    const iframe = el.querySelector('iframe');
+    if (!sid || !live.has(sid)) {
+        // Nobody is pushing this stream — show the (invisible) placeholder rather
+        // than a black rectangle. Already a placeholder ⇒ nothing to do.
+        if (iframe || !el.firstChild) el.innerHTML = '<div class="ow-camera-empty">—</div>';
+        return;
+    }
+    const src = vdoCamSrc(sid);
+    if (iframe) {
+        if (iframe.src !== src) iframe.src = src;
+    } else {
+        el.innerHTML = renderWidgetContent(widget);
+    }
+}
+// Re-src camera widget iframes after the room/password arrive, and swap them for a
+// placeholder when their stream stops. Camera widgets are skipped by
+// updateWidgetData to avoid iframe reloads on every presence tick, so without this
+// a disconnected player left a black rectangle on stream forever.
+function refreshCameraWidgets() {
+    const live = liveStreamIds();
+    document.querySelectorAll('.overlay-widget').forEach(el => {
+        const widget = overlayConfig.widgets.find(w => w.id === el.dataset.widgetId);
+        if (!widget || widget.type !== 'camera') return;
+        syncCameraWidget(el, widget, live);
+    });
+}
+
+// Zones first, pins after: a black district must not swallow the tokens standing on it.
+function _owZones(charId) {
+    // mapState comes straight off Ably ('aria-map' / 'state') with no validation — anyone
+    // holding the key can publish a malformed zone. A throw here would blank the whole
+    // widget, and on the overlay that kills the live OBS output mid-stream, so a bad shape
+    // renders as no polygon instead of blowing up the render.
+    const poly = (z, cls) => {
+        if (!Array.isArray(z.zone) || z.zone.length < 3) return '';
+        const pts = z.zone.filter(v => Array.isArray(v) && v.length === 2)
+            .map(([x, y]) => `${Number(x) || 0},${Number(y) || 0}`);
+        return pts.length >= 3 ? `<polygon class="${cls}" vector-effect="non-scaling-stroke" points="${pts.join(' ')}"/>` : '';
+    };
+    const clear = visiblePois(mapState, charId).filter(p => p.zone?.length)
+        .map(z => poly(z, 'ow-zone-known')).join('');
+    const fog = fogZones(mapState, charId)
+        .map(z => poly(z, 'ow-zone-fog')).join('');
+    return `<svg class="ow-map-zones" viewBox="0 0 100 100" preserveAspectRatio="none">${clear}${fog}</svg>`;
+}
+
+// Create the <img> once and only re-assign src when it differs — the setFrameSrc guard,
+// for the same reason: this output runs for hours and a reload is a visible flash. Only
+// the zone and pin layers are rebuilt, and only when a state arrives. The image sits inside
+// .ow-map-frame (shrink-wrapped to the rendered picture, like .aria-frame in the panels) —
+// see the CSS comment above .ow-map-frame for why the layers must be inset:0 of THAT, not
+// of the widget box.
+function syncMapWidget(el, widget) {
+    if (!mapState || !mapState.imageUrl) {
+        console.log('[OVERLAY] map widget', widget.id, '→ placeholder | no active map');
+        el.innerHTML = '';
+        return;
+    }
+    let img = el.querySelector('img.ow-map-img');
+    if (!img) {
+        console.log('[OVERLAY] map widget', widget.id, '→ new image |', mapState.imageUrl);
+        el.innerHTML = `<div class="ow-map"><div class="ow-map-frame"><img class="ow-map-img" src="${esc(mapState.imageUrl)}" alt=""><div class="ow-map-zones-wrap"></div><div class="ow-map-pins"></div></div></div>`;
+        img = el.querySelector('img.ow-map-img');
+    } else if (img.getAttribute('src') !== mapState.imageUrl) {
+        console.log('[OVERLAY] map widget', widget.id, '→ re-src |', mapState.imageUrl);
+        img.setAttribute('src', mapState.imageUrl);
+    }
+    el.querySelector('.ow-map-zones-wrap').innerHTML = _owZones(MAP_CHAR_ID);
+    const pos = mapState.positions || {};
+    const names = mapState.players || {};
+    // This file builds strings and has its own esc(); every interpolated field goes
+    // through it. Names arrive over Ably — anyone with the key can publish one.
+    el.querySelector('.ow-map-pins').innerHTML = visiblePois(mapState, MAP_CHAR_ID).map(p => {
+        const tokens = Object.keys(pos).filter(cid => pos[cid] === p.id)
+            .map(cid => `<span class="ow-map-token">${esc(names[cid] || '?')}</span>`).join('');
+        return `<div class="ow-map-pin" style="left:${Number(p.x) || 0}%;top:${Number(p.y) || 0}%">`
+             + `<span class="ow-map-dot"></span>`
+             + `<span class="ow-map-label">${esc(p.name)}</span>`
+             + `<span class="ow-map-tokens">${tokens}</span></div>`;
+    }).join('');
+}
 
 let rollDismiss = null;
 let cardDismiss = null;
@@ -71,15 +213,78 @@ if (ABLY_KEY) {
 
     // Damage
     const dmgCh = ably.channels.get(campaignChannel('aria-damage'));
-    dmgCh.subscribe('damage', msg => showDamage(msg.data));
-    dmgCh.subscribe('heal', msg => showHeal(msg.data));
-    dmgCh.subscribe('presence', msg => {
-        const d = msg.data;
-        if (d?.charId) {
-            presenceCache.set(d.charId, d);
-            updateWidgetData();
+    // Player-to-player Soigner events (source:'player') carry only targetId + amount —
+    // no hpBefore/hpAfter/maxHP — so the HP bar animation can't be rendered for them.
+    // The target's own presence heartbeat updates the HP widgets instead.
+    dmgCh.subscribe('damage', msg => { if (msg.data?.source === 'player') return; showDamage(msg.data); });
+    dmgCh.subscribe('heal', msg => { if (msg.data?.source === 'player') return; showHeal(msg.data); });
+    // The roster. Re-read whole on any change to the set — a player entering,
+    // updating their sheet, or disconnecting. There is no local liveness bookkeeping
+    // left to drift, no sweep, and no departure message to interpret.
+    const presCh = ably.channels.get(campaignChannel('aria-presence'));
+    presCh.presence.subscribe(() => refreshPresenceSet());
+    async function refreshPresenceSet() {
+        try { applyPresenceSet(await presCh.presence.get()); }
+        catch (err) { console.error('[OVERLAY] presence get:', err); }
+    }
+    function applyPresenceSet(members) {
+        // Collapse members to participants: several tabs of one character share a
+        // clientId and differ by connectionId, as does the ghost of a tab that
+        // refreshed until Ably reaps it. Newest ts wins, which is always a live tab.
+        const byId = new Map();
+        (members || []).forEach(m => {
+            const d = m.data || {};
+            if (!m.clientId) return;
+            const prev = byId.get(m.clientId);
+            if (!prev || (d.ts || 0) >= (prev.ts || 0)) byId.set(m.clientId, d);
+        });
+        const gm = [...byId.values()].find(d => d.role === 'gm');
+        // Only the GM's liveness is dropped when it leaves, never vdoRoom: clearing
+        // the room changes every player's viewer URL (theirs lose &room) and would
+        // re-src live iframes, flickering every camera on the OBS output. Their
+        // streams stop being live on their own once they stop publishing.
+        const gmSid = gm ? (gm.streamId || '') : '';
+        const room = gm ? (gm.vdoRoom || '') : vdoRoom;
+        const pw = gm ? (gm.vdoRoomPassword || '') : vdoRoomPassword;
+        // Players only. The GM has no charId and must not become a face on stream.
+        const before = new Map([...presenceCache].map(([id, p]) => [id, p.streamId || '']));
+        presenceCache.clear();
+        byId.forEach((d, charId) => {
+            if (d.role === 'gm' || !d.charId) return;
+            presenceCache.set(charId, d);
+        });
+        updateWidgetData();
+        // Only touch the camera iframes when liveness or the room actually moved —
+        // re-srcing an iframe that is already correct tears down its WebRTC
+        // connection and blacks the tile out on stream for a second or two.
+        let camsChanged = gmSid !== gmLiveStreamId || room !== vdoRoom || pw !== vdoRoomPassword
+            || before.size !== presenceCache.size;
+        if (!camsChanged) {
+            for (const [id, p] of presenceCache) {
+                if (before.get(id) !== (p.streamId || '')) { camsChanged = true; break; }
+            }
         }
-    });
+        gmLiveStreamId = gmSid;
+        vdoRoom = room;
+        vdoRoomPassword = pw;
+        console.log('[OVERLAY] presence applied |', members?.length ?? 0, 'members |',
+            'GM:', gm ? 'present' : 'absent (room kept from cache)',
+            '| room:', vdoRoom || '(none — every camera widget stays a placeholder)',
+            '| MJ stream:', gmLiveStreamId || '(none)',
+            '| player streams:', [...presenceCache.values()].map(p => `${p.name}=${p.streamId || '-'}`).join(', ') || '(none)',
+            '| camsChanged:', camsChanged);
+        if (camsChanged) refreshCameraWidgets();
+    }
+    // Print the whole overlay-side camera path. Type ariaCamDiag() in the OBS browser
+    // source console (right-click the source → Interact is not enough; use the
+    // remote debugger), or just read the presence line above.
+    window.ariaCamDiag = () => {
+        console.log('[OVERLAY] room:', vdoRoom || '(none)', '| password:', vdoRoomPassword ? '(set)' : '(none)',
+            '| MJ stream:', gmLiveStreamId || '(none)', '| live streams:', [...liveStreamIds()].join(', ') || '(none)');
+        console.log('[OVERLAY] camera widgets:', overlayConfig.widgets.filter(w => w.type === 'camera')
+            .map(w => ({ id: w.id, streamId: w.config?.streamId || '(unset)', live: liveStreamIds().has(w.config?.streamId || '') })));
+        return 'see console';
+    };
     // Live monster HP — the GM publishes monster-state on the (campaign-scoped) damage
     // channel, so it must be received here, not on aria-overlay-config.
     dmgCh.subscribe('monster-state', msg => {
@@ -90,10 +295,17 @@ if (ABLY_KEY) {
         updateWidgetData();
     });
 
+    // Map. `state` replaces wholesale; `request` at connect is what gets a restarted OBS
+    // browser source its picture back mid-session.
+    const mapCh = ably.channels.get(campaignChannel('aria-map'));
+    mapCh.subscribe('state', msg => { mapState = msg.data || null; renderWidgetLayer(); });
+    mapCh.publish('request', {});
+
     if (OVERLAY_ID) {
         const cfgCh = ably.channels.get('aria-overlay-config');
         cfgCh.subscribe('layout-update', msg => {
             if (msg.data.overlayId !== OVERLAY_ID) return;
+            layoutFromAbly = true;
             overlayConfig = msg.data.config;
             renderWidgetLayer();
         });
@@ -102,7 +314,8 @@ if (ABLY_KEY) {
             const widget = overlayConfig.widgets.find(w => w.id === msg.data.widgetId);
             if (!widget) return;
             widget.config = { ...widget.config, content: msg.data.content };
-            const el = document.querySelector(`.overlay-widget[data-widget-id="${msg.data.widgetId}"]`);
+            // CSS.escape: widgetId is remote — a quote in it would throw inside querySelector.
+            const el = document.querySelector(`.overlay-widget[data-widget-id="${CSS.escape(String(msg.data.widgetId))}"]`);
             if (el) el.innerHTML = renderWidgetContent(widget);
         });
     }
@@ -176,8 +389,10 @@ function showRoll(data) {
     document.getElementById('card-roll').textContent = data.roll;
 
     const bm = !isDie && data.bonusMalus && data.bonusMalus !== 0
-        ? `(Modificateur : ${data.bonusMalus > 0 ? '+' : ''}${data.bonusMalus})` : '';
-    document.getElementById('card-bonus').textContent = bm;
+        ? ` · mod ${data.bonusMalus > 0 ? '+' : ''}${data.bonusMalus}` : '';
+    // Remote payload: only print the meta line when the threshold is a real number.
+    const th = Number.isFinite(+data.threshold) && data.threshold !== null ? +data.threshold : null;
+    document.getElementById('card-bonus').textContent = th === null ? '' : `seuil ${th} · d100${bm}`;
 
     const verdictEl = document.getElementById('card-verdict');
     const subEl = document.getElementById('card-crit-sub');
@@ -187,6 +402,7 @@ function showRoll(data) {
         case 'die':
             verdictEl.textContent = '';
             verdictEl.className = 'card-verdict';
+            rollCard.classList.add('die');
             break;
         case 'crit-success':
             verdictEl.textContent = 'SUCCÈS CRITIQUE';
@@ -205,10 +421,12 @@ function showRoll(data) {
         case 'success':
             verdictEl.textContent = 'SUCCÈS';
             verdictEl.className = 'card-verdict verdict-success';
+            rollCard.classList.add('success');
             break;
         case 'fail':
             verdictEl.textContent = 'ÉCHEC';
             verdictEl.className = 'card-verdict verdict-fail';
+            rollCard.classList.add('fail');
             break;
     }
 
@@ -238,7 +456,10 @@ const SUITS_MAP = {
 
 // Build the inner HTML and metadata for a playing card from its ID.
 function buildPlayingCard(cardId) {
-    // Reconstruct card info from id
+    // Reconstruct card info from id. cardId comes from a remote aria-cards message
+    // (anyone with the Ably key can publish) — treat it as hostile: coerce to string
+    // and escape the rank before it reaches innerHTML.
+    cardId = String(cardId ?? '');
     const isJoker = cardId.startsWith('joker');
     let html = '', label = '', colorCls = '';
 
@@ -250,21 +471,22 @@ function buildPlayingCard(cardId) {
           <div class="pc-corner tl"><span class="pc-rank" style="font-size:20px;color:var(--card-purple)">JKR</span></div>
           <div class="pc-center" style="flex-direction:column;gap:10px;">
             <span style="font-size:75px;line-height:1;color:var(--card-purple)">★</span>
-            <span style="font-family:'Playfair Display',serif;font-size:16px;font-weight:700;letter-spacing:.14em;color:var(--card-purple)">${label.toUpperCase()}</span>
+            <span style="font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:700;letter-spacing:.14em;color:var(--card-purple)">${label.toUpperCase()}</span>
           </div>
           <div class="pc-corner br"><span class="pc-rank" style="font-size:20px;color:var(--card-purple)">JKR</span></div>`;
     } else {
         const parts = cardId.split('-');
         const rank = parts[0];
+        const safeRank = esc(rank);
         const suitName = parts.slice(1).join('-');
         const suit = SUITS_MAP[suitName] || { sym: '?', cls: 'pc-black' };
         colorCls = suit.cls;
         const suitNames = { spades: 'Pique', clubs: 'Trèfle', hearts: 'Cœur', diamonds: 'Carreau' };
         label = `${rank} de ${suitNames[suitName] || suitName}`;
         html = `
-          <div class="pc-corner tl"><span class="pc-rank">${rank}</span><span class="pc-suit-small">${suit.sym}</span></div>
+          <div class="pc-corner tl"><span class="pc-rank">${safeRank}</span><span class="pc-suit-small">${suit.sym}</span></div>
           <div class="pc-center">${suit.sym}</div>
-          <div class="pc-corner br"><span class="pc-rank">${rank}</span><span class="pc-suit-small">${suit.sym}</span></div>`;
+          <div class="pc-corner br"><span class="pc-rank">${safeRank}</span><span class="pc-suit-small">${suit.sym}</span></div>`;
     }
     return { html, label, colorCls };
 }
@@ -565,13 +787,33 @@ function getEventWidgetStyle(type) {
     return { left: widget.x + '%', top: widget.y + '%', width: widget.w + '%', height: widget.h + '%' };
 }
 
-// Apply an event widget's position from the overlay config to a DOM element.
+// The editor's WIDGET_DEFS default w/h for each event type — the size the fixed
+// px font-sizes/paddings in aria-overlay.css were designed to look right at.
+// Resizing the widget away from this scales the whole card/number as one image
+// (see .ow-event-box in aria-overlay.css). Keep in sync with WIDGET_DEFS.event
+// in aria-overlay-editor.js if those defaults ever change.
+const EVENT_BASE_SIZE = {
+    roll_card:        { w: 35, h: 40 },
+    card_draw:        { w: 15, h: 25 },
+    damage_number:    { w: 15, h: 12 },
+    heal_number:      { w: 15, h: 12 },
+    hp_bar_animation: { w: 35, h: 12 },
+};
+
+// Apply an event widget's position/size (and derived scale) from the overlay
+// config to its .ow-event-box wrapper. Unconfigured (no matching widget) clears
+// the transform, which drops the wrapper back to its CSS default (inset:0, no
+// containing block) so the wrapped element's own legacy centering still works.
 function applyEventWidgetPosition(elId, widgetType) {
-    const style = getEventWidgetStyle(widgetType);
-    if (!style) return;
     const el = document.getElementById(elId);
     if (!el) return;
+    const style = getEventWidgetStyle(widgetType);
+    if (!style) { el.style.cssText = ''; return; }
     Object.assign(el.style, style);
+    const base = EVENT_BASE_SIZE[widgetType];
+    const widget = overlayConfig.widgets.find(w => w.type === widgetType && w.category === 'event');
+    const scale = base && widget ? Math.max(0.3, Math.min(3, Math.min(widget.w / base.w, widget.h / base.h))) : 1;
+    el.style.transform = `translate(0) scale(${scale})`;
 }
 
 // Return the inner HTML for a given overlay widget based on live presence/roll data.
@@ -579,9 +821,11 @@ function renderWidgetContent(widget) {
     const cfg = widget.config || {};
     switch (widget.type) {
         case 'character_name': {
-            const p = [...presenceCache.values()][0];
-            if (!p) return '<div class="ow-char-name">—</div>';
-            return `<div class="ow-char-name">${esc(p.name)}${p.charClass ? ' — ' + esc(p.charClass) : ''}</div>`;
+            // Lower-third nameplate — dark glass plate + accent edge (design frame 20)
+            const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
+            const name = p ? esc(p.name) : '—';
+            const cls = (p && p.charClass) ? `<div class="ow-np-class">${esc(p.charClass)}</div>` : '';
+            return `<div class="ow-nameplate"><div class="ow-np-edge"></div><div class="ow-np-body"><div class="ow-np-name">${name}</div>${cls}</div></div>`;
         }
         case 'hp_bar': {
             const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
@@ -636,11 +880,11 @@ function renderWidgetContent(widget) {
         }
         case 'player_inventory': {
             if (!presenceCache.size) return '<div class="ow-list">—</div>';
-            return [...presenceCache.values()].map(p => `<div style="margin-bottom:4px"><div style="font-family:'Cinzel',serif;font-size:0.7em;color:var(--parchment-dim)">${esc(p.name)}</div>${(p.inventory || []).slice(0, 5).map(i => `<div class="ow-list-item"><span class="ow-list-name">${esc(i.name)}</span><span class="ow-list-value">×${esc(i.qty)}</span></div>`).join('')}</div>`).join('');
+            return [...presenceCache.values()].map(p => `<div style="margin-bottom:4px"><div style="font-family:'Cormorant Garamond',serif;font-size:0.7em;color:var(--parchment-dim)">${esc(p.name)}</div>${(p.inventory || []).slice(0, 5).map(i => `<div class="ow-list-item"><span class="ow-list-name">${esc(i.name)}</span><span class="ow-list-value">×${esc(i.qty)}</span></div>`).join('')}</div>`).join('');
         }
         case 'player_skills': {
             if (!presenceCache.size) return '<div class="ow-list">—</div>';
-            return [...presenceCache.values()].map(p => `<div style="margin-bottom:4px"><div style="font-family:'Cinzel',serif;font-size:0.7em;color:var(--parchment-dim)">${esc(p.name)}</div>${(p.skills || []).slice(0, 5).map(s => `<div class="ow-list-item"><span class="ow-list-name">${esc(s.name)}</span><span class="ow-list-value">${esc(s.pct)}%</span></div>`).join('')}</div>`).join('');
+            return [...presenceCache.values()].map(p => `<div style="margin-bottom:4px"><div style="font-family:'Cormorant Garamond',serif;font-size:0.7em;color:var(--parchment-dim)">${esc(p.name)}</div>${(p.skills || []).slice(0, 5).map(s => `<div class="ow-list-item"><span class="ow-list-name">${esc(s.name)}</span><span class="ow-list-value">${esc(s.pct)}%</span></div>`).join('')}</div>`).join('');
         }
         case 'monster_list': {
             const monsters = cfg.monsters || [];
@@ -657,38 +901,64 @@ function renderWidgetContent(widget) {
             return `<div class="ow-list">${shown.map(r => `<div class="ow-roll-row"><span class="ow-roll-char">${esc(r.char || '')}</span><span class="ow-roll-skill">${esc(r.skillName)}</span><span class="ow-roll-result ${r.success ? 'success' : 'fail'}">${esc(r.roll)}</span></div>`).join('')}</div>`;
         }
         case 'camera': {
-            const sid = cfg.streamId || '';
-            if (!sid) return '<div class="ow-camera-empty">—</div>';
-            return `<iframe src="https://vdo.ninja/?view=${encodeURIComponent(sid)}&autoplay&cleanoutput&transparent" allow="autoplay; fullscreen; display-capture; picture-in-picture; screen-wake-lock" allowfullscreen style="width:100%;height:100%;border:none;"></iframe>`;
+            const sid = sidSafe(cfg.streamId);
+            // Same liveness rule as refreshCameraWidgets, so a layout re-render can't
+            // recreate an iframe on a stream nobody is pushing.
+            if (!sid || !liveStreamIds().has(sid)) return '<div class="ow-camera-empty">—</div>';
+            // Viewer-only: the overlay never publishes, so no capture permissions.
+            return `<iframe src="${vdoCamSrc(sid)}" allow="autoplay; fullscreen" allowfullscreen style="width:100%;height:100%;border:none;"></iframe>`;
         }
         default: return '';
     }
 }
 
-// Rebuild all persistent overlay widget DOM elements and apply event widget positions.
+// Reconcile the persistent overlay widgets in place, then apply the event widget
+// positions. This used to start with
+// `container.innerHTML = ''` and rebuild everything, which detached every camera
+// iframe and killed its WebRTC stream. It runs on every `layout-update`, and the
+// editor publishes one 1.5s after any drag/resize/property edit — so nudging a
+// single widget blacked out every camera on the OBS output, live. updateWidgetData
+// already skips camera widgets for exactly this reason; the layout path bypassed it.
+//
+// Existing elements are never re-appended: appendChild/insertBefore on a node that
+// is already in the tree moves it, and moving an iframe reloads it — the very thing
+// this avoids. New elements go on the end, which keeps DOM order matching
+// overlayConfig.widgets because the editor only ever appends widgets, never reorders.
 function renderWidgetLayer() {
     const container = document.getElementById('overlay-widgets');
-    container.innerHTML = '';
-    for (const widget of overlayConfig.widgets) {
-        if (!widget.visible) continue;
-        if (widget.category === 'event') continue;
-        const el = document.createElement('div');
-        el.className = 'overlay-widget';
-        el.dataset.widgetId = widget.id;
+    const wanted = overlayConfig.widgets.filter(w => w.visible && w.category !== 'event');
+    const wantedIds = new Set(wanted.map(w => String(w.id)));
+    // Drop widgets that were deleted or hidden. Their iframes die with them, which
+    // is correct — the widget is gone.
+    [...container.children].forEach(el => { if (!wantedIds.has(el.dataset.widgetId)) el.remove(); });
+    const live = liveStreamIds();
+    for (const widget of wanted) {
+        // CSS.escape: widget ids arrive over Ably, and a quote would throw here.
+        let el = container.querySelector(`.overlay-widget[data-widget-id="${CSS.escape(String(widget.id))}"]`);
+        if (!el) {
+            el = document.createElement('div');
+            el.className = 'overlay-widget';
+            el.dataset.widgetId = widget.id;
+            container.appendChild(el);
+        }
+        // Geometry and style are safe to re-assign — they don't reload a child iframe.
         el.style.left    = widget.x + '%';
         el.style.top     = widget.y + '%';
         el.style.width   = widget.w + '%';
         el.style.height  = widget.h + '%';
         el.style.opacity = widget.config?.opacity ?? 1;
         el.style.fontSize = (widget.config?.fontSize ?? 14) + 'px';
-        el.innerHTML = renderWidgetContent(widget);
-        container.appendChild(el);
+        // Cameras go through the shared sync so a live, correctly-pointed iframe is
+        // left untouched; everything else is cheap to re-render wholesale.
+        if (widget.type === 'map')         syncMapWidget(el, widget);
+        else if (widget.type === 'camera') syncCameraWidget(el, widget, live);
+        else                               el.innerHTML = renderWidgetContent(widget);
     }
-    applyEventWidgetPosition('roll-card', 'roll_card');
-    applyEventWidgetPosition('drawn-card-overlay', 'card_draw');
-    applyEventWidgetPosition('dmg-hpbar-wrap', 'hp_bar_animation');
-    applyEventWidgetPosition('dmg-number', 'damage_number');
-    applyEventWidgetPosition('heal-number', 'heal_number');
+    applyEventWidgetPosition('pos-roll-card', 'roll_card');
+    applyEventWidgetPosition('pos-drawn-card', 'card_draw');
+    applyEventWidgetPosition('pos-dmg-hpbar', 'hp_bar_animation');
+    applyEventWidgetPosition('pos-dmg-number', 'damage_number');
+    applyEventWidgetPosition('pos-heal-number', 'heal_number');
     applyEventWidgetPosition('dmg-mort', 'mort_screen');
 }
 
@@ -698,6 +968,7 @@ function updateWidgetData() {
         const widget = overlayConfig.widgets.find(w => w.id === el.dataset.widgetId);
         if (!widget) return;
         if (widget.type === 'camera') return;
+        if (widget.type === 'map') return;   // updated by aria-map, not by presence
         el.innerHTML = renderWidgetContent(widget);
     });
 }
@@ -706,6 +977,8 @@ function updateWidgetData() {
 async function loadOverlayConfig() {
     if (!OVERLAY_ID) return;
     const rows = await sbSelect('overlay_configs', 'id=eq.' + encodeURIComponent(OVERLAY_ID));
+    // A live layout beat the round-trip — it wins, this read may predate the write.
+    if (layoutFromAbly) return;
     if (rows.length && rows[0].config) {
         overlayConfig = rows[0].config;
         renderWidgetLayer();

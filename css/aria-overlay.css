@@ -1,12 +1,26 @@
 :root {
-    --gold: #c9a84c;
-    --gold-light: #e8c97a;
-    --gold-dim: #a07830;
-    --parchment: #f0e6c8;
-    --success: #4caf77;
+    /* New design tokens — overlay stays DARK in both themes (composites over video) */
+    --ink:#050608; --bg:#0b0e13; --panel:#10141b; --raise:#161b25;
+    --line:rgba(150,168,200,.10); --line2:rgba(150,168,200,.20);
+    --text:#e8ebf1; --warm:#f3ede1; --dim:#868f9f; --faint:#586273;
+    --ember:#eca456; --ember2:#f6c07e; --embersoft:rgba(236,164,86,.12);
+    --violet:#a98bdd; --violet2:#c4aef0; --violetsoft:rgba(169,139,221,.12);
+    --ok:#5bc98e; --bad:#e25a4f; --warn:#e9aa45; --hp1:#2f7d54;
+    --track:rgba(255,255,255,.06); --track2:rgba(255,255,255,.10);
+    --frameShadow:rgba(0,0,0,.9);
+    /* ── Legacy aliases → new palette ── */
+    --gold: var(--ember);
+    --gold-light: var(--ember2);
+    --gold-dim: var(--faint);
+    --parchment: var(--text);
+    --parchment-dim: var(--dim);
+    --success: var(--ok);
     --success-crit: #a8ff78;
-    --fail: #c0392b;
+    --fail: var(--bad);
     --fail-crit: #ff4444;
+    --border: var(--line);
+    --radius: 4px;
+    /* card system (unchanged — playing-card faces) */
     --card-red: #c0392b;
     --card-black: #1a1a1a;
     --card-cream: #f5f0e8;
@@ -22,7 +36,7 @@
 
 body {
     background: transparent;
-    font-family: 'EB Garamond', serif;
+    font-family: 'Archivo', sans-serif;
     width: 100vw;
     height: 100vh;
     display: flex;
@@ -62,7 +76,7 @@ body {
 }
 
 .wait-text {
-    font-family: 'Cinzel',serif;
+    font-family: 'Cormorant Garamond',serif;
     font-size: 13px;
     letter-spacing: 0.25em;
     text-transform: uppercase;
@@ -84,31 +98,41 @@ body {
     display: none;
     flex-direction: column;
     align-items: center;
-    background: linear-gradient(150deg,#1c1609 0%,#0e0c07 100%);
-    border: 1px solid var(--gold-dim);
-    box-shadow: 0 0 0 1px rgba(201,168,76,0.08),0 0 50px rgba(201,168,76,0.12),0 24px 80px rgba(0,0,0,0.85);
-    padding: 40px 72px 48px;
+    background: rgba(10,12,17,0.84);
+    border: 1px solid var(--line2);
+    border-radius: 6px;
+    box-shadow: 0 0 60px -16px rgba(91,201,142,.45), inset 0 0 0 1px rgba(91,201,142,.14);
+    padding: 28px 28px 24px;
     position: relative;
-    min-width: 400px;
+    width: 316px;
     text-align: center;
     z-index: 10;
     will-change: transform, opacity;
+    /* The roll colour drives the skill label, the rule and the number; the
+       verdict stays --warm in every state (design frame 20). */
+    --roll-col: var(--warm);
 }
+#roll-card.success { --roll-col: var(--ok); }
+#roll-card.fail, #roll-card.crit-fail { --roll-col: var(--bad); }
+#roll-card.die { --roll-col: var(--dim); }
 
     #roll-card.show {
         display: flex;
         animation: cardReveal 0.4s cubic-bezier(0.34,1.4,0.64,1);
     }
 
+    #roll-card.fail {
+        box-shadow: 0 0 60px -16px rgba(226,90,79,.45), inset 0 0 0 1px rgba(226,90,79,.14);
+    }
+
     #roll-card.crit-success {
-        border-color: var(--success-crit);
-        box-shadow: 0 0 0 1px rgba(168,255,120,0.25),0 0 60px rgba(168,255,120,0.3),0 24px 80px rgba(0,0,0,0.85);
+        --roll-col: var(--ember);
+        box-shadow: 0 0 70px -14px rgba(236,164,86,.5), inset 0 0 0 1px rgba(236,164,86,.18);
         animation: cardReveal 0.4s cubic-bezier(0.34,1.4,0.64,1),glowPulseGreen 1.6s 0.5s ease-in-out infinite;
     }
 
     #roll-card.crit-fail {
-        border-color: var(--fail-crit);
-        box-shadow: 0 0 0 1px rgba(255,68,68,0.3),0 0 60px rgba(255,68,68,0.35),0 24px 80px rgba(0,0,0,0.85);
+        box-shadow: 0 0 60px -16px rgba(226,90,79,.45), inset 0 0 0 1px rgba(226,90,79,.14);
         animation: cardReveal 0.4s cubic-bezier(0.34,1.4,0.64,1),shakeCard 0.45s 0.4s ease-in-out,glowPulseRed 1.4s 1s ease-in-out infinite;
     }
 
@@ -148,43 +172,37 @@ body {
 
 @keyframes glowPulseGreen {
     0%,100% {
-        box-shadow: 0 0 0 1px rgba(168,255,120,0.25),0 0 60px rgba(168,255,120,0.3),0 24px 80px rgba(0,0,0,0.85);
+        box-shadow: 0 0 0 1px rgba(236,164,86,0.25),0 0 60px rgba(236,164,86,0.3),0 24px 80px rgba(0,0,0,0.85);
     }
 
     50% {
-        box-shadow: 0 0 0 2px rgba(168,255,120,0.45),0 0 90px rgba(168,255,120,0.55),0 24px 80px rgba(0,0,0,0.85);
+        box-shadow: 0 0 0 2px rgba(236,164,86,0.45),0 0 90px rgba(236,164,86,0.55),0 24px 80px rgba(0,0,0,0.85);
     }
 }
 
 @keyframes glowPulseRed {
     0%,100% {
-        box-shadow: 0 0 0 1px rgba(255,68,68,0.3),0 0 60px rgba(255,68,68,0.35),0 24px 80px rgba(0,0,0,0.85);
+        box-shadow: 0 0 0 1px rgba(226,90,79,0.3),0 0 60px rgba(226,90,79,0.35),0 24px 80px rgba(0,0,0,0.85);
     }
 
     50% {
-        box-shadow: 0 0 0 2px rgba(255,68,68,0.5),0 0 90px rgba(255,68,68,0.6),0 24px 80px rgba(0,0,0,0.85);
+        box-shadow: 0 0 0 2px rgba(226,90,79,0.5),0 0 90px rgba(226,90,79,0.6),0 24px 80px rgba(0,0,0,0.85);
     }
 }
 
-#roll-card::before {
-    content: '';
-    position: absolute;
-    top: 6px;
-    left: 6px;
-    right: 6px;
-    bottom: 6px;
-    border: 1px solid rgba(201,168,76,0.07);
-    pointer-events: none;
-}
+#roll-card::before { content: none; }
+#roll-card .corner { display: none; }
 
 .corner {
     position: absolute;
     width: 16px;
     height: 16px;
-    border-color: var(--gold-dim);
+    border-color: var(--faint);
     border-style: solid;
     border-width: 0;
 }
+#roll-card.crit-success .corner { border-color: var(--ember); }
+#roll-card.crit-fail .corner { border-color: var(--bad); }
 
     .corner.tl {
         top: 8px;
@@ -215,44 +233,48 @@ body {
     }
 
 .card-char {
-    font-family: 'Cinzel',serif;
-    font-size: 13px;
-    letter-spacing: 0.2em;
-    color: var(--gold-dim);
-    text-transform: uppercase;
-    margin-bottom: 10px;
+    order: 0;
+    font-family: 'Cormorant Garamond',serif;
+    font-style: italic;
+    font-size: 17px;
+    color: var(--warm);
+    margin-bottom: 6px;
 }
+.card-char:empty { display: none; }
 
 .card-skill {
-    font-family: 'Playfair Display',serif;
-    font-size: 22px;
-    font-style: italic;
-    color: var(--parchment);
-    margin-bottom: 20px;
-    max-width: 320px;
-    line-height: 1.3;
+    order: 1;
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 11px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--roll-col);
+    margin-bottom: 6px;
+    max-width: 260px;
+    line-height: 1.4;
 }
 
 .card-roll {
-    font-family: 'Cinzel Decorative',serif;
-    font-size: 80px;
-    font-weight: 700;
-    color: var(--parchment);
-    line-height: 1;
-    text-shadow: 0 0 30px rgba(240,230,200,0.2);
-    margin-bottom: 4px;
+    order: 3;
+    font-family: 'Archivo', sans-serif;
+    font-variant-numeric: tabular-nums;
+    font-size: 100px;
+    font-weight: 800;
+    color: var(--roll-col);
+    line-height: .84;
+    margin-bottom: 0;
     animation: rollIn 0.45s cubic-bezier(0.22,1.5,0.5,1);
 }
 
 .crit-success .card-roll {
-    color: var(--success-crit);
-    text-shadow: 0 0 20px rgba(168,255,120,0.7),0 0 50px rgba(168,255,120,0.3);
+    color: var(--ember);
+    text-shadow: 0 0 38px rgba(236,164,86,0.55);
     animation: rollIn 0.45s cubic-bezier(0.22,1.5,0.5,1),numberGlowGreen 1.4s 0.6s ease-in-out infinite alternate;
 }
 
 .crit-fail .card-roll {
-    color: var(--fail-crit);
-    text-shadow: 0 0 20px rgba(255,68,68,0.7),0 0 50px rgba(255,68,68,0.3);
+    color: var(--bad);
+    text-shadow: 0 0 30px rgba(226,90,79,0.5);
     animation: rollIn 0.45s cubic-bezier(0.22,1.5,0.5,1),numberGlowRed 1.2s 0.6s ease-in-out infinite alternate;
 }
 
@@ -274,7 +296,7 @@ body {
     }
 
     to {
-        filter: brightness(1.4) drop-shadow(0 0 10px rgba(168,255,120,0.9));
+        filter: brightness(1.3) drop-shadow(0 0 10px rgba(236,164,86,0.9));
     }
 }
 
@@ -284,21 +306,27 @@ body {
     }
 
     to {
-        filter: brightness(1.4) drop-shadow(0 0 10px rgba(255,68,68,0.9));
+        filter: brightness(1.3) drop-shadow(0 0 10px rgba(226,90,79,0.9));
     }
 }
 
 .card-divider {
-    width: 80px;
+    width: 42px;
     height: 1px;
-    background: linear-gradient(90deg,transparent,var(--gold-dim),transparent);
-    margin: 14px auto;
+    background: var(--roll-col);
+    opacity: .6;
+    margin: 0 auto 14px;
+    order: 2;
 }
 
 .card-verdict {
-    font-family: 'Cinzel',serif;
-    font-weight: 900;
-    letter-spacing: 0.18em;
+    order: 4;
+    font-family: 'Cormorant Garamond',serif;
+    font-size: 25px;
+    font-weight: 600;
+    color: var(--warm);
+    letter-spacing: 0.04em;
+    margin-top: 13px;
     animation: verdictIn 0.35s 0.18s both ease-out;
 }
 
@@ -315,28 +343,26 @@ body {
 }
 
 .verdict-success {
-    font-size: 30px;
-    color: var(--success);
-    text-shadow: 0 0 24px rgba(76,175,119,0.55);
+    font-size: 25px;
+    color: var(--warm);
 }
 
 .verdict-fail {
-    font-size: 30px;
-    color: var(--fail);
-    text-shadow: 0 0 24px rgba(192,57,43,0.55);
+    font-size: 25px;
+    color: var(--warm);
 }
 
 .verdict-crit-success {
-    font-size: 24px;
-    color: var(--success-crit);
-    text-shadow: 0 0 20px rgba(168,255,120,0.9),0 0 45px rgba(168,255,120,0.4);
+    font-size: 25px;
+    color: var(--warm);
+    text-shadow: 0 0 24px rgba(236,164,86,0.6);
     animation: verdictIn 0.35s 0.18s both ease-out,critFlicker 1.5s 0.8s ease-in-out infinite alternate;
 }
 
 .verdict-crit-fail {
-    font-size: 24px;
-    color: var(--fail-crit);
-    text-shadow: 0 0 20px rgba(255,68,68,0.9),0 0 45px rgba(255,68,68,0.4);
+    font-size: 25px;
+    color: var(--warm);
+    text-shadow: 0 0 24px rgba(226,90,79,0.6);
     animation: verdictIn 0.35s 0.18s both ease-out,critFlicker 1.2s 0.8s ease-in-out infinite alternate;
 }
 
@@ -353,21 +379,22 @@ body {
 }
 
 .card-crit-sub {
-    font-family: 'EB Garamond',serif;
+    order: 5;
+    font-family: 'Cormorant Garamond',serif;
     font-style: italic;
-    font-size: 12px;
-    letter-spacing: 0.12em;
+    font-size: 13px;
+    letter-spacing: 0.08em;
     margin-top: 6px;
     opacity: 0;
     animation: subIn 0.5s 0.6s both ease-out;
 }
 
 .crit-success .card-crit-sub {
-    color: rgba(168,255,120,0.55);
+    color: var(--dim);
 }
 
 .crit-fail .card-crit-sub {
-    color: rgba(255,100,100,0.55);
+    color: var(--dim);
 }
 
 @keyframes subIn {
@@ -383,12 +410,15 @@ body {
 }
 
 .card-bonus {
-    font-size: 13px;
-    color: var(--gold-dim);
-    font-style: italic;
-    margin-top: 8px;
-    letter-spacing: 0.05em;
+    order: 6;
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin-top: 7px;
 }
+.card-bonus:empty { display: none; }
 
 /* ══════════════════════════════
            DRAWN PLAYING CARD OVERLAY
@@ -417,7 +447,7 @@ body {
     box-shadow: 0 12px 50px rgba(0,0,0,0.8), 0 3px 10px rgba(0,0,0,0.5);
     position: relative;
     overflow: hidden;
-    font-family: 'Playfair Display', serif;
+    font-family: 'Cormorant Garamond', serif;
 }
 
     .play-card::before {
@@ -482,7 +512,7 @@ body {
 
 /* label under the card */
 .drawn-card-label {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 13px;
     letter-spacing: 0.2em;
     color: var(--gold-dim);
@@ -538,7 +568,7 @@ body {
     will-change: transform, opacity;
     transform: translateX(-50%);
     z-index: 202;
-    font-family: 'Cinzel Decorative', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-weight: 700;
     font-size: 110px;
     color: #ff2222;
@@ -623,10 +653,10 @@ body {
 }
 
 .dmg-char-name {
-    font-family: 'Cinzel', serif;
-    font-size: 13px;
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 10px;
     letter-spacing: 0.2em;
-    color: rgba(240,230,200,0.6);
+    color: var(--dim);
     text-transform: uppercase;
     text-align: center;
     margin-bottom: 6px;
@@ -634,9 +664,9 @@ body {
 
 .dmg-hpbar-track {
     position: relative;
-    height: 22px;
-    background: rgba(0,0,0,0.6);
-    border: 1px solid rgba(255,255,255,0.15);
+    height: 20px;
+    background: rgba(10,12,17,0.82);
+    border: 1px solid var(--line2);
     border-radius: 3px;
     overflow: hidden;
 }
@@ -644,7 +674,7 @@ body {
 .dmg-hpbar-ghost {
     position: absolute;
     inset: 0;
-    background: rgba(200,80,80,0.35);
+    background: rgba(226,90,79,0.35);
     border-radius: 3px;
     /* width set by JS = old HP % */
 }
@@ -665,11 +695,12 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: 'Cinzel', serif;
+    font-family: 'Archivo', sans-serif;
+    font-variant-numeric: tabular-nums;
     font-size: 12px;
     font-weight: 700;
     color: #fff;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.06em;
     text-shadow: 0 1px 3px rgba(0,0,0,0.9);
 }
 
@@ -786,7 +817,7 @@ body.shake {
 }
 
 .mort-text {
-    font-family: 'Cinzel Decorative',serif;
+    font-family: 'Cormorant Garamond',serif;
     font-size: 42px;
     color: #cc1111;
     letter-spacing: 0.2em;
@@ -815,7 +846,7 @@ body.shake {
 }
 
 .mort-sub {
-    font-family: 'EB Garamond',serif;
+    font-family: 'Cormorant Garamond',serif;
     font-style: italic;
     font-size: 18px;
     color: rgba(240,200,200,0.6);
@@ -850,7 +881,7 @@ body.shake {
     will-change: transform, opacity;
     transform: translateX(-50%);
     z-index: 202;
-    font-family: 'Cinzel Decorative', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-weight: 700;
     font-size: 72px;
     color: #4cff88;
@@ -888,6 +919,25 @@ body.shake {
     }
 }
 
+/* ── EVENT WIDGET POSITIONING BOX ──────────────
+   The roll card / drawn card / damage-heal numbers / HP bar were each built with
+   their own centering trick (body's flex-center, or position:fixed + left:50% +
+   translateX(-50%)) baked in for a fixed spot on screen. The editor's x/y/w/h now
+   need to place them anywhere, so each is wrapped in this box instead of having
+   the editor write left/top straight onto the element:
+   - unconfigured (no matching widget in the layout): stays inset:0 with no
+     transform, so the wrapped element's own legacy centering resolves against
+     the full viewport exactly as it always did.
+   - configured: aria-overlay.js sets this box's own left/top/width/height from
+     the widget, and gives it `transform: translate(0) scale(n)` — any transform
+     makes it the containing block for its position:fixed descendants (so their
+     left:50%/bottom:60px/etc. resolve against THIS box instead of the viewport)
+     and the scale resizes the whole card/number as one image when the widget is
+     resized, without touching a single font-size in this file. */
+.ow-event-box { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+#pos-roll-card, #pos-drawn-card { z-index: 10; }
+#pos-dmg-number, #pos-heal-number, #pos-dmg-hpbar { z-index: 202; }
+
 /* ── PERSISTENT WIDGET LAYER ─────────────────── */
 #overlay-widgets {
     position: fixed;
@@ -900,48 +950,119 @@ body.shake {
     position: absolute;
     box-sizing: border-box;
     overflow: hidden;
-    font-family: 'EB Garamond', serif;
+    font-family: 'Cormorant Garamond', serif;
     color: var(--parchment);
 }
 
 .ow-char-name {
-    font-family: 'Cinzel', serif;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 1.4em;
     font-weight: 600;
     color: var(--gold);
-    text-shadow: 0 0 12px rgba(201,168,76,0.5);
+    text-shadow: 0 0 12px rgba(236,164,86,0.5);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Lower-third nameplate — dark glass plate + 4px ember edge (design frame 20) */
+.ow-nameplate {
+    display: flex;
+    align-items: stretch;
+    height: 100%;
+    background: rgba(10,12,17,0.84);
+    border: 1px solid var(--line2);
+    border-radius: 5px;
+    overflow: hidden;
+}
+.ow-np-edge { width: 4px; background: var(--ember); flex-shrink: 0; }
+.ow-np-body {
+    padding: 12px 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+}
+.ow-np-name {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.5em;
+    font-weight: 600;
+    color: var(--warm);
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ow-np-class {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 0.62em;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin-top: 3px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 .ow-hp-wrap { display: flex; flex-direction: column; gap: 4px; }
-.ow-hp-label { font-family: 'Cinzel', serif; font-size: 0.75em; color: var(--parchment-dim); }
+.ow-hp-label { font-family: 'Cormorant Garamond', serif; font-size: 0.75em; color: var(--parchment-dim); }
 .ow-hp-track { position: relative; height: 18px; background: rgba(0,0,0,0.5); border: 1px solid var(--border); border-radius: 3px; overflow: hidden; }
 .ow-hp-fill { position: absolute; inset: 0; right: auto; background: linear-gradient(90deg,#1a5c2a,#2e8b57); transition: width 0.8s ease; border-radius: 3px; }
 .ow-hp-fill.yellow { background: linear-gradient(90deg,#7a5500,#c8960a); }
 .ow-hp-fill.red { background: linear-gradient(90deg,#7b1a1a,#c0392b); }
-.ow-hp-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: 'Cinzel', serif; font-size: 0.7em; color: var(--parchment); text-shadow: 0 1px 3px #000; }
+.ow-hp-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: 'Archivo', sans-serif; font-variant-numeric: tabular-nums; font-size: 0.7em; font-weight: 700; color: var(--parchment); text-shadow: 0 1px 3px #000; }
 
 .ow-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 8px; }
 .ow-stat { display: flex; flex-direction: column; align-items: center; background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 3px; padding: 3px 4px; }
-.ow-stat-label { font-family: 'Cinzel', serif; font-size: 0.55em; color: var(--parchment-dim); }
-.ow-stat-value { font-family: 'Cinzel', serif; font-size: 0.95em; color: var(--gold); font-weight: 600; }
+.ow-stat-label { font-family: ui-monospace, Menlo, monospace; font-size: 0.5em; letter-spacing: 0.14em; text-transform: uppercase; color: var(--parchment-dim); }
+.ow-stat-value { font-family: 'Archivo', sans-serif; font-variant-numeric: tabular-nums; font-size: 0.95em; color: var(--gold); font-weight: 700; }
 
-.ow-protection { font-family: 'Cinzel', serif; font-size: 0.85em; color: var(--parchment); background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 3px; padding: 4px 8px; }
+.ow-protection { font-family: 'Cormorant Garamond', serif; font-size: 0.85em; color: var(--parchment); background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 3px; padding: 4px 8px; }
 
 .ow-list { display: flex; flex-direction: column; gap: 2px; }
-.ow-list-item { display: flex; justify-content: space-between; font-size: 0.8em; padding: 2px 4px; border-bottom: 1px solid rgba(201,168,76,0.08); }
+.ow-list-item { display: flex; justify-content: space-between; font-size: 0.8em; padding: 2px 4px; border-bottom: 1px solid rgba(236,164,86,0.08); }
 .ow-list-name { color: var(--parchment); }
-.ow-list-value { color: var(--gold); font-family: 'Cinzel', serif; font-size: 0.85em; }
+.ow-list-value { color: var(--gold); font-family: 'Cormorant Garamond', serif; font-size: 0.85em; }
 
 .ow-custom-text { font-size: 1em; line-height: 1.5; color: var(--parchment); }
 
-.ow-campaign-name { font-family: 'Cinzel Decorative', serif; font-size: 1.2em; color: var(--gold); text-shadow: 0 0 12px rgba(201,168,76,0.4); text-align: center; }
+.ow-campaign-name { font-family: 'Cormorant Garamond', serif; font-size: 1.2em; color: var(--gold); text-shadow: 0 0 12px rgba(236,164,86,0.4); text-align: center; }
 
-.ow-roll-row { display: flex; gap: 6px; align-items: center; font-size: 0.78em; padding: 2px 0; border-bottom: 1px solid rgba(201,168,76,0.08); }
+.ow-roll-row { display: flex; gap: 6px; align-items: center; font-size: 0.78em; padding: 2px 0; border-bottom: 1px solid rgba(236,164,86,0.08); }
 .ow-roll-char { color: var(--parchment-dim); min-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ow-roll-skill { flex: 1; color: var(--parchment); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ow-roll-result { font-family: 'Cinzel', serif; font-weight: 600; }
+.ow-roll-result { font-family: 'Cormorant Garamond', serif; font-weight: 600; }
 .ow-roll-result.success { color: var(--success); }
 .ow-roll-result.fail { color: var(--fail); }
+
+/* Camera widget placeholder — shown whenever the widget's stream isn't being pushed
+   (player disconnected, camera cut, stream ID not set yet). This is on air, so it
+   renders as nothing at all rather than a stray dash where a face used to be. */
+.ow-camera-empty { width: 100%; height: 100%; visibility: hidden; }
+
+/* Map widget — shows the owner's discovered POIs (visiblePois) and player tokens.
+   .ow-map centres and letterboxes the image; .ow-map-frame shrink-wraps the RENDERED
+   picture (mirrors .aria-frame in aria-panel.css), so the zone/pin layers below — both
+   inset:0 of the frame, not of .ow-map — land on the same pixel of the image regardless
+   of the widget box's aspect ratio. Positioning them against .ow-map directly (the old
+   markup) agreed with the image only when the widget happened to share its ratio. */
+.ow-map { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+.ow-map-frame { position: relative; display: inline-block; max-width: 100%; max-height: 100%; }
+.ow-map-img { max-width: 100%; max-height: 100%; width: auto; height: auto; display: block;
+              filter: sepia(.45) saturate(.75) contrast(1.08) brightness(.92); }
+/* Zones sit above the image and below the pins — same order as the two panels. */
+.ow-map-zones-wrap { position: absolute; inset: 0; }
+.ow-map-zones  { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ow-zone-known { fill: rgba(201,168,76,.10); stroke: #c9a84c; stroke-width: 1.5; }
+.ow-zone-fog   { fill: rgb(9,8,4); stroke: none; }
+.ow-map-pins { position: absolute; inset: 0; }
+.ow-map-pin { position: absolute; transform: translate(-50%, -50%);
+              display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.ow-map-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--gold);
+              box-shadow: 0 0 10px 3px rgba(201,168,76,.45); }
+.ow-map-label { font-family: 'Cinzel', serif; font-size: 12px; color: var(--parchment);
+                text-shadow: 0 1px 3px rgba(0,0,0,.9); white-space: nowrap; }
+.ow-map-tokens { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.ow-map-token { background: rgba(9,8,4,.75); border: 1px solid var(--border); border-radius: 10px;
+                padding: 0 6px; font-size: 10px; color: var(--parchment); white-space: nowrap; }

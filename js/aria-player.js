@@ -1,24 +1,19 @@
 // ═══════════════════════════════════════════
-//  CONSTANTS
+//  PANEL WIRING
 // ═══════════════════════════════════════════
-const SUITS = [
-    { name: 'spades', sym: '♠', cls: 'c-black', pillCls: '' },
-    { name: 'clubs', sym: '♣', cls: 'c-black', pillCls: '' },
-    { name: 'hearts', sym: '♥', cls: 'c-red', pillCls: 'c-red' },
-    { name: 'diamonds', sym: '♦', cls: 'c-red', pillCls: 'c-red' },
-];
-const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
-const SUIT_FR = { spades: 'Pique', clubs: 'Trèfle', hearts: 'Cœur', diamonds: 'Carreau' };
-const ALL_CARDS = [];
-for (const s of SUITS) for (const r of RANKS) ALL_CARDS.push({ id: `${r}-${s.name}`, rank: r, suit: s });
-ALL_CARDS.push({ id: 'joker-red', isJoker: true, jokerColor: 'red', label: 'Joker Rouge' });
-ALL_CARDS.push({ id: 'joker-black', isJoker: true, jokerColor: 'black', label: 'Joker Noir' });
-// Look up a card in ALL_CARDS by its ID string.
-function cardById(id) { return ALL_CARDS.find(c => c.id === id); }
-// Fisher-Yates shuffle of an array, returning a new array.
-function shuffle(a) { const b = [...a]; for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[b[i], b[j]] = [b[j], b[i]]; } return b; }
-// Build a freshly shuffled deck of all 54 cards.
-function buildDeck() { return shuffle([...ALL_CARDS]); }
+// Everything the two panels share lives in aria-shared.js, loaded before this file.
+// The differences between them are these hooks, not forked copies of the functions.
+ARIA.configure({
+    role:         'player',
+    tag:          'PLAYER',
+    splitKey:     'aria-split-layout',
+    defaultPane:  'tab-skills',
+    joinCode:     () => character?.campaignKey || '',
+    syncAll:      () => _syncAllPlayerData(),
+    clearLocal:   () => _clearLocalPlayerData(),
+    afterRestore: () => restoreLastCharacter(),
+    onMusicPhase: (phase, track) => { if (phase === 'start') _updatePlayerMusicBar(track); },
+});
 
 // ═══════════════════════════════════════════
 //  STATE
@@ -93,10 +88,8 @@ let currentCharId = null;
 
 // Per-tab unique ID — persists across refreshes (sessionStorage) but differs between tabs
 let playerId = sessionStorage.getItem('aria-player-id');
-if (!playerId) { playerId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 9); sessionStorage.setItem('aria-player-id', playerId); }
+if (!playerId) { playerId = uid(); sessionStorage.setItem('aria-player-id', playerId); }
 
-let config = JSON.parse(localStorage.getItem('aria-config') || '{}');
-if (config.lightMode) document.body.classList.add('light-mode');
 let bonusMalus = 0;
 // Temporary bonus/malus that auto-expires after a set number of rolls (#11).
 // bmNextValue is the modifier; bmNextCount is how many upcoming threshold rolls it
@@ -109,54 +102,78 @@ let bmNextCount = 0;
 let hiddenRollMode = false;
 let _appliedBM = 0;
 let rollFilter = new Set();
+let rollDateFilter = '';   // 'YYYY-MM-DD' local date; empty = no date filter
 let multiplier = 1;
 let isRolling = false;
-let dddiceAPI = null;
-let dddiceSDK = null;            // ThreeDDice SDK instance
 let pendingDddiceRoll = null;    // { skillName, threshold } waiting for RollFinished event
 let pendingSecondaryRoll = null; // { callback, mapFn } for non-d100 dice (d6, d3, weapon formula…)
 let dddiceRollSafetyTimer = null; // fallback timer in case RollFinished never fires
 let ablyRolls = null, ablyCards = null, ablyDamage = null, ablyMusic = null, ablyRollsHidden = null;
+let ablyPresence = null;     // the aria-presence channel — its presence set IS the roster
+let ablyMap = null;
+let mapState = null;         // last public map state received (or the cached one)
+let mapSelectedPoiId = null;
+let mapPendingPoiId = null;   // request sent, waiting for the token to move
+let mapDeniedPoiId  = null;   // last refusal — holds until the player asks again, with no
+                               // timeout: only requestMove() clears it, so a player who never
+                               // re-asks keeps seeing this same refusal for the rest of the
+                               // session, however old. Deliberate: the GM publishes a `state`
+                               // on every unrelated map edit, and an unseen refusal must not
+                               // be wiped by one before the player has read it.
+let mapNotes = {};   // { poiId: text } — private, never leaves character_state
+
+// ── PRESENCE ──────────────────────────────────────────────────────────────────
+// Who is here is not something this app computes. Every participant enters the
+// presence set of the campaign's `aria-presence` channel with their character
+// payload as member data; Ably maintains the membership server-side and pushes
+// enter/update/leave to everyone. `presence.get()` is the roster.
+//
+// Two properties of that set do the work three hand-rolled session registries,
+// two grace periods and a heartbeat used to do:
+//
+//  · One character open in several tabs is several members sharing a clientId
+//    (= charId) and differing by connectionId. There is nothing to reconcile, and
+//    closing one tab cannot drop the character — the other member is still there.
+//  · A refresh opens a NEW connection that enters before the old one is reaped
+//    (Ably waits 15s after an abrupt disconnect), so the set is never empty across
+//    a reload. Nothing has to be announced on unload, so nothing has to be undone
+//    afterwards: no teardown message, no grace period to ignore it, and no
+//    auto-re-entry to make that grace period reachable.
+//
+// Members are merged by clientId below — several tabs, plus the ghost of a tab
+// that refreshed, are one participant; the newest `ts` wins.
 let peerCameras = new Map(); // charId → { name, streamId }
 let gmStreamId = '';
+let gmOnline = false;   // a request sent with no GM in the set waits for an answer nobody got
 let vdoRoom = '';
 let vdoRoomPassword = '';
-let selfViewStream = null;
-// Derive the VDO.ninja push stream ID from the first 8 chars of the character UUID.
-function derivedStreamId() {
-    const sid = 'aria-' + currentCharId.slice(0, 8);
-    console.log('[VDO] derivedStreamId() →', sid, '| currentCharId:', currentCharId);
-    return sid;
-}
-// Set the VDO.ninja push iframe src — iframe is full-viewport before #app-wrapper in DOM so browser grants camera access.
-function updatePushIframe() {
-    const pushFrame = document.getElementById('vdo-push-frame');
-    if (!pushFrame) { console.warn('[VDO] updatePushIframe: #vdo-push-frame not found'); return; }
-    if (!vdoRoom || !currentCharId) {
-        console.log('[VDO] updatePushIframe: vdoRoom empty → clearing push iframe src');
-        pushFrame.src = '';
-        updateCamerasTabVisibility();
-        return;
-    }
-    const sid = derivedStreamId();
-    let src = `https://vdo.ninja/?push=${sid}&room=${encodeURIComponent(vdoRoom)}&autostart&webcam&noaudio&cleanoutput`;
-    if (vdoRoomPassword) src += `&password=${encodeURIComponent(vdoRoomPassword)}`;
-    console.log('[VDO] updatePushIframe: setting push iframe →', src);
-    if (pushFrame.src !== src) pushFrame.src = src;
-    stopSelfView();
-    updateCamerasTabVisibility();
-}
+// Presence density (design frame 25): 'reduit' (dots) | 'bandeau' (rail) | 'tablee' (stage)
+let presenceMode = localStorage.getItem('aria-presence-mode') || 'bandeau';
+let spotlightCharId = null;   // GM spotlight — that player's face goes big for everyone
+let localStageSid = '';       // locally chosen big tile in Tablée (clicking a face)
+// Player-side camera. The GM decides the room; this decides whether we publish into
+// it at all. Everything mechanical — the single-pusher Web Lock, the push/view URLs,
+// the kill switch and its cross-tab sync — lives in makeCamera(); only the post-change
+// rendering is ours.
+const cam = makeCamera({
+    tag: '[VDO]',
+    sidPrefix: 'aria_',
+    lockPrefix: 'aria-push-',
+    frameId: 'vdo-push-frame',
+    ownerId:  () => currentCharId,
+    offKey:   () => charKey('camera'),
+    room:     () => vdoRoom,
+    password: () => vdoRoomPassword,
+    onChange: () => { cam.syncPushFrame(); updateCamerasTabVisibility(); renderPresenceUI(); },
+    announce: () => sendPresence(),
+});
 let ablyInstance = null;
 let currentHP = null;
-let presenceIntervalId = null;
-const knownPlayers = {}; // { playerId: { name, ts } } — other players seen via presence
+const knownPlayers = {}; // { charId: { name } } — other players, from the presence set
 let soignerTarget = null; // null = self, or { playerId, name }
 let soignerPct = 0;
 
 // Card state — initialized after character selection
-let cardDeck = null, cardDrawn = null, cardExcluded = null, lastCardId = null;
-let cardDrawing = false;
-let cardStatusTimer = null;
 
 // tab access granted by GM — stored per character in localStorage
 let playerTabs = { cards: false, alchemy: false };
@@ -167,69 +184,42 @@ let playerFiles = [];
 // pending craft recipe index — set before a roll, cleared by handleResult
 let pendingCraft = null;
 
-let saveKey        = localStorage.getItem('aria-save-key') || null;
-let _pendingNewKey = null;
 let syncTimer      = null;
 
-// ═══════════════════════════════════════════
-//  CLOUD SAVE — per-entity sync
-// ═══════════════════════════════════════════
-// Check whether Supabase sync is configured and a save key is available.
-function _supabaseReady() { return !!SUPABASE_URL && !!SUPABASE_ANON_KEY && !!saveKey; }
 
-// Return the current UTC time as an ISO 8601 string.
-function _nowISO() { return new Date().toISOString(); }
+// Read a per-character JSON key, tolerating absent or corrupt values.
+function _charJSON(which, charId, fallback = null) {
+    const raw = localStorage.getItem(charKey(which, charId));
+    if (!raw) return fallback;
+    try { return JSON.parse(raw); } catch (_) { return fallback; }
+}
 
-// Convert a character object into a Supabase characters table row.
-function _charToRow(char) {
+// HP / cards / tabs live in three separate localStorage keys but one DB row. This
+// is the only place that mapping is written; syncCharacterState and the full sync
+// used to carry a copy each, one of them with the reads inlined as IIFEs.
+function _charStateRow(charId) {
+    const hp = localStorage.getItem(charKey('hp', charId));
     return {
-        id: char.id, save_key: saveKey, name: char.name, class: char.class,
-        campaign_key: char.campaignKey || null,
-        aria_type: char.ariaType || 'ancient',
-        stats: char.stats || null, physical: char.physical || null,
-        skills: char.skills || null, specials: char.specials || null,
-        weapons: char.weapons || null, protection: char.protection || null,
-        inventory: char.inventory || null, potion_recipes: char.potionRecipes || null,
-        vials: char.vials || 0,
-        potions: char.potions || null,
-        money: char.money || null,
-        karma: char.karma ?? 0,
+        character_id: charId,
+        hp:    hp !== null ? parseInt(hp) : null,
+        cards: _charJSON('cards', charId),
+        tabs:  _charJSON('tabs', charId),
+        map_notes: _charJSON('mapNotes', charId, {}),
         updated_at: _nowISO(),
     };
 }
 
-// Full sync of all characters, states, and notes to Supabase.
+// Full sync of all characters, states, notes and files to Supabase.
 async function _syncAllPlayerData() {
     if (!_supabaseReady()) return;
     const chars = getCharacters();
-    await Promise.all(chars.map(c => sbUpsert('characters', _charToRow(c))));
-    await Promise.all(chars.map(c => sbUpsert('character_state', {
-        character_id: c.id,
-        hp:    (() => { const v = localStorage.getItem('aria-current-hp-'   + c.id); return v !== null ? parseInt(v) : null; })(),
-        cards: (() => { const v = localStorage.getItem('aria-cards-'        + c.id); return v ? JSON.parse(v) : null; })(),
-        tabs:  (() => { const v = localStorage.getItem('aria-player-tabs-'  + c.id); return v ? JSON.parse(v) : null; })(),
-        updated_at: _nowISO(),
-    })));
-    const now = _nowISO();
+    await sbPutAll(ENT.character, chars, saveKey);
+    await Promise.all(chars.map(c => sbUpsert('character_state', _charStateRow(c.id))));
     for (const c of chars) {
-        const rawNotes = localStorage.getItem('aria-notes-' + c.id);
-        if (rawNotes) {
-            let notes = [];
-            try { const p = JSON.parse(rawNotes); notes = Array.isArray(p) ? p : []; } catch(e) {}
-            await Promise.all(notes.map((n, i) => sbUpsert('character_notes', {
-                id: n.id, character_id: c.id, name: n.name || '',
-                content: n.content || '', position: i, updated_at: now,
-            })));
-        }
-        const rawFiles = localStorage.getItem('aria-player-files-' + c.id);
-        if (rawFiles) {
-            let files = [];
-            try { files = JSON.parse(rawFiles) || []; } catch(e) {}
-            await Promise.all(files.map(f => sbUpsert('character_files', {
-                id: f.id, character_id: c.id, file_id: f.id,
-                name: f.name || '', type: f.type || '', url: f.url || '', updated_at: now,
-            })));
-        }
+        const notes = _charJSON('notes', c.id, []);
+        await sbPutAll(ENT.characterNote, Array.isArray(notes) ? notes : [], c.id, true);
+        const files = _charJSON('files', c.id, []);
+        await Promise.all((Array.isArray(files) ? files : []).map(f => sbPutFile(f, c.id)));
     }
 }
 
@@ -249,214 +239,134 @@ function debouncedSyncState() {
 
 let _noteTimer = null;
 // Debounced sync of a single note to Supabase.
-function debouncedSyncNote(note) {
+function debouncedSyncNote(note, position = 0) {
     clearTimeout(_noteTimer);
-    _noteTimer = setTimeout(() => syncCharacterNote(note), 800);
+    _noteTimer = setTimeout(() => syncCharacterNote(note, position), 800);
 }
 
 // Sync HP, cards, and tabs for a character to the character_state table.
 async function syncCharacterState(charId) {
     if (!_supabaseReady() || !charId) return;
-    const hp    = localStorage.getItem('aria-current-hp-'  + charId);
-    const cards = localStorage.getItem('aria-cards-'       + charId);
-    const tabs  = localStorage.getItem('aria-player-tabs-' + charId);
-    await sbUpsert('character_state', {
-        character_id: charId,
-        hp:    hp    !== null ? parseInt(hp) : null,
-        cards: cards ? JSON.parse(cards) : null,
-        tabs:  tabs  ? JSON.parse(tabs)  : null,
-        updated_at: _nowISO(),
-    });
+    await sbUpsert('character_state', _charStateRow(charId));
 }
 
-// Upsert a single note to the character_notes table.
-async function syncCharacterNote(note) {
+// Upsert a single note to the character_notes table. The notes engine owns the list
+// and passes the note's position in it.
+async function syncCharacterNote(note, position = 0) {
     if (!_supabaseReady() || !currentCharId || !note?.id) return;
-    await sbUpsert('character_notes', {
-        id: note.id, character_id: currentCharId,
-        name: note.name || '', content: note.content || '',
-        position: notesList.indexOf(note),
-        updated_at: _nowISO(),
-    });
+    await sbPut(ENT.characterNote, note, currentCharId, { position: Math.max(0, position) });
 }
 
 // Delete a note from the character_notes table by ID.
 async function deleteCharacterNote(id) {
     if (!_supabaseReady()) return;
-    await sbDelete('character_notes', 'id=eq.' + encodeURIComponent(id));
+    await sbDelete(ENT.characterNote.table, 'id=eq.' + encodeURIComponent(id));
 }
 
 // Upsert a GM-granted file record for a character to Supabase.
 async function syncCharacterFile(file, charId) {
     if (!_supabaseReady() || !charId || !file?.id) return;
-    await sbUpsert('character_files', {
-        id: file.id, character_id: charId, file_id: file.id,
-        name: file.name || '', type: file.type || '', url: file.url || '',
-        updated_at: _nowISO(),
-    });
+    await sbPutFile(file, charId);
 }
 
 // Delete a granted file record from Supabase by file ID.
 async function deleteCharacterFile(fileId) {
     if (!_supabaseReady()) return;
-    await sbDelete('character_files', 'id=eq.' + encodeURIComponent(fileId));
+    await sbDelete(ENT.characterFile.table, 'id=eq.' + encodeURIComponent(fileId));
+}
+
+// Every per-character localStorage key, named once. charKey(which, id) is the only
+// way to build one, and _CHAR_KEY_PREFIXES — the list every deletion path walks —
+// is derived from the same table, so a new key cannot be added to one and forgotten
+// in the other. That is exactly what happened to 'aria-camera-off-': the prefix list
+// and deleteCharacter each spelled the keys out by hand, neither knew about it, and
+// a deleted character leaked its camera kill switch forever.
+const CHAR_KEYS = {
+    hp:     'aria-current-hp-',
+    cards:  'aria-cards-',
+    notes:  'aria-notes-',
+    files:  'aria-player-files-',
+    rolls:  'aria-player-rolls-',
+    tabs:   'aria-player-tabs-',
+    camera: 'aria-camera-off-',
+    map:    'aria-map-',
+    mapNotes: 'aria-map-notes-',
+};
+const _CHAR_KEY_PREFIXES = Object.values(CHAR_KEYS);
+
+// Storage key for one character's slice of `which`; defaults to the open character.
+function charKey(which, id = currentCharId) { return CHAR_KEYS[which] + id; }
+
+// Remove every scoped key belonging to one character.
+function _dropCharacterKeys(id) {
+    _CHAR_KEY_PREFIXES.forEach(p => localStorage.removeItem(p + id));
+}
+
+// Remove all locally stored characters and their scoped keys (used when switching
+// to a different save key, so the old key's data never merges into the new one).
+function _clearLocalPlayerData() {
+    getCharacters().forEach(c => _dropCharacterKeys(c.id));
+    localStorage.removeItem('aria-characters');
+}
+
+// Group child rows by their parent id and write one localStorage key per parent.
+// Every parent that had rows gets its key rewritten; parents with none are left
+// alone here — deletions are handled by the orphan sweep on the character list.
+function _storeByParent(which, entity, rows, parentCol) {
+    const byParent = {};
+    rows.forEach(row => (byParent[row[parentCol]] ||= []).push(fromRow(entity, row)));
+    Object.entries(byParent).forEach(([pid, arr]) =>
+        localStorage.setItem(charKey(which, pid), JSON.stringify(arr)));
 }
 
 // Load all player data (characters, states, notes, files) from Supabase into localStorage.
+// Returns true when the load completed (even if the key has no data yet), false on error —
+// callers must not push local data back up after a failed load.
 async function loadFromSupabase() {
-    if (!_supabaseReady()) return;
+    if (!_supabaseReady()) return false;
     try {
         await runMigration(saveKey, 'player');
-        const chars = await sbSelect('characters', 'save_key=eq.' + encodeURIComponent(saveKey));
-        if (!chars.length) return;
+        const chars = await sbSelect(ENT.character.table, 'save_key=eq.' + encodeURIComponent(saveKey));
+        if (!chars.length) return true;
 
-        const dbChars = chars.map(row => ({
-            id: row.id, name: row.name, class: row.class,
-            campaignKey: row.campaign_key || '',
-            ariaType: row.aria_type || 'ancient',
-            stats: row.stats || {}, physical: row.physical || {},
-            skills: row.skills || [], specials: row.specials || [],
-            weapons: row.weapons || [], protection: row.protection || {},
-            inventory: row.inventory || [],
-            potionRecipes: row.potion_recipes || [],
-            vials: row.vials || 0,
-            potions: row.potions || [],
-            money: row.money || null,
-            karma: row.karma ?? 0,
-        }));
+        const dbChars = chars.map(row => fromRow(ENT.character, row));
+        // Clean up scoped keys of characters deleted on another device (the list
+        // below is overwritten, which would otherwise orphan their HP/cards/notes).
+        const dbIds = new Set(dbChars.map(c => c.id));
+        getCharacters().forEach(c => {
+            if (!dbIds.has(c.id)) _dropCharacterKeys(c.id);
+        });
         localStorage.setItem('aria-characters', JSON.stringify(dbChars));
 
         const ids = chars.map(c => c.id).join(',');
         const [states, notes, files] = await Promise.all([
             sbSelect('character_state', 'character_id=in.(' + ids + ')'),
-            sbSelect('character_notes', 'character_id=in.(' + ids + ')&order=position.asc'),
-            sbSelect('character_files', 'character_id=in.(' + ids + ')'),
+            sbSelect(ENT.characterNote.table, 'character_id=in.(' + ids + ')&order=position.asc'),
+            sbSelect(ENT.characterFile.table, 'character_id=in.(' + ids + ')'),
         ]);
 
         states.forEach(s => {
-            if (s.hp    !== null && s.hp    !== undefined) localStorage.setItem('aria-current-hp-'   + s.character_id, s.hp);
-            if (s.cards) localStorage.setItem('aria-cards-'       + s.character_id, JSON.stringify(s.cards));
-            if (s.tabs)  localStorage.setItem('aria-player-tabs-' + s.character_id, JSON.stringify(s.tabs));
+            if (s.hp !== null && s.hp !== undefined) localStorage.setItem(charKey('hp', s.character_id), s.hp);
+            if (s.cards) localStorage.setItem(charKey('cards', s.character_id), JSON.stringify(s.cards));
+            if (s.tabs)  localStorage.setItem(charKey('tabs',  s.character_id), JSON.stringify(s.tabs));
+            if (s.map_notes) localStorage.setItem(charKey('mapNotes', s.character_id), JSON.stringify(s.map_notes));
         });
 
-        const notesByChar = {};
-        notes.forEach(n => {
-            if (!notesByChar[n.character_id]) notesByChar[n.character_id] = [];
-            notesByChar[n.character_id].push({ id: n.id, name: n.name, content: n.content });
-        });
-        Object.entries(notesByChar).forEach(([cid, arr]) =>
-            localStorage.setItem('aria-notes-' + cid, JSON.stringify(arr)));
+        _storeByParent('notes', ENT.characterNote, notes, 'character_id');
+        _storeByParent('files', ENT.characterFile, files, 'character_id');
 
-        const filesByChar = {};
-        files.forEach(f => {
-            if (!filesByChar[f.character_id]) filesByChar[f.character_id] = [];
-            filesByChar[f.character_id].push({ id: f.file_id, name: f.name, type: f.type, url: f.url });
-        });
-        Object.entries(filesByChar).forEach(([cid, arr]) =>
-            localStorage.setItem('aria-player-files-' + cid, JSON.stringify(arr)));
-
-    } catch(e) { console.warn('[ARIA] Supabase load failed:', e); }
+        return true;
+    } catch(e) { console.warn('[ARIA] Supabase load failed:', e); return false; }
 }
 
-// Show the save-key creation panel with a freshly generated key.
-function showGateway() {
-    _pendingNewKey = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
-    document.getElementById('gateway-key-display').textContent = _pendingNewKey;
-    document.getElementById('gateway-new').style.display = '';
-    document.getElementById('gateway-existing').style.display = 'none';
-    document.getElementById('file-gateway').style.display = 'flex';
-}
-
-// Switch the gateway panel to the "enter an existing key" form.
-function showGatewayExisting() {
-    document.getElementById('gateway-new').style.display = 'none';
-    document.getElementById('gateway-existing').style.display = '';
-    const input = document.getElementById('gateway-key-input');
-    if (input) { input.value = ''; input.focus(); }
-}
-
-// Hide the file-gateway panel.
-function hideGateway() {
-    document.getElementById('file-gateway').style.display = 'none';
-}
-
-// Copy the displayed save key to the clipboard.
-function copyGatewayKey() {
-    const key = document.getElementById('gateway-key-display').textContent;
-    navigator.clipboard.writeText(key).catch(() => {});
-    const btn = document.getElementById('gateway-copy-btn');
-    if (btn) { btn.textContent = 'Copié !'; setTimeout(() => { btn.textContent = 'Copier'; }, 2000); }
-}
-
-// Confirm new save key creation: persist it, create the Supabase row, and sync data.
-async function confirmNewKey() {
-    if (!_pendingNewKey) return;
-    saveKey = _pendingNewKey;
-    localStorage.setItem('aria-save-key', saveKey);
-    await sbUpsert('saves', { save_key: saveKey, type: 'player' });
-    await _syncAllPlayerData();
-    hideGateway();
-    showSelectionScreen();
-}
-
-// Load data from Supabase using an existing save key entered by the user.
-async function submitExistingKey() {
-    const input = document.getElementById('gateway-key-input');
-    const key = input ? input.value.trim() : '';
-    if (!key) return;
-    saveKey = key;
-    localStorage.setItem('aria-save-key', key);
-    await loadFromSupabase();
-    hideGateway();
-    showSelectionScreen();
-}
-
-// Update the save-key status label on the character selection screen.
-function updateSaveKeyStatus() {
-    const label = document.getElementById('sel-save-label');
-    if (!label) return;
-    label.textContent = saveKey ? saveKey.slice(0, 8) + '…' : '—';
-    label.className = 'sel-save-label' + (saveKey ? ' connected' : '');
-}
-
-// Show the existing-key form so the user can switch to a different save key.
-function changeSaveKey() {
-    showGatewayExisting();
-    document.getElementById('file-gateway').style.display = 'flex';
-}
-
-// Copy the current save key to the clipboard.
-function copySaveKey() {
-    if (!saveKey) return;
-    navigator.clipboard.writeText(saveKey).catch(() => {});
-    const btns = document.querySelectorAll('.sel-save-btn');
-    const copyBtn = [...btns].find(b => b.textContent === 'Copier');
-    if (copyBtn) { copyBtn.textContent = 'Copié !'; setTimeout(() => { copyBtn.textContent = 'Copier'; }, 2000); }
-}
-
-// Cancel key entry: return to gateway if no key exists, else just hide it.
-function cancelGateway() {
-    if (saveKey) { hideGateway(); } else { showGateway(); }
-}
-
-// On load: restore from Supabase if a save key exists, otherwise show the gateway.
-async function tryRestoreSupabase() {
-    if (!saveKey) { showGateway(); return; }
-    await loadFromSupabase();
-    hideGateway();
-    showSelectionScreen();
-    _syncAllPlayerData();
-}
 
 // ═══════════════════════════════════════════
 //  CHARACTER MANAGEMENT
 // ═══════════════════════════════════════════
-// Return the localStorage key for the current character's HP.
-function hpKey()    { return 'aria-current-hp-' + currentCharId; }
-// Return the localStorage key for the current character's card deck state.
-function cardKey()  { return 'aria-cards-'       + currentCharId; }
-// Return the localStorage key for the current character's notes.
-function notesKey() { return 'aria-notes-'       + currentCharId; }
+// Shorthands for the three keys the panel reaches for most often.
+function hpKey()    { return charKey('hp'); }
+function cardKey()  { return charKey('cards'); }
+function notesKey() { return charKey('notes'); }
 
 // Read the characters array from localStorage.
 function getCharacters() { return JSON.parse(localStorage.getItem('aria-characters') || '[]'); }
@@ -471,6 +381,11 @@ function saveCurrentCharacter() {
     if (idx >= 0) chars[idx] = entry;
     else chars.push(entry);
     saveCharacters(chars);
+    // The GM's card, the overlay's widgets and the peers' labels all read this from
+    // our presence data. The 5s heartbeat used to carry sheet edits to them within a
+    // tick; publishing on save is what replaces it (debounced, since an edit touches
+    // several fields — and the callers here are already behind a 700ms autosave).
+    schedulePresence();
 }
 
 // Migrate a single legacy aria-character entry to the multi-character array format.
@@ -478,12 +393,12 @@ function migrateIfNeeded() {
     if (localStorage.getItem('aria-characters')) return;
     const oldChar = JSON.parse(localStorage.getItem('aria-character') || 'null');
     if (!oldChar) return;
-    const id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+    const id = uid();
     saveCharacters([{ ...oldChar, id }]);
     const oldHp = localStorage.getItem('aria-current-hp');
-    if (oldHp !== null) localStorage.setItem('aria-current-hp-' + id, oldHp);
+    if (oldHp !== null) localStorage.setItem(charKey('hp', id), oldHp);
     const oldCards = localStorage.getItem('aria-cards');
-    if (oldCards !== null) localStorage.setItem('aria-cards-' + id, oldCards);
+    if (oldCards !== null) localStorage.setItem(charKey('cards', id), oldCards);
 }
 
 // Load a character by ID into module state, initializing all derived fields.
@@ -511,12 +426,10 @@ function loadCharacterState(id) {
     }
     if (!character.specials) character.specials = [];
     if (character.karma === undefined) character.karma = 0;
-    const saved = JSON.parse(localStorage.getItem(cardKey()) || 'null');
-    cardDeck = saved?.deckIds?.map(cid => cardById(cid)).filter(Boolean) || buildDeck();
-    cardDrawn = new Set(saved?.drawn || []);
-    cardExcluded = new Set(saved?.excluded || []);
-    lastCardId = saved?.lastCardId || null;
-    playerRollHistory = JSON.parse(localStorage.getItem('aria-player-rolls-' + id) || '[]');
+    deck.load(JSON.parse(localStorage.getItem(cardKey()) || 'null'));
+    playerRollHistory = JSON.parse(localStorage.getItem(charKey('rolls', id)) || '[]');
+    mapState = _charJSON('map', id, null);
+    mapNotes = _charJSON('mapNotes', id, {}) || {};
     console.log('[PLAYER] loadCharacterState:', data.name, '| class:', data.class, '| charId:', id, '| campaignKey:', data.campaignKey || 'none', '| ariaType:', data.ariaType || 'ancient', '| skills:', (data.skills || []).length, '| potionRecipes:', (data.potionRecipes || []).length);
     return true;
 }
@@ -531,15 +444,20 @@ function renderSelectionScreen() {
         return;
     }
     chars.forEach(c => {
-        const card = document.createElement('div');
-        card.className = 'sel-card';
-        const campBadge = c.campaignKey ? `<div class="sel-card-campaign">🔑 ${c.campaignKey}</div>` : `<div class="sel-card-campaign no-campaign">Sans campagne</div>`;
-        const typeBadge = (c.ariaType || 'ancient') === 'contemporary'
-            ? `<span class="sel-card-type contemporary">🕵 Contemporain</span>`
-            : `<span class="sel-card-type">⚔ Médiéval</span>`;
-        card.innerHTML = `<button class="sel-card-delete" onclick="event.stopPropagation();deleteCharacter('${c.id}')" title="Supprimer">✕</button><div class="sel-card-name">${c.name || '—'}</div><div class="sel-card-class">${c.class || ''}</div>${campBadge}${typeBadge}`;
-        card.addEventListener('click', () => selectCharacter(c.id));
-        grid.appendChild(card);
+        const contemporary = (c.ariaType || 'ancient') === 'contemporary';
+        grid.append(el('div', { className: 'sel-card', onclick: () => selectCharacter(c.id) },
+            el('button', { className: 'sel-card-delete', title: 'Supprimer', textContent: '×',
+                onclick: e => { e.stopPropagation(); deleteCharacter(c.id); } }),
+            el('div', { className: 'sel-card-head' },
+                el('span', { className: 'sel-card-diamond' }),
+                el('span', { className: 'sel-card-type' + (contemporary ? ' contemporary' : ''),
+                    textContent: contemporary ? 'Contemporain' : 'Médiéval' })),
+            el('div', null,
+                el('div', { className: 'sel-card-name', textContent: c.name || '—' }),
+                el('div', { className: 'sel-card-class', textContent: c.class || '' })),
+            el('div', { className: 'sel-card-campaign' + (c.campaignKey ? '' : ' no-campaign'),
+                textContent: c.campaignKey ? `Code · ${c.campaignKey}` : 'Sans campagne' }),
+            el('div', { className: 'sel-card-cta', textContent: 'Incarner →' })));
     });
 }
 
@@ -550,34 +468,46 @@ function showSelectionScreen() {
     document.getElementById('new-char-form').style.display = 'none';
     renderSelectionScreen();
     updateSaveKeyStatus();
+    if (window.ariaDungeonBg) window.ariaDungeonBg.setActive(true);
 }
 
 // Switch the UI to the main app view.
 function showApp() {
     document.getElementById('selection-screen').style.display = 'none';
     document.getElementById('app-wrapper').style.display = 'flex';
+    if (window.ariaDungeonBg) window.ariaDungeonBg.setActive(false);
+}
+
+// Remembered across reloads so a refresh comes straight back into the character.
+// beforeunload publishes `leave`, which drops this player's card and camera on the
+// GM, on the overlay and on every peer — landing on the selection screen and waiting
+// for a click stretched that gap out to however long the click took. Cleared by an
+// explicit "changer de personnage", which is a deliberate exit.
+const LAST_CHAR_KEY = 'aria-last-character';
+
+// Re-enter the character this browser was last playing, if it still exists.
+function restoreLastCharacter() {
+    const id = localStorage.getItem(LAST_CHAR_KEY);
+    if (!id) return false;
+    const chars = JSON.parse(localStorage.getItem('aria-characters') || '[]');
+    if (!chars.some(c => c.id === id)) { localStorage.removeItem(LAST_CHAR_KEY); return false; }
+    console.log('[PLAYER] restoring last character:', id);
+    selectCharacter(id);
+    return true;
 }
 
 // Select a character, load its state, start the app, and lazily load roll history.
 async function selectCharacter(id) {
     if (!loadCharacterState(id)) return;
+    localStorage.setItem(LAST_CHAR_KEY, id);
     showApp();
     initApp();
-    if (!localStorage.getItem('aria-player-rolls-' + id)) {
+    if (!localStorage.getItem(charKey('rolls', id))) {
         const rows = await loadCharacterRolls(id);
         if (rows.length) {
-            playerRollHistory = rows.map(r => ({
-                skillName:  r.skill_name,
-                threshold:  r.threshold,
-                roll:       r.roll,
-                success:    r.success,
-                char:       character.name,
-                bonusMalus: r.bonus_malus,
-                playerId,
-                ts:         r.ts,
-            }));
+            playerRollHistory = rows.map(r => ({ ...fromRow(ENT.characterRoll, r), char: character.name, playerId }));
             if (playerRollHistory.length > PLAYER_ROLL_HISTORY_MAX) playerRollHistory.length = PLAYER_ROLL_HISTORY_MAX;
-            localStorage.setItem('aria-player-rolls-' + id, JSON.stringify(playerRollHistory));
+            localStorage.setItem(charKey('rolls', id), JSON.stringify(playerRollHistory));
             renderRollHistory();
         }
     }
@@ -586,16 +516,13 @@ async function selectCharacter(id) {
 // Delete a character from localStorage and Supabase, then re-render the selection screen.
 function deleteCharacter(id) {
     if (!confirm('Supprimer ce personnage ? Cette action est irréversible.')) return;
-    sbDelete('characters',      'id=eq.'           + encodeURIComponent(id));
-    sbDelete('character_state', 'character_id=eq.' + encodeURIComponent(id));
-    sbDelete('character_notes', 'character_id=eq.' + encodeURIComponent(id));
-    sbDelete('character_files', 'character_id=eq.' + encodeURIComponent(id));
+    if (localStorage.getItem(LAST_CHAR_KEY) === id) localStorage.removeItem(LAST_CHAR_KEY);
+    // The child tables come from ENT, so adding a character-scoped entity cannot
+    // leave rows behind here. This used to be five hand-written sbDelete calls.
+    sbDeleteCascade(ENT.character, 'character_id', id);
     const chars = getCharacters().filter(c => c.id !== id);
     saveCharacters(chars);
-    localStorage.removeItem('aria-current-hp-' + id);
-    localStorage.removeItem('aria-cards-' + id);
-    localStorage.removeItem('aria-notes-' + id);
-    localStorage.removeItem('aria-player-files-' + id);
+    _dropCharacterKeys(id);
     renderSelectionScreen();
 }
 
@@ -617,7 +544,7 @@ function confirmCreateCharacter() {
     const campaignKey = document.getElementById('new-char-campaign').value.trim();
     const ariaType = document.querySelector('input[name="new-char-type"]:checked')?.value || 'ancient';
     const template = ariaType === 'contemporary' ? DEFAULT_CHAR_CONTEMPORARY : DEFAULT_CHAR_ANCIENT;
-    const id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+    const id = uid();
     const chars = getCharacters();
     chars.push({ ...JSON.parse(JSON.stringify(template)), name, class: cls, campaignKey, id });
     saveCharacters(chars);
@@ -633,30 +560,47 @@ function cancelCreateCharacter() {
 // Tear down the current session (Ably, dddice, music, VDO) and return to selection screen.
 function switchCharacter() {
     if (currentCharId) saveCurrentCharacter();
-    if (presenceIntervalId) { clearInterval(presenceIntervalId); presenceIntervalId = null; }
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch(_){} dddiceSDK = null; }
     clearTimeout(dddiceRollSafetyTimer);
     pendingDddiceRoll = null; pendingSecondaryRoll = null; dddiceAPI = null;
     currentHP = null; bonusMalus = 0; bmNextValue = 0; bmNextCount = 0; _appliedBM = 0; hiddenRollMode = false; rollFilter.clear();
-    pinnedTabId = null; activeTabId = 'tab-skills';
+    pendingCraft = null; soignerTarget = null;
+    Object.keys(knownPlayers).forEach(k => delete knownPlayers[k]);
+    resetSplitState();
     if (_musicFadeRaf) { cancelAnimationFrame(_musicFadeRaf); _musicFadeRaf = null; }
     _stopSlot('A'); _stopSlot('B'); musicIsPlaying = false;
-    const doCloseAbly = () => {
-        if (ablyInstance) { try { ablyInstance.close(); } catch(_){} ablyInstance = null; }
-        ablyRolls = null; ablyCards = null; ablyDamage = null; ablyMusic = null;
-    };
-    if (ablyDamage) {
-        try { ablyDamage.publish('leave', { playerId }, () => doCloseAbly()); } catch(_){ doCloseAbly(); }
-    } else {
-        doCloseAbly();
-    }
+    const musicBar = document.getElementById('music-bar');
+    if (musicBar) musicBar.style.visibility = 'hidden';
+    // Closing the connection leaves the presence set — Ably tells everyone, so there
+    // is no departure message to publish and nothing to await before closing.
+    if (ablyInstance) { try { ablyInstance.close(); } catch(_){} ablyInstance = null; }
+    ablyRolls = null; ablyRollsHidden = null; ablyCards = null; ablyDamage = null; ablyMusic = null;
+    ablyPresence = null; presenceEntered = false;
+    ablyMap = null; mapState = null; mapSelectedPoiId = null; mapPendingPoiId = null; mapDeniedPoiId = null; mapNotes = {};
+    cam.releaseLock();   // before resetCameraState: it blanks the push iframe
+    resetCameraState();
+    localStorage.removeItem(LAST_CHAR_KEY);   // deliberate exit — don't auto-re-enter
+    showSelectionScreen();
+}
+
+// Forget everything about the current camera session: room, peers, GM stream,
+// spotlight — then blank the push iframe (releasing the webcam) and re-render so the
+// rail and Caméras viewer iframes are dropped. Clearing the state alone is not
+// enough: their containers only go display:none, which hides the iframes while their
+// WebRTC connections stay up.
+//
+// Shared by switchCharacter() and by saveConfig() when the join code changes, since
+// both leave the current campaign. Callers are responsible for closing the OLD Ably
+// connection (which leaves its presence set) — this function does not touch Ably.
+function resetCameraState() {
     vdoRoom = '';
     vdoRoomPassword = '';
-    updatePushIframe();
-    stopSelfView();
+    cam.blankPushFrame();     // camera released
     peerCameras.clear();
     gmStreamId = '';
-    showSelectionScreen();
+    spotlightCharId = null;
+    localStageSid = '';
+    renderPresenceUI();
 }
 
 // ═══════════════════════════════════════════
@@ -667,17 +611,24 @@ window.addEventListener('DOMContentLoaded', async () => {
     await tryRestoreSupabase();
 });
 
+// No `beforeunload` teardown, deliberately. Announcing a departure on unload cannot
+// distinguish "closing the tab" from "refreshing", which is what forced a grace
+// period to ignore the announcement and then auto-re-entry to make that grace period
+// reachable — three mechanisms whose combined effect on a refresh was to do nothing.
+// Ably reaps the dropped connection 15s later; a refresh has already re-entered under
+// a new connectionId by then, so the presence set is never empty and nobody reacts.
+// The Web Lock is released by the browser on unload, crash included.
+
 // Initialize the full player app after a character is selected.
 function initApp() {
     console.log('[PLAYER] initApp: char:', character.name, '| charId:', currentCharId, '| ablyKey:', config.ablyKey ? 'set' : 'MISSING', '| dddice:', config.dddiceKey ? 'set' : 'none');
     currentHP = null;
-    playerTabs = JSON.parse(localStorage.getItem('aria-player-tabs-' + currentCharId) || '{"cards":false,"alchemy":false}');
-    playerFiles = JSON.parse(localStorage.getItem('aria-player-files-' + currentCharId) || '[]');
+    cam.loadOff();
+    playerTabs = JSON.parse(localStorage.getItem(charKey('tabs')) || '{"cards":false,"alchemy":false}');
+    playerFiles = JSON.parse(localStorage.getItem(charKey('files')) || '[]');
     initCurrentHP();
     renderAll();
-    buildTracker();
-    updateDeckCount();
-    if (lastCardId) restoreCard();
+    deck.mount();
     loadConfigInputs();
     if (config.dddiceKey && config.dddiceRoom) initDddice();
     if (config.ablyKey) initAbly();
@@ -685,15 +636,18 @@ function initApp() {
     document.getElementById('tab-char').addEventListener('input', scheduleAutoSave);
     document.getElementById('tab-inventory').addEventListener('input', scheduleAutoSave);
     document.getElementById('tab-alchemy').addEventListener('input', scheduleAutoSave);
-    loadNotes();
-    if (presenceIntervalId) clearInterval(presenceIntervalId);
-    presenceIntervalId = setInterval(sendPresence, 5000);
+    notes.load();
+    // No presence heartbeat: `presence.enter` in initAbly announces us once and
+    // `presence.update` publishes on change. Nothing polls, and nothing expires.
+    cam.acquireLock();
     document.title = character.name ? `ARIA – ${character.name}` : 'ARIA – Joueur';
     updateOverlayEditorBtn();
     const volSlider = document.getElementById('music-bar-volume');
     if (volSlider) volSlider.value = String(musicMasterVolume);
-    updatePushIframe();
-    startSelfView();
+    cam.syncPushFrame();
+    // No startSelfView() here: requesting the webcam at boot lit the camera LED even
+    // when no VDO room existed and the Caméras tab was never opened. renderCamerasTab()
+    // asks for it only when the tab is actually shown.
 }
 
 // Configure the overlay editor button href for this character.
@@ -704,179 +658,29 @@ function updateOverlayEditorBtn() {
     btn.onclick = () => window.open('../views/aria-overlay-editor.html?type=player&id=' + currentCharId, '_blank');
 }
 
-// ═══════════════════════════════════════════
-//  TABS
-// ═══════════════════════════════════════════
-// Split-view (#16): activeTabId is the primary pane; pinnedTabId is an optional
-// secondary tab shown side by side (e.g. Inventaire + Documents).
-let activeTabId = 'tab-skills';
-let pinnedTabId = null;
 
-// Switch the primary tab panel in the player UI.
-function switchTab(id, _btn) {
-    activeTabId = id;
-    if (pinnedTabId === id) pinnedTabId = null; // a tab can't be in both panes at once
-    renderTabLayout();
-}
-// Pin a tab as a secondary split pane; clicking the same tab's pin icon again closes it.
-function pinTab(id) {
-    if (pinnedTabId === id) pinnedTabId = null;
-    else if (id === activeTabId) return;        // already the primary pane
-    else pinnedTabId = id;
-    renderTabLayout();
-}
-// Close the secondary split pane.
-function unpinTab() { pinnedTabId = null; renderTabLayout(); }
-// Apply active/pinned classes to tab buttons and content panes for single or split view.
+// Apply the shared layout pass, then the player-specific pane work.
 function renderTabLayout() {
-    // Drop the pinned pane if the GM has hidden that tab (conditional tabs set display:none).
-    if (pinnedTabId) {
-        const pb = document.querySelector(`.tab-btn[data-tab="${pinnedTabId}"]`);
-        if (pb && pb.style.display === 'none') pinnedTabId = null;
-    }
-    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active', 'pinned-pane'));
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active', 'pinned'));
-    const content = document.querySelector('.content');
-    document.getElementById(activeTabId)?.classList.add('active');
-    document.querySelector(`.tab-btn[data-tab="${activeTabId}"]`)?.classList.add('active');
-    if (pinnedTabId && document.getElementById(pinnedTabId)) {
-        document.getElementById(pinnedTabId).classList.add('active', 'pinned-pane');
-        document.querySelector(`.tab-btn[data-tab="${pinnedTabId}"]`)?.classList.add('pinned');
-        content?.classList.add('split-mode');
-    } else {
-        content?.classList.remove('split-mode');
-    }
+    applyTabLayout();
+    // Fill the cameras grid as soon as its pane opens (renders in place).
+    if (openPanes.includes('tab-cameras')) renderCamerasTab();
+    renderPresenceUI(); // the rail hides while the Cameras pane is open
+    finishTabLayout();
 }
+
+
 // ═══════════════════════════════════════════
 //  NOTES
 // ═══════════════════════════════════════════
-let notesList = [];
-let currentNoteId = null;
-
-// Load notes from localStorage for the current character, migrating plain-string format if needed.
-function loadNotes() {
-    const raw = localStorage.getItem(notesKey());
-    if (!raw) {
-        notesList = [];
-    } else {
-        try {
-            const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed)) {
-                notesList = parsed;
-            } else {
-                // Migrate from plain string
-                notesList = [{ id: _noteId(), name: 'Notes', content: raw }];
-            }
-        } catch(e) {
-            // Plain string (not JSON)
-            notesList = [{ id: _noteId(), name: 'Notes', content: raw }];
-        }
-    }
-    currentNoteId = notesList.length > 0 ? notesList[0].id : null;
-    renderNotesList();
-    loadNoteContent();
-}
-
-// Generate a new UUID for a note.
-function _noteId() {
-    return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
-}
-
-// Save the current notes list to localStorage.
-function persistNotes() {
-    localStorage.setItem(notesKey(), JSON.stringify(notesList));
-}
-
-// Render the notes sidebar list, highlighting the currently selected note.
-function renderNotesList() {
-    const list = document.getElementById('notes-list');
-    if (!list) return;
-    list.innerHTML = '';
-    notesList.forEach(note => {
-        const item = document.createElement('div');
-        item.className = 'notes-item' + (note.id === currentNoteId ? ' active' : '');
-        const nameSpan = document.createElement('span');
-        nameSpan.className = 'notes-item-name';
-        nameSpan.textContent = note.name || 'Sans titre';
-        nameSpan.addEventListener('click', () => selectNote(note.id));
-        const delBtn = document.createElement('button');
-        delBtn.className = 'notes-item-delete';
-        delBtn.title = 'Supprimer';
-        delBtn.textContent = '✕';
-        delBtn.addEventListener('click', (e) => { e.stopPropagation(); deleteNote(note.id); });
-        item.appendChild(nameSpan);
-        item.appendChild(delBtn);
-        list.appendChild(item);
-    });
-}
-
-// Load the selected note's name and body into the editor fields.
-function loadNoteContent() {
-    const nameInput = document.getElementById('notes-name-input');
-    const area = document.getElementById('notes-area');
-    if (!nameInput || !area) return;
-    const note = notesList.find(n => n.id === currentNoteId);
-    if (note) {
-        nameInput.value = note.name;
-        area.value = note.content;
-        nameInput.disabled = false;
-        area.disabled = false;
-    } else {
-        nameInput.value = '';
-        area.value = '';
-        nameInput.disabled = true;
-        area.disabled = true;
-    }
-}
-
-// Select a note by ID and display it in the editor.
-function selectNote(id) {
-    currentNoteId = id;
-    renderNotesList();
-    loadNoteContent();
-    document.getElementById('notes-area').focus();
-}
-
-// Add a new empty note, persist it, sync to Supabase, and select it.
-function addNote() {
-    const note = { id: _noteId(), name: 'Nouvelle note', content: '' };
-    notesList.push(note);
-    persistNotes();
-    syncCharacterNote(note);
-    selectNote(note.id);
-    const nameInput = document.getElementById('notes-name-input');
-    if (nameInput) { nameInput.focus(); nameInput.select(); }
-}
-
-// Delete a note, remove it from Supabase, and select the adjacent note.
-function deleteNote(id) {
-    deleteCharacterNote(id);
-    const idx = notesList.findIndex(n => n.id === id);
-    notesList = notesList.filter(n => n.id !== id);
-    currentNoteId = notesList[Math.min(idx, notesList.length - 1)]?.id || null;
-    persistNotes();
-    renderNotesList();
-    loadNoteContent();
-}
-
-// Save the current note's content from the textarea and schedule a Supabase sync.
-function saveCurrentNote() {
-    const note = notesList.find(n => n.id === currentNoteId);
-    if (!note) return;
-    note.content = document.getElementById('notes-area').value;
-    persistNotes();
-    debouncedSyncNote(note);
-}
-
-// Rename the current note from the name input and refresh the list.
-function renameCurrentNote() {
-    const note = notesList.find(n => n.id === currentNoteId);
-    if (!note) return;
-    note.name = document.getElementById('notes-name-input').value;
-    persistNotes();
-    renderNotesList();
-    debouncedSyncNote(note);
-}
+// The engine is makeNotes() in aria-shared.js; this is just the character-scoped
+// wiring. The HTML calls notes.add() / notes.save() / notes.rename() directly.
+const notes = makeNotes({
+    key: notesKey,
+    ids: { list: 'notes-list', name: 'notes-name-input', area: 'notes-area' },
+    sync:     (note, pos) => syncCharacterNote(note, pos),
+    syncSoon: (note, pos) => debouncedSyncNote(note, pos),
+    remove:   id => deleteCharacterNote(id),
+});
 
 // Show/hide conditional tabs based on GM-granted access and character type.
 function applyTabVisibility() {
@@ -888,6 +692,8 @@ function applyTabVisibility() {
     btnCards.style.display = playerTabs.cards ? '' : 'none';
     btnAlchemy.style.display = playerTabs.alchemy ? '' : 'none';
     if (btnFiles) btnFiles.style.display = playerFiles.length > 0 ? '' : 'none';
+    const btnMap = document.getElementById('tab-btn-map');
+    if (btnMap) btnMap.style.display = (mapState && mapState.imageUrl) ? '' : 'none';
     // If the currently active tab was just hidden, fall back to Compétences
     if (!playerTabs.cards && document.getElementById('tab-cards').classList.contains('active')) {
         switchTab('tab-skills', document.querySelector('.tab-btn'));
@@ -898,68 +704,321 @@ function applyTabVisibility() {
     if (!playerFiles.length && document.getElementById('tab-files')?.classList.contains('active')) {
         switchTab('tab-skills', document.querySelector('.tab-btn'));
     }
+    if (!(mapState && mapState.imageUrl) && document.getElementById('tab-map')?.classList.contains('active')) {
+        switchTab('tab-skills', document.querySelector('.tab-btn'));
+    }
     renderInventoryEditor();
     updateCamerasTabVisibility();
     const btnStats = document.getElementById('tab-btn-stats');
     if (btnStats) {
         const isContemporary = character.ariaType === 'contemporary';
         btnStats.style.display = isContemporary ? 'none' : '';
-        if (isContemporary && document.getElementById('tab-stats')?.classList.contains('active')) {
-            switchTab('tab-skills', document.querySelector('.tab-btn'));
-        }
     }
-    renderTabLayout(); // re-assert layout / drop a pinned pane that was just hidden
+    renderMapTab();
+    renderTabLayout(); // re-assert layout / prune panes whose tab was just hidden
 }
 
-// Show/hide the Cameras tab based on whether any active stream IDs are known.
+// Show/hide the Cameras tab. Everything it can display needs a room: a viewer URL
+// without &room cannot decrypt a stream pushed into one, so with no room every tile
+// would be a black rectangle. gmStreamId and peer streamIds only ever arrive
+// alongside a room, so requiring it here is making the implicit precondition
+// explicit — and it drops the tab the moment the session ends instead of waiting out
+// the 30s peerCameras prune, which is what left black tiles on screen.
+function camerasAvailable() { return !!vdoRoom; }
 function updateCamerasTabVisibility() {
-    const peers = [...peerCameras.values()];
-    const hasAny = !!gmStreamId || !!selfViewStream || !!vdoRoom || peers.some(p => p.streamId);
-    console.log('[VDO] updateCamerasTabVisibility: gmStreamId=', gmStreamId, '| selfViewStream=', !!selfViewStream, '| peerCameras=', peers.map(p => `${p.name}(${p.streamId})`).join(', '), '| hasAny=', hasAny);
+    const hasAny = camerasAvailable();
     const btn = document.getElementById('tab-btn-cameras');
     if (!btn) return;
+    camLog('[VDO] Caméras tab', hasAny ? 'SHOWN' : 'HIDDEN (no vdoRoom)', '| pane open:', openPanes.includes('tab-cameras'));
     btn.style.display = hasAny ? '' : 'none';
-    if (!hasAny && document.getElementById('tab-cameras')?.classList.contains('active')) {
-        switchTab('tab-skills', document.querySelector('.tab-btn'));
+    if (!hasAny && openPanes.includes('tab-cameras')) {
+        if (openPanes.length === 1) switchTab('tab-skills');
+        else renderTabLayout(); // prunes the now-hidden cameras pane
     }
-    if (!hasAny && pinnedTabId === 'tab-cameras') unpinTab();
     if (document.getElementById('tab-cameras')?.classList.contains('active')) {
-        console.log('[VDO] cameras tab is active → calling renderCamerasTab()');
         renderCamerasTab();
     }
+    renderPresenceUI();
 }
 
-// Request native camera access for the self-view preview (only when no VDO room is active).
-function startSelfView() {
-    if (vdoRoom) return; // push iframe handles camera when VDO room is active
-    if (selfViewStream) return;
-    if (!navigator.mediaDevices?.getUserMedia) return;
-    navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-        .then(stream => {
-            selfViewStream = stream;
-            updateCamerasTabVisibility();
-        })
-        .catch(() => {});
+// There is no native getUserMedia self-view. It used to exist as a fallback for
+// "no VDO room", but the Caméras tab only appears once a room is known
+// (camerasAvailable), so the fallback could never bootstrap — dead code that implied the app
+// grabbed the webcam in cases where it never did. The self tile is a muted viewer
+// of our own pushed stream; the push iframe owns the camera.
+
+// ═══════════════════════════════════════════
+//  PRESENCE LAYER (design frame 25) — three densities, no separate window.
+//  Réduit: initials dots in the command bar. Bandeau: face rail docked right.
+//  Tablée: the Caméras tab becomes a stage (big face + column of others).
+// ═══════════════════════════════════════════
+function setPresenceMode(m) {
+    presenceMode = m;
+    localStorage.setItem('aria-presence-mode', m);
+    if (m === 'tablee') {
+        const btn = document.getElementById('tab-btn-cameras');
+        if (btn && btn.style.display !== 'none' && !openPanes.includes('tab-cameras')) {
+            // switchTab is inert while a split is open — dock a cameras pane instead
+            if (openPanes.length > 1) dockTab('tab-cameras', openPanes.length);
+            else switchTab('tab-cameras', btn);
+        }
+    }
+    renderPresenceUI();
+    if (document.getElementById('tab-cameras')?.classList.contains('active')) renderCamerasTab();
 }
-// Stop all tracks of the self-view camera stream.
-function stopSelfView() {
-    if (!selfViewStream) return;
-    selfViewStream.getTracks().forEach(t => t.stop());
-    selfViewStream = null;
+
+// The stream ID currently spotlighted by the GM ('' if none / unknown).
+function spotlightSid() {
+    if (!spotlightCharId) return '';
+    // cam.live() covers both halves a tile needs: something is being published, and
+    // a room is set — a viewer URL without &room cannot decrypt a stream pushed into
+    // a password-protected one, so a tile without it is a guaranteed black rectangle.
+    if (spotlightCharId === currentCharId) return cam.advertisedId();
+    return peerCameras.get(spotlightCharId)?.streamId || '';
+}
+
+// Below 900px the rail folds away — but that is a CSS rule
+// (#presence-rail { display:none !important }), and renderPresenceUI() decided
+// `show` from JS state alone, so its inline style.display lost to the !important
+// while renderPresenceRail() went on opening a viewer iframe per peer into a rail
+// nobody could see: invisible WebRTC connections and bandwidth, on top of the
+// Caméras grid if that pane was open. matchMedia rather than a resize listener so
+// it fires exactly on the breakpoint the stylesheet uses, and only on crossings.
+const railNarrowMQ = window.matchMedia('(max-width: 900px)');
+railNarrowMQ.addEventListener('change', () => renderPresenceUI());
+
+// Sync the density pills, command-bar dots, and rail with the current mode.
+function renderPresenceUI() {
+    const hasAny = camerasAvailable();
+    const ctl = document.getElementById('presence-ctl');
+    if (ctl) ctl.style.display = hasAny ? '' : 'none';
+    ['reduit', 'bandeau', 'tablee'].forEach(m =>
+        document.getElementById('pres-pill-' + m)?.classList.toggle('active', presenceMode === m));
+    // Camera kill switch — only meaningful while a room is active
+    cam.renderToggle('pres-cam-toggle');
+    // Réduit — initials dots in the command bar ("présence sans pixels")
+    const dots = document.getElementById('tb-presence-dots');
+    if (dots) {
+        if (hasAny && presenceMode === 'reduit') {
+            // Built with createElement/textContent: peer names come from presence
+            // payloads (anyone with the Ably key can publish them).
+            const people = [];
+            if (gmStreamId) people.push({ name: 'MJ', spotlit: false });
+            peerCameras.forEach((p, charId) => {
+                if (charId !== currentCharId && p.streamId) people.push({ name: p.name || '?', spotlit: charId === spotlightCharId });
+            });
+            dots.innerHTML = '';
+            people.forEach(pp => {
+                const dot = document.createElement('span');
+                // Réduit used to ignore the spotlight entirely — the GM highlighted a
+                // player and this density showed nothing.
+                dot.className = 'pres-dot' + (pp.spotlit ? ' spotlit' : '');
+                dot.title = pp.spotlit ? pp.name + ' — spotlight MJ' : pp.name;
+                dot.textContent = pp.name.slice(0, 2).toUpperCase();
+                dots.appendChild(dot);
+            });
+            dots.style.display = people.length ? '' : 'none';
+        } else {
+            dots.style.display = 'none';
+        }
+    }
+    // Bandeau — face rail docked to the right edge. Suppressed while the Caméras
+    // pane is open: the rail and the grid would each open a viewer iframe on the
+    // same streams, doubling the WebRTC connections (and the bandwidth) per peer.
+    const rail = document.getElementById('presence-rail');
+    const camsOpen = openPanes.includes('tab-cameras');
+    if (rail) {
+        const show = hasAny && presenceMode === 'bandeau' && !camsOpen && !railNarrowMQ.matches;
+        rail.style.display = show ? '' : 'none';
+        if (show) renderPresenceRail();
+        // Viewer iframes only — safe to drop. clearKeyed, not innerHTML, so the
+        // reconciler forgets the tiles too rather than holding detached nodes.
+        else clearKeyed(document.getElementById('presence-rail-grid'));
+    }
+    // The grid is deliberately NOT emptied when its pane closes.
+    // .tab-content{display:none} hides the iframes while leaving their WebRTC
+    // connections up, so leaving the tab and coming back now costs nothing - which is
+    // the point: it used to clear here, and every trip to Inventaire meant watching
+    // the whole table reconnect from black on the way back.
+    //
+    // It is still cleared the moment the room goes (session over): those iframes are
+    // then pointed at streams nobody publishes and would sit loaded for good - the
+    // case renderCamerasTab() cannot handle, since it is unreachable once the pane is
+    // closed.
+    //
+    // ponytail: in Bandeau, a closed pane now means the rail and the hidden grid each
+    // hold a viewer on the same streams - 2x inbound connections per peer while you
+    // are on another tab. Fine for a table of a handful; if it ever bites, the fix is
+    // one shared iframe host that the rail and the grid both style, rather than two
+    // sets of iframes that must never be alive at once.
+    const camGrid = document.getElementById('cameras-grid');
+    if (camGrid && !hasAny && camGrid.childElementCount) camGrid.innerHTML = '';
+    // Tablée — the cameras grid renders as a stage
+    camGrid?.classList.toggle('stage-mode', presenceMode === 'tablee');
+    if (presenceMode === 'tablee') applyStageMain();
+}
+
+// In-place render of the Bandeau rail tiles (self · GM · peers). Viewer iframes
+// are keyed by stream ID and only re-src'd when their URL changes.
+function renderPresenceRail() {
+    const grid = document.getElementById('presence-rail-grid');
+    if (!grid) return;
+    const expected = new Map(); // sid → label
+    // Every tile needs the room in its URL — see camerasAvailable(). The self tile
+    // already required it; the GM and peer tiles did not, so a stale streamId
+    // outlived the room and rendered as a black rectangle.
+    if (cam.live()) expected.set(cam.streamId(), (character.name || 'Vous'));
+    if (vdoRoom && gmStreamId) expected.set(gmStreamId, 'MJ');
+    if (vdoRoom) peerCameras.forEach((p, charId) => { if (p.streamId && charId !== currentCharId) expected.set(p.streamId, p.name || charId); });
+    const spot = spotlightSid();
+    // Keyed by stream ID: the tile (and the WebRTC connection inside it) survives
+    // every re-render in which its stream is still expected. The iframe is only
+    // re-src'd when the URL actually changes — re-assigning the same src reloads the
+    // frame and drops the connection.
+    reconcile(grid, expected, () => {
+        const tile = el('div', { className: 'pr-tile' },
+            el('iframe', { allow: 'autoplay' }),          // viewer-only permissions
+            el('div', { className: 'pr-label' }));
+        tile._frame = tile.firstChild;
+        tile._label = tile.lastChild;
+        return tile;
+    }, (tile, label, sid) => {
+        const isSelf = cam.live() && sid === cam.streamId();
+        setFrameSrc(tile._frame, cam.viewSrc(sid, isSelf));
+        tile._label.textContent = label;
+        tile.classList.toggle('spotlit', !!spot && sid === spot);
+    });
+    camLog('[VDO] renderPresenceRail |', [...expected].map(([sid, l]) => `${l}=${sid}`).join(', ') || '(no tiles)');
+}
+
+// The stream ID a rendered camera cell is showing, read back off its iframe URL.
+// '' when the cell has no iframe (placeholder) or the URL is unparseable.
+function cellSid(cell) {
+    const ifr = cell?.querySelector('iframe');
+    try { return ifr ? new URL(ifr.src).searchParams.get('view') || '' : ''; } catch { return ''; }
+}
+
+// Tablée stage: pick the big tile — GM spotlight wins, then the locally clicked
+// face, then the GM stream, then the first tile.
+function applyStageMain() {
+    const grid = document.getElementById('cameras-grid');
+    if (!grid) return;
+    const cells = [...grid.querySelectorAll('.camera-cell')];
+    if (!cells.length) return;
+    // Forget a locally-promoted tile once its stream is gone, otherwise the stale
+    // choice silently wins again if that peer reconnects later.
+    if (localStageSid && !cells.some(c => cellSid(c) === localStageSid)) localStageSid = '';
+    const want = spotlightSid() || localStageSid || gmStreamId || '';
+    let main = want ? cells.find(c => cellSid(c) === want) : null;
+    if (!main) main = cells[0];
+    cells.forEach(c => c.classList.toggle('stage-main', c === main));
+}
+
+// -- Camera tile size ---------------------------------------------------------
+// Two knobs. The slider moves --cam-w on the grid — one width for every tile, the
+// common zoom. The corner grip moves that one tile only, stored per stream ID in
+// camSizes so the override survives a re-render (a cell is rebuilt whenever the
+// roster changes). A tile with no override follows the slider; Réinit. drops both.
+const CAM_SIZE_KEY = 'aria-camera-size', CAM_SIZES_KEY = 'aria-camera-sizes', CAM_SIZE_DEFAULT = 280;
+const camClampW = px => Math.min(640, Math.max(160, Math.round(px)));
+let camSize = camClampW(parseInt(localStorage.getItem(CAM_SIZE_KEY), 10) || CAM_SIZE_DEFAULT);
+let camSizes = {};
+try { camSizes = JSON.parse(localStorage.getItem(CAM_SIZES_KEY)) || {}; } catch {}
+
+function applyCamSize(persist) {
+    const grid = document.getElementById('cameras-grid');
+    if (grid) {
+        grid.style.setProperty('--cam-w', camSize + 'px');
+        // Per-tile overrides, re-applied on every render: '' hands the cell back to
+        // the slider rather than freezing it at whatever it happened to measure.
+        grid.querySelectorAll('.camera-cell').forEach(cell => {
+            const wrap = cell.querySelector('.camera-iframe-wrap');
+            const w = camSizes[cellSid(cell)];
+            if (wrap) wrap.style.width = w ? w + 'px' : '';
+        });
+    }
+    const slider = document.getElementById('cam-size');
+    if (slider && slider.value !== String(camSize)) slider.value = camSize;
+    if (persist) {
+        localStorage.setItem(CAM_SIZE_KEY, String(camSize));
+        localStorage.setItem(CAM_SIZES_KEY, JSON.stringify(camSizes));
+    }
+}
+function setCamSize(px, persist) {
+    camSize = camClampW(px);
+    applyCamSize(persist);
+}
+function resetCamSize() { camSizes = {}; setCamSize(CAM_SIZE_DEFAULT, true); }
+
+// The corner grip — this tile only. Attached to every tile including our own, which
+// had no way to be resized at all. A cell with no stream ID (placeholder) has nothing
+// to key an override on, so its grip falls back to moving the common size.
+function attachCamResize(wrap) {
+    const handle = document.createElement('div');
+    handle.className = 'camera-resize-handle';
+    handle.addEventListener('mousedown', e => {
+        const startX = e.clientX, startW = wrap.offsetWidth;
+        const sid = cellSid(wrap.closest('.camera-cell'));
+        // A shield over the page keeps the drag alive across the camera iframes,
+        // which would otherwise swallow mousemove as soon as the pointer entered one.
+        const shield = document.createElement('div');
+        shield.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:9999;cursor:nwse-resize;';
+        document.body.appendChild(shield);
+        const onMove = ev => {
+            const w = camClampW(startW + ev.clientX - startX);
+            if (sid) { camSizes[sid] = w; wrap.style.width = w + 'px'; }
+            else setCamSize(w, false);
+        };
+        const onUp = () => {
+            shield.remove();
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            applyCamSize(true);
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+        e.preventDefault();
+    });
+    wrap.appendChild(handle);
 }
 
 // Render/update the cameras grid: self-view, GM iframe, and peer VDO.ninja iframes.
 function renderCamerasTab() {
-    console.log('[VDO] renderCamerasTab() called | currentCharId:', currentCharId, '| gmStreamId:', gmStreamId, '| peerCameras:', [...peerCameras.entries()].map(([k,v]) => `${k}:${v.name}(${v.streamId})`).join(', '));
-    startSelfView();
     const grid = document.getElementById('cameras-grid');
-    if (!grid) { console.warn('[VDO] renderCamerasTab: #cameras-grid not found'); return; }
-    // Self-view: viewer of own stream when VDO room active (push is in #vdo-push-frame), native otherwise
+    if (!grid) { camLog('[VDO] renderCamerasTab: #cameras-grid not found'); return; }
+    // Push failure used to be silent — the self tile just stayed black and the only
+    // clue was a console line. getUserMedia needs a secure context, so the file://
+    // case is detectable up front; a cut camera is stated too.
+    const warn = document.getElementById('cameras-warning');
+    if (warn) {
+        let msg = '';
+        // file:// is a *secure context* per spec (W3C lists it as potentially
+        // trustworthy), so isSecureContext alone could never detect the case this
+        // warning exists for — it was dead code, and a player opening the page from
+        // disk got no explanation at all. Test the scheme; keep isSecureContext for
+        // the plain-http case, which is a real one (python -m http.server).
+        if (vdoRoom && (location.protocol === 'file:' || !window.isSecureContext)) {
+            msg = '⚠ Caméra indisponible : la page doit être servie en HTTPS (page GitHub Pages) — depuis un fichier local le navigateur refuse l’accès webcam. Vous voyez les autres, ils ne vous voient pas.';
+        } else if (vdoRoom && cam.off) {
+            msg = '📹 Votre caméra est coupée — les autres ne vous voient pas. Bouton 🚫 dans la barre du haut pour rétablir.';
+        } else if (vdoRoom && !cam.lockHeld) {
+            // Informational, not a failure: the stream is live, this tab just isn't
+            // the one publishing it. Stated because the webcam LED belongs to the
+            // other tab and that is otherwise puzzling. There is no "taking over"
+            // state to report any more — the lock passes the instant its holder dies.
+            msg = 'ℹ Ce personnage est aussi ouvert dans un autre onglet, qui diffuse la caméra. Celui-ci se contente de la regarder — une seule webcam par personnage.';
+        }
+        warn.textContent = msg;
+        warn.style.display = msg ? '' : 'none';
+        if (msg) camLog('[VDO] cameras warning:', msg);
+    }
+    // Self tile: a muted viewer of our own pushed stream. The camera itself belongs to
+    // #vdo-push-frame; there is no native <video> path. No room or camera cut ⇒ nothing
+    // is being published by any tab of this character, so no self tile.
     let selfCell = grid.querySelector('.camera-cell[data-self]');
-    if (vdoRoom && currentCharId) {
-        const sid = derivedStreamId();
-        let viewSrc = `https://vdo.ninja/?view=${encodeURIComponent(sid)}&room=${encodeURIComponent(vdoRoom)}&autoplay&cleanoutput&muted`;
-        if (vdoRoomPassword) viewSrc += `&password=${encodeURIComponent(vdoRoomPassword)}`;
+    if (cam.live()) {   // room included — see spotlightSid()
+        const sid = cam.streamId();
+        const viewSrc = cam.viewSrc(sid, true);
         if (!selfCell) {
             selfCell = document.createElement('div');
             selfCell.className = 'camera-cell';
@@ -971,6 +1030,7 @@ function renderCamerasTab() {
             iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;';
             iframe.src = viewSrc;
             wrap.appendChild(iframe);
+            attachCamResize(wrap);
             const labelEl = document.createElement('div');
             labelEl.className = 'camera-label';
             labelEl.textContent = character.name || 'Vous';
@@ -994,44 +1054,17 @@ function renderCamerasTab() {
             const lbl = selfCell.querySelector('.camera-label');
             if (lbl) lbl.textContent = character.name || 'Vous';
         }
-    } else if (selfViewStream) {
-        if (!selfCell) {
-            selfCell = document.createElement('div');
-            selfCell.className = 'camera-cell';
-            selfCell.dataset.self = '1';
-            const wrap = document.createElement('div');
-            wrap.className = 'camera-iframe-wrap';
-            const vid = document.createElement('video');
-            vid.autoplay = true; vid.muted = true; vid.playsInline = true;
-            vid.srcObject = selfViewStream;
-            vid.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
-            wrap.appendChild(vid);
-            const labelEl = document.createElement('div');
-            labelEl.className = 'camera-label';
-            labelEl.textContent = character.name || 'Vous';
-            selfCell.appendChild(wrap);
-            selfCell.appendChild(labelEl);
-            grid.insertBefore(selfCell, grid.firstChild);
-        } else {
-            const lbl = selfCell.querySelector('.camera-label');
-            if (lbl) lbl.textContent = character.name || 'Vous';
-        }
     } else if (selfCell) {
         selfCell.remove();
     }
-    // Build expected map: streamId → display label
+    // Build expected map: streamId → display label. Gated on the room like the self
+    // tile above — a viewer URL without &room can't decrypt a stream pushed into one,
+    // so a streamId that outlived the room only ever renders black.
     const expected = new Map();
-    if (gmStreamId) expected.set(gmStreamId, 'MJ');
-    peerCameras.forEach((p, charId) => {
-        if (p.streamId && charId !== currentCharId) {
-            expected.set(p.streamId, p.name);
-        } else if (charId === currentCharId) {
-            console.log('[VDO] renderCamerasTab: skipping own charId in peerCameras:', charId, p);
-        } else if (!p.streamId) {
-            console.log('[VDO] renderCamerasTab: peer has no streamId:', charId, p);
-        }
+    if (vdoRoom && gmStreamId) expected.set(gmStreamId, 'MJ');
+    if (vdoRoom) peerCameras.forEach((p, charId) => {
+        if (p.streamId && charId !== currentCharId) expected.set(p.streamId, p.name);
     });
-    console.log('[VDO] renderCamerasTab: expected iframes =', [...expected.entries()].map(([sid, lbl]) => `${lbl}(${sid})`).join(', ') || '(none)');
     // Remove cells whose stream ID is no longer needed (self-view cell is excluded)
     [...grid.querySelectorAll('.camera-cell:not([data-self])')].forEach(cell => {
         const iframe = cell.querySelector('.camera-iframe');
@@ -1049,42 +1082,31 @@ function renderCamerasTab() {
             if (sid) rendered.set(sid, cell);
         } catch {}
     });
-    console.log('[VDO] renderCamerasTab: already-rendered iframes =', [...rendered.keys()].join(', ') || '(none)');
     // Update labels for existing cells; add cells for new stream IDs
     expected.forEach((label, sid) => {
         if (rendered.has(sid)) {
-            console.log('[VDO] renderCamerasTab: iframe already exists for', label, '(', sid, ') — updating label only');
-            const labelEl = rendered.get(sid).querySelector('.camera-label');
+            const cell = rendered.get(sid);
+            const labelEl = cell.querySelector('.camera-label');
             if (labelEl) labelEl.textContent = label;
+            // Re-src the iframe if the expected URL changed (e.g. the room/password
+            // arrived after the cell was first created with a room-less URL).
+            const iframe = cell.querySelector('.camera-iframe');
+            const expectedSrc = cam.viewSrc(sid, false);
+            if (iframe && iframe.src !== expectedSrc) iframe.src = expectedSrc;
         } else {
-            let iframeSrc = `https://vdo.ninja/?view=${encodeURIComponent(sid)}&room=${encodeURIComponent(vdoRoom)}&autoplay&cleanoutput`;
-            if (vdoRoomPassword) iframeSrc += `&password=${encodeURIComponent(vdoRoomPassword)}`;
-            console.log('[VDO] renderCamerasTab: CREATING new iframe for', label, '(', sid, ') →', iframeSrc);
+            const iframeSrc = cam.viewSrc(sid, false);
             const cell = document.createElement('div');
             cell.className = 'camera-cell';
             const wrap = document.createElement('div');
             wrap.className = 'camera-iframe-wrap';
             const iframe = document.createElement('iframe');
             iframe.src = iframeSrc;
-            iframe.allow = 'autoplay; fullscreen; display-capture; picture-in-picture; screen-wake-lock';
+            // Viewer-only: no camera/mic/display-capture — only #vdo-push-frame needs those.
+            iframe.allow = 'autoplay; fullscreen';
             iframe.allowFullscreen = true;
             iframe.className = 'camera-iframe';
             wrap.appendChild(iframe);
-            const handle = document.createElement('div');
-            handle.className = 'camera-resize-handle';
-            handle.addEventListener('mousedown', e => {
-                const startX = e.clientX;
-                const startW = wrap.offsetWidth;
-                const shield = document.createElement('div');
-                shield.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:9999;cursor:nwse-resize;';
-                document.body.appendChild(shield);
-                const onMove = ev => { wrap.style.width = Math.max(140, startW + ev.clientX - startX) + 'px'; };
-                const onUp = () => { shield.remove(); document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
-                document.addEventListener('mousemove', onMove);
-                document.addEventListener('mouseup', onUp);
-                e.preventDefault();
-            });
-            wrap.appendChild(handle);
+            attachCamResize(wrap);
             const labelEl = document.createElement('div');
             labelEl.className = 'camera-label';
             labelEl.textContent = label;
@@ -1093,7 +1115,33 @@ function renderCamerasTab() {
             grid.appendChild(cell);
         }
     });
+    // GM spotlight in the grid. It already showed on the Réduit dots and the Bandeau
+    // rail, and Tablée promotes it to the big tile — but the plain grid had no cue at
+    // all, and renderPresenceUI() suppresses the rail while this pane is open, so a
+    // player in Bandeau with Caméras docked saw the spotlight nowhere.
+    const spot = spotlightSid();
+    grid.querySelectorAll('.camera-cell').forEach(cell =>
+        cell.classList.toggle('spotlit', !!spot && cellSid(cell) === spot));
+    if (presenceMode === 'tablee') applyStageMain();
+    cam.renderDevicePick('cam-device-pick');
+    applyCamSize(false);
+    // What the grid decided to show, and why it might be empty. A tile only exists
+    // for a stream someone advertises, and only while a room is known.
+    camLog('[VDO] renderCamerasTab | self tile:', cam.live() ? cam.streamId() : 'none (' + (cam.off ? 'camera cut' : !vdoRoom ? 'no room' : 'not live') + ')',
+        '| peer/MJ tiles:', [...expected].map(([sid, l]) => `${l}=${sid}`).join(', ') || '(none)',
+        '| cells in DOM:', grid.querySelectorAll('.camera-cell').length);
 }
+
+// Tablée: clicking a face promotes it to the big stage tile (frame 25).
+window.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('cameras-grid')?.addEventListener('click', e => {
+        if (presenceMode !== 'tablee') return;
+        const cell = e.target.closest('.camera-cell');
+        if (!cell || cell.classList.contains('stage-main')) return;
+        localStageSid = cellSid(cell);
+        applyStageMain();
+    });
+});
 
 // ═══════════════════════════════════════════
 //  HP
@@ -1145,8 +1193,9 @@ function handleGMDamage(data) {
     currentHP = hpAfter;
     localStorage.setItem(hpKey(), currentHP); debouncedSyncState();
     updateHPDisplay();
+    schedulePresence();   // was carried by the 5s heartbeat
     triggerDamageVFX(damage, false);
-    showToast('gm-dmg-toast', `⚔ Dégâts reçus : -${damage} PV`);
+    showToast('gm-dmg-toast', `Dégâts reçus : -${damage} PV`);
     if (hpAfter <= 0) showMort();
 }
 // Apply incoming heal from the GM: update HP, animate bar, show heal number.
@@ -1157,6 +1206,7 @@ function handleGMHeal(data) {
     currentHP = hpAfter;
     localStorage.setItem(hpKey(), currentHP); debouncedSyncState();
     updateHPDisplay();
+    schedulePresence();   // was carried by the 5s heartbeat
     showHealNumber(amount);
     showToast('gm-heal-toast', `♥ Soins reçus : +${amount} PV`);
 }
@@ -1183,14 +1233,14 @@ function triggerDamageVFX(dmg, local) {
 function showHealNumber(amt) { spawnDmgNumber(`+${amt}`, true); }
 // Create and animate a floating damage or heal number element on screen.
 function spawnDmgNumber(txt, isHeal) {
-    const el = document.createElement('div');
-    el.textContent = txt;
-    el.style.cssText = `position:fixed;top:40%;left:50%;transform:translate(-50%,-50%);font-family:'Cinzel',serif;font-size:64px;font-weight:900;color:${isHeal ? '#4cff88' : '#ff4444'};text-shadow:0 0 20px ${isHeal ? 'rgba(76,255,136,.5)' : 'rgba(255,50,50,.6)'};pointer-events:none;z-index:900;transition:all .9s ease-out;`;
-    document.body.appendChild(el);
-    void el.offsetWidth;
-    el.style.transform = 'translate(-50%,-120%)';
-    el.style.opacity = '0';
-    setTimeout(() => el.remove(), 1000);
+    const node = document.createElement('div');
+    node.textContent = txt;
+    node.style.cssText = `position:fixed;top:40%;left:50%;transform:translate(-50%,-50%);font-family:'Cormorant Garamond',serif;font-size:64px;font-weight:900;color:${isHeal ? '#4cff88' : '#ff4444'};text-shadow:0 0 20px ${isHeal ? 'rgba(76,255,136,.5)' : 'rgba(255,50,50,.6)'};pointer-events:none;z-index:900;transition:all .9s ease-out;`;
+    document.body.appendChild(node);
+    void node.offsetWidth;
+    node.style.transform = 'translate(-50%,-120%)';
+    node.style.opacity = '0';
+    setTimeout(() => node.remove(), 1000);
 }
 // Spawn blood splatter particles on the player's damage canvas.
 function spawnBloodParticles() {
@@ -1229,10 +1279,10 @@ let toastTimers = {};
 // Show a toast notification by element ID for 3.5 seconds.
 function showToast(id, msg) {
     clearTimeout(toastTimers[id]);
-    const el = document.getElementById(id);
-    el.textContent = msg;
-    el.classList.add('show');
-    toastTimers[id] = setTimeout(() => el.classList.remove('show'), 3500);
+    const node = document.getElementById(id);
+    node.textContent = msg;
+    node.classList.add('show');
+    toastTimers[id] = setTimeout(() => node.classList.remove('show'), 3500);
 }
 
 // ═══════════════════════════════════════════
@@ -1265,6 +1315,24 @@ function resetBM() { bonusMalus = 0; updateBMDisplay(); }
 function bmNextActive() { return bmNextCount > 0 ? bmNextValue : 0; }
 // Persistent + active temporary modifier — for live percentage previews.
 function liveBM() { return bonusMalus + bmNextActive(); }
+
+// THE definition of a roll threshold. doRoll() rolls against this number and every
+// live preview displays it, so the two cannot disagree.
+//
+// This expression used to be hand-written at nine call sites, and they had already
+// drifted: the potion card floored at 0 while doRoll floored at 1, so a recipe could
+// advertise "Succès 0%" and then roll against 1. Skills folded in the per-skill
+// bonus, the potion preview silently didn't. CLAUDE.md carried a paragraph telling
+// the reader to remember `liveBM() + karma` at each site — that paragraph was the
+// bug report for this function's absence.
+//
+//   base   — skill/stat/recipe percentage
+//   bonus  — per-skill permanent modifier (character.skills[n].bonus)
+//   skipBM — Jet libre: the typed threshold is used raw, no BM, temp or karma
+function rollThreshold(base, { bonus = 0, skipBM = false } = {}) {
+    const n = skipBM ? base : base + bonus + liveBM() + (character?.karma ?? 0);
+    return Math.max(1, Math.min(100, n));
+}
 // Arm a temporary modifier for the next N threshold rolls from the bar inputs.
 function setBMNext() {
     const v = parseInt(document.getElementById('bm-next-val').value);
@@ -1285,15 +1353,15 @@ function updateHiddenRollBtn() {
     const btn = document.getElementById('hidden-roll-btn');
     if (!btn) return;
     btn.classList.toggle('active', hiddenRollMode);
-    btn.textContent = hiddenRollMode ? '🔒 Jet caché ON' : '🔒 Jet caché';
+    btn.textContent = hiddenRollMode ? 'Jet caché ON' : 'Jet caché';
 }
 // Render the karma value display with appropriate positive/negative styling.
 function renderKarma() {
-    const el = document.getElementById('karma-display');
-    if (!el) return;
+    const node = document.getElementById('karma-display');
+    if (!node) return;
     const k = character.karma ?? 0;
-    el.textContent = (k > 0 ? '+' : '') + k;
-    el.className = 'karma-display' + (k > 0 ? ' positive' : k < 0 ? ' negative' : '');
+    node.textContent = (k > 0 ? '+' : '') + k;
+    node.className = 'karma-display' + (k > 0 ? ' positive' : k < 0 ? ' negative' : '');
 }
 // Apply a custom ± value from the BM input to the current bonus/malus.
 function addCustomBM(sign) {
@@ -1302,15 +1370,17 @@ function addCustomBM(sign) {
 }
 // Update the BM display label and in-place refresh all affected skill percentages.
 function updateBMDisplay() {
-    const el = document.getElementById('bm-display');
-    el.textContent = (bonusMalus > 0 ? '+' : '') + bonusMalus;
-    el.className = 'bm-display' + (bonusMalus > 0 ? ' positive' : bonusMalus < 0 ? ' negative' : '');
-    const bm = liveBM();
+    const node = document.getElementById('bm-display');
+    node.textContent = (bonusMalus > 0 ? '+' : '') + bonusMalus;
+    node.className = 'bm-display' + (bonusMalus > 0 ? ' positive' : bonusMalus < 0 ? ' negative' : '');
     // Render the armed temporary modifier pill (next N rolls).
     const ns = document.getElementById('bm-next-status');
     if (ns) {
         if (bmNextCount > 0) {
-            ns.innerHTML = `<span class="bm-next-mod">${bmNextValue > 0 ? '+' : ''}${bmNextValue}</span><span class="bm-next-cnt">${bmNextCount} jet${bmNextCount > 1 ? 's' : ''}</span><button class="bm-next-clear" onclick="clearBMNext()" title="Annuler">✕</button>`;
+            fill(ns,
+                el('span', { className: 'bm-next-mod', textContent: `${bmNextValue > 0 ? '+' : ''}${bmNextValue}` }),
+                el('span', { className: 'bm-next-cnt', textContent: `${bmNextCount} jet${bmNextCount > 1 ? 's' : ''}` }),
+                el('button', { className: 'bm-next-clear', title: 'Annuler', textContent: '✕', onclick: clearBMNext }));
             ns.className = 'bm-next-status ' + (bmNextValue > 0 ? 'positive' : 'negative');
             ns.style.visibility = 'visible';
         } else {
@@ -1319,20 +1389,29 @@ function updateBMDisplay() {
             ns.style.visibility = 'hidden';
         }
     }
-    // Update only the percentage text in existing skill elements — no DOM rebuild
+    // Update only the percentage text in existing skill elements — no DOM rebuild.
+    // Lookup by stored index, not name — duplicate names would all match the first entry.
     document.getElementById('skill-list').querySelectorAll('.skill-item').forEach(div => {
-        const skill = (character.skills || []).find(s => s.name === div.dataset.skillName);
-        if (skill) div.querySelector('.skill-pct').textContent = Math.max(1, Math.min(100, skill.pct + (+skill.bonus || 0) + bm + (character?.karma ?? 0))) + '%';
+        const skill = (character.skills || [])[+div.dataset.skillIdx];
+        if (skill) {
+            const v = rollThreshold(skill.pct, { bonus: +skill.bonus || 0 });
+            div.querySelector('.skill-pct').textContent = v + '%';
+            const fill = div.querySelector('.skill-bar-fill');
+            if (fill) fill.style.width = v + '%';
+        }
     });
     document.getElementById('special-list').querySelectorAll('.skill-item').forEach(div => {
-        const sp = (character.specials || []).find(s => s.name === div.dataset.skillName);
-        if (sp) div.querySelector('.skill-pct').textContent = Math.max(1, Math.min(100, sp.pct + (+sp.bonus || 0) + bm + (character?.karma ?? 0))) + '%';
+        const sp = (character.specials || [])[+div.dataset.skillIdx];
+        if (sp) div.querySelector('.skill-pct').textContent = rollThreshold(sp.pct, { bonus: +sp.bonus || 0 }) + '%';
     });
-    document.getElementById('potion-list')?.querySelectorAll('.recipe-row').forEach((div, i) => {
+    // Recipe cards render one .potion-card-chance each, in recipe order (stock
+    // cards have no chance span), so the NodeList maps 1:1 onto potionRecipes.
+    document.querySelectorAll('#potion-list .potion-card-chance').forEach((node, i) => {
         const r = (character.potionRecipes || [])[i];
-        if (r) div.querySelector('.recipe-chance').textContent = Math.max(0, Math.min(100, (r.successChance || 0) + bm + (character?.karma ?? 0))) + '%';
+        if (r) node.textContent = `Succès ${rollThreshold(r.successChance || 0)}%`;
     });
     updateHiddenRollBtn();
+    renderStats();          // stat cards call rollThreshold() at render time
     renderCombatSidebar();
 }
 
@@ -1340,34 +1419,69 @@ function updateBMDisplay() {
 //  RENDER
 // ═══════════════════════════════════════════
 // Full re-render of all player panel sections.
-function renderAll() {
-    document.getElementById('char-display').textContent = `${character.name} — ${character.class}`;
+// ── RENDER ────────────────────────────────────────────────────────────────────
+// Two tiers, because they have different re-entrancy rules — this is the whole
+// reason the old code hand-picked a different subset of renderers at each of the
+// twenty-odd mutation sites.
+//
+// renderDerived() draws the read-only views of `character`. Nothing in them holds a
+// caret, so it is always safe to run, however often.
+//
+// renderEditors() writes into form fields. Running it while the user is typing in
+// one of those fields resets the caret, so it runs only when the change came from
+// somewhere else: a button, a GM message, a character switch.
+function renderDerived() {
+    updateTopbarIdentity();
     document.title = character.name ? `ARIA – ${character.name}` : 'ARIA – Joueur';
     renderSkills();
     renderStats();
     updateHPDisplay();
-    renderInventorySidebar();
     renderCombatSidebar();
     renderPotions();
-    renderEditorForm();
     renderPlayerFiles();
     renderKarma();
     updateBMDisplay();
+}
+
+// renderEditorForm() fans out to the weapons/inventory/skills/specials editors.
+function renderEditors() {
+    renderEditorForm();
+}
+
+function renderAll() {
+    renderDerived();
+    renderEditors();
+}
+
+// The single commit point after mutating `character`. Persist (which also
+// republishes presence), then refresh the views — instead of every call site
+// remembering which three of a dozen renderers its particular field feeds.
+// Pass { editors: true } when the change did not come from typing inside an editor,
+// i.e. when the form fields themselves need to be rewritten.
+function commitCharacter({ editors = false } = {}) {
+    saveCurrentCharacter();
+    renderDerived();
+    if (editors) renderEditors();
 }
 
 // Render the skills and specials lists (sorted) with effective percentages applied.
 function renderSkills() {
     const list = document.getElementById('skill-list');
     list.innerHTML = '';
-    [...(character.skills || [])].sort((a, b) => a.name.localeCompare(b.name, 'fr')).forEach(skill => {
+    (character.skills || []).map((skill, idx) => ({ skill, idx })).sort((a, b) => a.skill.name.localeCompare(b.skill.name, 'fr')).forEach(({ skill, idx }) => {
         const bonus = +skill.bonus || 0;
-        const eff = Math.max(1, Math.min(100, skill.pct + bonus + liveBM() + (character.karma ?? 0)));
+        const eff = rollThreshold(skill.pct, { bonus });
         const div = document.createElement('div');
         const isSoigner = skill.name === 'Soigner';
         div.className = 'skill-item' + (isSoigner ? ' soigner-skill' : '');
         div.dataset.skillName = skill.name;
-        const modBadge = bonus ? `<span class="skill-mod" title="Modificateur permanent">${bonus > 0 ? '+' : ''}${bonus}</span>` : '';
-        div.innerHTML = `${skill.link ? `<span class="skill-link">${skill.link}</span>` : ''}<span class="skill-name">${skill.name}</span>${modBadge}<span class="skill-pct">${eff}%</span>`;
+        div.dataset.skillIdx = idx; // index into character.skills — survives duplicate names
+        fill(div,
+            el('span', { className: 'skill-name', textContent: skill.name }),
+            bonus && el('span', { className: 'skill-mod', title: 'Modificateur permanent', textContent: `${bonus > 0 ? '+' : ''}${bonus}` }),
+            skill.link && el('span', { className: 'skill-link', textContent: skill.link }),
+            el('div', { className: 'skill-bar-wrap' }, el('div', { className: 'skill-bar-fill', style: { width: eff + '%' } })),
+            el('span', { className: 'skill-pct', textContent: eff + '%' }));
         if (isSoigner) {
             div.addEventListener('click', () => openSoignerTargetPicker(skill.pct + bonus));
         } else {
@@ -1377,15 +1491,21 @@ function renderSkills() {
     });
     const slist = document.getElementById('special-list');
     slist.innerHTML = '';
-    [...(character.specials || [])].sort((a, b) => a.name.localeCompare(b.name, 'fr')).forEach(sp => {
+    (character.specials || []).map((sp, idx) => ({ sp, idx })).sort((a, b) => a.sp.name.localeCompare(b.sp.name, 'fr')).forEach(({ sp, idx }) => {
         const bonus = +sp.bonus || 0;
-        const eff = Math.max(1, Math.min(100, sp.pct + bonus + liveBM() + (character.karma ?? 0)));
+        const eff = rollThreshold(sp.pct, { bonus });
         const div = document.createElement('div');
         div.className = 'skill-item';
         div.dataset.skillName = sp.name;
-        div.style.borderColor = 'rgba(123,63,160,.3)';
-        const modBadge = bonus ? `<span class="skill-mod" style="color:var(--card-purple)" title="Modificateur permanent">${bonus > 0 ? '+' : ''}${bonus}</span>` : '';
-        div.innerHTML = `<span class="skill-link" style="color:var(--card-purple)">Spéciale</span><span class="skill-name">${sp.name}${sp.desc ? ` <span style="font-size:12px;color:var(--parchment-dim)">— ${sp.desc}</span>` : ''}</span>${modBadge}<span class="skill-pct" style="color:var(--card-purple)">${eff}%</span>`;
+        div.dataset.skillIdx = idx;
+        div.style.borderColor = 'rgba(236,164,86,.3)';
+        fill(div,
+            el('div', { className: 'skill-name-wrap' },
+                el('span', { className: 'skill-name', textContent: sp.name }),
+                sp.desc && el('span', { className: 'skill-desc', textContent: sp.desc })),
+            bonus && el('span', { className: 'skill-mod', style: { color: 'var(--ember2)' }, title: 'Modificateur permanent',
+                textContent: `${bonus > 0 ? '+' : ''}${bonus}` }),
+            el('span', { className: 'skill-pct', style: { color: 'var(--ember2)' }, textContent: eff + '%' }));
         div.addEventListener('click', () => doRoll(sp.name, sp.pct + bonus));
         slist.appendChild(div);
     });
@@ -1399,22 +1519,24 @@ function renderStats() {
         return;
     }
     const bar = document.getElementById('mult-bar-btns');
-    bar.innerHTML = [1, 2, 3, 4, 5].map(m =>
-        `<button class="mult-btn${multiplier === m ? ' active' : ''}" onclick="setMult(${m})">${m > 1 ? '×' + m : '×1'}</button>`
-    ).join('');
+    fill(bar, [1, 2, 3, 4, 5].map(m => el('button', {
+        className: 'mult-btn' + (multiplier === m ? ' active' : ''),
+        textContent: m > 1 ? '×' + m : '×1',
+        onclick: () => setMult(m),
+    })));
     const grid = document.getElementById('stat-grid');
     grid.innerHTML = '';
     ['FOR', 'DEX', 'END', 'INT', 'CHA'].forEach(key => {
         const val = character.stats[key] || 0;
-        const threshold = Math.min(100, val * multiplier + liveBM());
-        const showThreshold = multiplier > 1;
+        const threshold = rollThreshold(val * multiplier);
         const div = document.createElement('div');
         div.className = 'stat-card';
         div.onclick = () => rollStat(key, val);
-        div.innerHTML = `<div class="stat-key">${key}</div>
-          <div class="stat-val"${showThreshold ? ` style="color:var(--gold);"` : ''}>
-            ${showThreshold ? threshold : val}
-          </div>`;
+        // Big number = the live roll threshold (value × multiplier); updates with the multiplier.
+        fill(div,
+            el('div', { className: 'stat-key', textContent: key }),
+            el('div', { className: 'stat-val', textContent: threshold }, el('span', { className: 'stat-val-pct', textContent: '%' })),
+            el('div', { className: 'stat-preview', textContent: `valeur ${val} · ×${multiplier}` }));
         grid.appendChild(div);
     });
 }
@@ -1424,86 +1546,85 @@ function setMult(m) {
     renderStats();
 }
 
+// Update the unified command bar identity cluster: stacked name + class, plus campaign code.
+function updateTopbarIdentity() {
+    const nameEl = document.getElementById('tb-char-name');
+    const classEl = document.getElementById('tb-char-class');
+    if (nameEl) nameEl.textContent = character.name || '—';
+    if (classEl) classEl.textContent = character.class || '';
+    const codeEl = document.getElementById('tb-campaign-code');
+    const codeSep = document.getElementById('tb-code-sep');
+    if (codeEl) {
+        const code = (character.campaignKey || '').trim().toUpperCase();
+        const show = !!code;
+        codeEl.textContent = show ? code : '—';
+        codeEl.style.display = show ? '' : 'none';
+        if (codeSep) codeSep.style.display = show ? '' : 'none';
+    }
+}
+
+// Copy the campaign join code to the clipboard from the topbar chip.
+function copyCampaignCode() {
+    const code = (character.campaignKey || '').trim().toUpperCase();
+    if (!code) return;
+    navigator.clipboard?.writeText(code);
+    const codeEl = document.getElementById('tb-campaign-code');
+    if (codeEl) { const prev = codeEl.textContent; codeEl.textContent = 'Copié'; setTimeout(() => { codeEl.textContent = prev; }, 1000); }
+}
+
 const MONEY_COINS = [
-    { key: 'couronne', label: 'Couronne', color: '#c9a84c' },
+    { key: 'couronne', label: 'Couronne', color: '#eca456' },
     { key: 'orbe',     label: 'Orbe',     color: '#b8c4cc' },
     { key: 'sceptre',  label: 'Sceptre',  color: '#c87533' },
     { key: 'sou',      label: 'Sou',      color: '#8a8a94' },
 ];
-// Render the inventory sidebar with items, vials (if alchemy enabled), and money.
-function renderInventorySidebar() {
-    const body = document.getElementById('inv-sidebar-body');
-    const items = character.inventory || [];
-    const vials = character.vials ?? 0;
-    const showVials = playerTabs.alchemy && vials > 0;
-    if (!items.length && !showVials) { body.innerHTML = `<div style="font-family:'EB Garamond',serif;font-size:13px;color:var(--parchment-dim);font-style:italic;opacity:.5;">Vide</div>`; }
-    else {
-        let html = showVials ? `<div class="inv-item"><span style="font-style:italic">Fioles vides</span><span style="color:var(--gold-dim);font-family:'Cinzel',serif;font-size:12px;">×${vials}</span></div>` : '';
-        html += items.map(it => `<div class="inv-item"><span style="font-style:italic">${it.name || '—'}</span><span style="color:var(--gold-dim);font-family:'Cinzel',serif;font-size:12px;">×${it.qty || 1}</span></div>`).join('');
-        body.innerHTML = html;
-    }
-    const moneyEl = document.getElementById('inv-money-display');
-    if (moneyEl) {
-        const m = character.money || {};
-        if (character.ariaType === 'contemporary') {
-            const f = m.francs ?? 0;
-            moneyEl.innerHTML = f > 0 ? `<span style="color:var(--parchment-dim);" title="Francs">💶 ${f} F</span>` : '';
-        } else {
-            const parts = MONEY_COINS.map(c => {
-                const v = m[c.key] ?? 0;
-                return v > 0 ? `<span style="color:${c.color};" title="${c.label}">●${v}</span>` : '';
-            }).filter(Boolean);
-            moneyEl.innerHTML = parts.join('');
-        }
-    }
-}
 
-// Render the combat sidebar with equipped weapons, protection, and reaction buttons.
+// Render the combat sidebar as the design's three sections: Réactions · Protection · Armes.
 function renderCombatSidebar() {
     const body = document.getElementById('combat-sidebar-body');
     if (!body) return;
-    const allWeapons = (character.weapons || []).filter(w => w.nom.trim());
-    const favourites = allWeapons.filter(w => w.favourite);
-    const weapons = favourites;
-    const prot = character.protection || {};
-    let html = '';
-    if (weapons.length) {
-        weapons.forEach(w => {
-            const hasFormula = w.degats && w.degats.trim();
-            const rollAttr = hasFormula ? ` onclick="rollWeaponDamage('${w.nom.replace(/'/g,"\\'")}','${w.degats.replace(/'/g,"\\'")}')"` : '';
-            const rollableClass = hasFormula ? ' weap-rollable' : '';
-            const hint = hasFormula ? `<span class="weap-roll-hint">⚄ lancer</span>` : '';
-            html += `<div class="weap-row${rollableClass}"${rollAttr}><span style="font-family:'EB Garamond',serif;font-size:14px;font-style:italic;">${w.nom}</span><span style="display:flex;align-items:center;gap:6px;font-family:'Cinzel',serif;font-size:12px;color:var(--gold-dim);">${hint}${w.degats || '—'}</span></div>`;
-        });
-    } else {
-        html += `<div style="font-family:'EB Garamond',serif;font-size:13px;color:var(--parchment-dim);font-style:italic;opacity:.5;">Aucune arme</div>`;
-    }
-    html += `<div style="margin:8px 0 6px;border-top:1px solid var(--border);"></div>`;
-    html += `<div style="margin-bottom:6px;"><div style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:3px;">Protection</div><div style="display:flex;justify-content:space-between;align-items:center;font-family:'Cinzel',serif;font-size:12px;"><span>${prot.nom || '—'}</span>${prot.valeur ? `<span class="prot-val-badge">${prot.valeur}</span>` : ''}</div></div>`;
+    const effOf = sk => rollThreshold(sk.pct, { bonus: +sk.bonus || 0 });
+    const section = (label, ...kids) => el('div', { className: 'sb-section' },
+        el('div', { className: 'sb-label', textContent: label }), ...kids);
 
-    // Reaction buttons — look up Parade and Esquiver in the character's skills/specials
+    // 1 · Reactions (Parade / Esquive) — two cards
     const allSkills = [...(character.skills || []), ...(character.specials || [])];
     const isContemporary = character.ariaType === 'contemporary';
-    const parrySkill = allSkills.find(s => isContemporary ? /tabasser/i.test(s.name) : /combat.rapproch/i.test(s.name));
-    const dodgeSkill = allSkills.find(s => isContemporary ? /réflexes/i.test(s.name) : /esquiv/i.test(s.name));
-    if (parrySkill || dodgeSkill) {
-        html += `<div style="margin:8px 0 6px;border-top:1px solid var(--border);"></div>`;
-        html += `<div style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:6px;">Réactions</div>`;
-        html += `<div class="react-btns">`;
-        if (parrySkill) {
-            const pb = +parrySkill.bonus || 0;
-            const eff = Math.max(1, Math.min(100, parrySkill.pct + pb + liveBM() + (character.karma ?? 0)));
-            html += `<button class="react-btn" onclick="doRoll('${parrySkill.name.replace(/'/g, "\\'")}',${parrySkill.pct + pb})">🛡 Parer<br><span class="react-pct">${eff}%</span></button>`;
-        }
-        if (dodgeSkill) {
-            const db = +dodgeSkill.bonus || 0;
-            const eff = Math.max(1, Math.min(100, dodgeSkill.pct + db + liveBM() + (character.karma ?? 0)));
-            html += `<button class="react-btn" onclick="doRoll('${dodgeSkill.name.replace(/'/g, "\\'")}',${dodgeSkill.pct + db})">⚡ ${dodgeSkill.name}<br><span class="react-pct">${eff}%</span></button>`;
-        }
-        html += `</div>`;
-    }
+    const parrySkill = allSkills.find(sk => isContemporary ? /tabasser/i.test(sk.name) : /combat.rapproch/i.test(sk.name));
+    const dodgeSkill = allSkills.find(sk => isContemporary ? /réflexes/i.test(sk.name) : /esquiv/i.test(sk.name));
+    const reactBtn = (sk, label) => el('button', { className: 'react-btn', textContent: label,
+        onclick: () => doRoll(sk.name, sk.pct + (+sk.bonus || 0)) },
+        el('span', { className: 'react-pct', textContent: effOf(sk) + '%' }));
 
-    body.innerHTML = html;
+    // 2 · Protection — name + value badge
+    const prot = character.protection || {};
+    const hasProt = (prot.nom && prot.nom.trim()) || prot.valeur;
+
+    // 3 · Armes — favourited weapons, left-border rows
+    const weapons = (character.weapons || []).filter(w => w.nom.trim() && w.favourite);
+
+    fill(body,
+        (parrySkill || dodgeSkill) && section('Réactions', el('div', { className: 'react-btns' },
+            parrySkill && reactBtn(parrySkill, 'Parade'),
+            dodgeSkill && reactBtn(dodgeSkill, dodgeSkill.name))),
+
+        hasProt && section('Protection', el('div', { className: 'prot-row' },
+            el('span', { className: 'prot-name', textContent: prot.nom || '—' }),
+            prot.valeur && el('span', { className: 'prot-val-badge', textContent: prot.valeur }))),
+
+        section('Armes', weapons.length
+            ? weapons.map(w => {
+                const hasFormula = w.degats && w.degats.trim();
+                return el('div', {
+                    className: 'weap-row' + (hasFormula ? ' weap-rollable' : ''),
+                    onclick: hasFormula ? () => rollWeaponDamage(w.nom, w.degats) : null,
+                },
+                    el('span', { className: 'weap-name', textContent: w.nom }),
+                    el('span', { className: 'weap-dmg' },
+                        hasFormula && el('span', { className: 'weap-roll-hint', textContent: 'lancer' }),
+                        w.degats || '—'));
+            })
+            : el('div', { className: 'sb-empty', textContent: 'Aucune arme' })));
 }
 
 // ═══════════════════════════════════════════
@@ -1526,7 +1647,7 @@ async function rollDieViaDddice(sides, callback) {
     }
     const dieType = sides === 3 ? 'd6' : `d${sides}`;
     const mapFn   = sides === 3 ? v => Math.ceil(v / 2) : null;
-    pendingSecondaryRoll = { callback, mapFn };
+    pendingSecondaryRoll = { callback, mapFn, uuid: null };
     showDddiceCanvas();
     dddiceRollSafetyTimer = setTimeout(() => {
         if (pendingSecondaryRoll) {
@@ -1537,28 +1658,14 @@ async function rollDieViaDddice(sides, callback) {
         }
     }, 12000);
     try {
-        await dddiceSDK.roll([{ type: dieType, theme: dddiceAPI.theme }]);
+        const res = await dddiceSDK.roll([{ type: dieType, theme: dddiceAPI.theme }]);
+        if (pendingSecondaryRoll) pendingSecondaryRoll.uuid = _ddRollUuid(res);
     } catch (e) {
         clearTimeout(dddiceRollSafetyTimer);
         pendingSecondaryRoll = null;
         hideDddiceCanvas();
         callback(Math.floor(Math.random() * sides) + 1);
     }
-}
-// Parse "2d6+2" → { dice: ['d6','d6'], modifier: 2 }
-// Parse a dice formula string like "2d6+2" into a dice type array and a flat modifier.
-function formulaToDiceSpec(formula) {
-    const tokens = formula.replace(/\s+/g,'').toLowerCase().split(/(?=[+-])/);
-    const dice = []; let modifier = 0;
-    for (const token of tokens) {
-        if (!token) continue;
-        const sign = token[0] === '-' ? -1 : 1;
-        const raw  = token.replace(/^[+-]/,'');
-        const m = raw.match(/^(\d+)d(\d+)$/);
-        if (m) { for (let i = 0; i < +m[1]; i++) dice.push(`d${m[2]}`); }
-        else    { modifier += sign * (+raw || 0); }
-    }
-    return { dice, modifier };
 }
 // Roll a standard die (d4/d6/d8/d10/d12/d20) and publish the result.
 function rollDie(sides) {
@@ -1571,39 +1678,6 @@ function rollDie(sides) {
     });
 }
 
-// Parse and roll a dice formula like "2d6+2", "1d8-1", "3d4", "5"
-// Evaluate a dice formula string (e.g. "2d6+2") and return total and breakdown.
-function rollDiceFormula(formula) {
-    const expr = (formula || '').replace(/\s+/g, '').toLowerCase();
-    if (!expr) return { total: 0, breakdown: '0' };
-    // Split on + or - keeping the sign with the following term
-    const tokens = expr.split(/(?=[+-])/);
-    let total = 0;
-    const parts = [];
-    for (const token of tokens) {
-        if (!token) continue;
-        const sign = token[0] === '-' ? -1 : 1;
-        const raw = token.replace(/^[+-]/, '');
-        const diceMatch = raw.match(/^(\d+)d(\d+)$/);
-        if (diceMatch) {
-            const count = parseInt(diceMatch[1]);
-            const sides = parseInt(diceMatch[2]);
-            const rolls = [];
-            for (let i = 0; i < count; i++) rolls.push(Math.floor(Math.random() * sides) + 1);
-            const sub = rolls.reduce((a, b) => a + b, 0);
-            total += sign * sub;
-            const prefix = sign < 0 ? '−' : parts.length ? '+' : '';
-            parts.push(`${prefix}[${rolls.join('+')}]`);
-        } else {
-            const num = parseInt(raw);
-            if (!isNaN(num)) {
-                total += sign * num;
-                parts.push(`${sign < 0 ? '−' : parts.length ? '+' : ''}${num}`);
-            }
-        }
-    }
-    return { total, breakdown: parts.join(' ') };
-}
 
 // Show a weapon damage result on the float card and publish it to Ably.
 function _showWeaponDamageResult(name, formula, result) {
@@ -1640,7 +1714,8 @@ async function rollWeaponDamage(name, formula) {
             const breakdown = modifier !== 0 ? `${diceTotal}${modifier > 0 ? '+' : ''}${modifier}` : String(diceTotal);
             _showWeaponDamageResult(name, formula, { total, breakdown });
         },
-        mapFn: null
+        mapFn: null,
+        uuid: null
     };
     showDddiceCanvas();
     dddiceRollSafetyTimer = setTimeout(() => {
@@ -1651,7 +1726,8 @@ async function rollWeaponDamage(name, formula) {
         }
     }, 12000);
     try {
-        await dddiceSDK.roll(dice.map(d => ({ type: d, theme: dddiceAPI.theme })));
+        const res = await dddiceSDK.roll(dice.map(d => ({ type: d, theme: dddiceAPI.theme })));
+        if (pendingSecondaryRoll) pendingSecondaryRoll.uuid = _ddRollUuid(res);
     } catch (e) {
         clearTimeout(dddiceRollSafetyTimer);
         pendingSecondaryRoll = null;
@@ -1663,7 +1739,7 @@ async function rollWeaponDamage(name, formula) {
 function showDieCard(diceName, result) {
     const card = document.getElementById('float-roll-card');
     const scrim = document.getElementById('roll-scrim');
-    card.className = 'float-roll-card';
+    card.className = 'float-roll-card die';
     clearTimeout(floatCardTimer);
     document.getElementById('fc-char').textContent = '';
     document.getElementById('fc-skill').textContent = diceName;
@@ -1683,7 +1759,8 @@ function doRoll(skillName, basePct, skipBM = false) {
     const karma = character?.karma ?? 0;
     const tempBM = skipBM ? 0 : bmNextActive();
     _appliedBM = skipBM ? 0 : (bonusMalus + tempBM);
-    const threshold = skipBM ? Math.max(1, Math.min(100, basePct)) : Math.max(1, Math.min(100, basePct + bonusMalus + tempBM + karma));
+    // Same function the previews call — the displayed % IS the rolled threshold.
+    const threshold = rollThreshold(basePct, { skipBM });
     console.log('[PLAYER] doRoll:', skillName, '| base:', basePct, '| BM:', bonusMalus, '| temp:', tempBM, '| karma:', karma, '| threshold:', threshold, '| via:', dddiceAPI ? 'dddice' : 'local');
     setRolling(true);
     // Consume one charge of the armed temporary modifier (BM-affected rolls only).
@@ -1697,7 +1774,6 @@ function doRoll(skillName, basePct, skipBM = false) {
 }
 // Roll a stat check using the current multiplier.
 function rollStat(key, val) {
-    const t = Math.max(1, Math.min(100, val * multiplier + bonusMalus));
     doRoll(`${multiplier > 1 ? multiplier + '× ' : ''}${key}`, val * multiplier);
 }
 // ── ROLL HISTORY ─────────────────────────────
@@ -1709,16 +1785,8 @@ function pushRollHistory(entry) {
     const stamped = { ...entry, ts: Date.now() };
     playerRollHistory.unshift(stamped);
     if (playerRollHistory.length > PLAYER_ROLL_HISTORY_MAX) playerRollHistory.pop();
-    localStorage.setItem('aria-player-rolls-' + currentCharId, JSON.stringify(playerRollHistory));
-    if (_supabaseReady()) sbInsert('character_rolls', {
-        character_id: currentCharId,
-        skill_name:   stamped.skillName  || '',
-        threshold:    stamped.threshold  ?? null,
-        roll:         stamped.roll,
-        success:      stamped.success    ?? null,
-        bonus_malus:  stamped.bonusMalus || 0,
-        ts:           stamped.ts,
-    });
+    localStorage.setItem(charKey('rolls'), JSON.stringify(playerRollHistory));
+    if (_supabaseReady()) sbInsert(ENT.characterRoll.table, toRow(ENT.characterRoll, stamped, currentCharId));
     renderRollHistory();
 }
 
@@ -1727,15 +1795,9 @@ function renderRollHistory() {
     const list = document.getElementById('roll-history-list');
     if (!list) return;
 
-    let filtered = playerRollHistory;
-    if (rollFilter.size > 0) {
-        filtered = playerRollHistory.filter(r => {
-            const isDie = r.threshold === null;
-            if (isDie) return rollFilter.has('die');
-            const type = classify(r.roll, r.threshold, r.success);
-            if (rollFilter.has('crit') && (type === 'crit-success' || type === 'crit-fail')) return true;
-            return rollFilter.has(type);
-        });
+    let filtered = playerRollHistory.filter(r => rollPassesFilter(r, rollFilter));
+    if (rollDateFilter) {
+        filtered = filtered.filter(r => r.ts && localDateKey(r.ts) === rollDateFilter);
     }
 
     if (!filtered.length) {
@@ -1765,27 +1827,54 @@ function renderRollHistory() {
             const row = document.createElement('div');
             if (isDie) {
                 row.className = 'rh-row rh-die';
-                row.innerHTML = `<span class="rh-skill">${r.skillName}</span><span class="rh-roll">${r.roll}</span>`;
+                fill(row,
+                    el('span', { className: 'rh-skill', textContent: r.skillName }),
+                    el('span', { className: 'rh-roll', textContent: +r.roll || 0 }));
             } else {
                 const type = classify(r.roll, r.threshold, r.success);
                 const cls = { success: 'rh-success', fail: 'rh-fail', 'crit-success': 'rh-crit-success', 'crit-fail': 'rh-crit-fail' }[type] || '';
                 const lbl = { success: 'SUCCÈS', fail: 'ÉCHEC', 'crit-success': 'SUCCÈS CRIT.', 'crit-fail': 'ÉCHEC CRIT.' }[type] || '';
                 row.className = `rh-row ${cls}`;
-                row.innerHTML = `<span class="rh-skill">${r.skillName}</span><span class="rh-roll">${r.roll}</span><span class="rh-verdict">${lbl}</span>`;
+                fill(row,
+                    el('span', { className: 'rh-skill', textContent: r.skillName }),
+                    el('span', { className: 'rh-roll', textContent: +r.roll || 0 }),
+                    el('span', { className: 'rh-verdict', textContent: lbl }));
             }
             list.appendChild(row);
         });
     });
 }
 
+// Local 'YYYY-MM-DD' key for a timestamp, matching the value emitted by <input type="date">.
+function localDateKey(ts) {
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+// Apply / clear the history date filter.
+function setRollDateFilter(v) {
+    rollDateFilter = v || '';
+    const clearBtn = document.getElementById('rh-date-clear');
+    if (clearBtn) clearBtn.style.display = rollDateFilter ? '' : 'none';
+    renderRollHistory();
+}
+function clearRollDateFilter() {
+    rollDateFilter = '';
+    const input = document.getElementById('rh-date-filter');
+    if (input) input.value = '';
+    const clearBtn = document.getElementById('rh-date-clear');
+    if (clearBtn) clearBtn.style.display = 'none';
+    renderRollHistory();
+}
+
 // Clear roll history from memory, localStorage, and reset all filter pills.
 function clearRollHistory() {
     playerRollHistory = [];
     rollFilter.clear();
-    localStorage.removeItem('aria-player-rolls-' + currentCharId);
+    localStorage.removeItem(charKey('rolls'));
     document.querySelectorAll('#rh-filter-bar .rf-pill').forEach(btn => btn.classList.remove('active'));
     const allBtn = document.getElementById('rfp-all');
     if (allBtn) allBtn.classList.add('active');
+    clearRollDateFilter();
     renderRollHistory();
 }
 
@@ -1802,7 +1891,7 @@ function toggleRollFilter(key) {
         const allBtn = document.getElementById('rfp-all');
         if (allBtn) allBtn.classList.add('active');
     } else {
-        rollFilter.forEach(k => { const el = document.getElementById('rfp-' + k); if (el) el.classList.add('active'); });
+        rollFilter.forEach(k => { const node = document.getElementById('rfp-' + k); if (node) node.classList.add('active'); });
     }
     renderRollHistory();
 }
@@ -1822,10 +1911,9 @@ function handleResult(skillName, threshold, roll) {
 // Open the Soigner target picker modal listing self and nearby players.
 function openSoignerTargetPicker(pct) {
     soignerPct = pct;
-    const now = Date.now();
-    const others = Object.entries(knownPlayers)
-        .filter(([, p]) => now - p.ts < 30000)
-        .map(([id, p]) => ({ id, name: p.name }));
+    // knownPlayers is rebuilt from the presence set on every change, so everyone in
+    // it is live by construction — there is no last-seen age left to filter on.
+    const others = Object.entries(knownPlayers).map(([id, p]) => ({ id, name: p.name }));
     const container = document.getElementById('stm-targets');
     container.innerHTML = '';
     const selfBtn = document.createElement('button');
@@ -1837,7 +1925,7 @@ function openSoignerTargetPicker(pct) {
         const btn = document.createElement('button');
         btn.className = 'stm-btn';
         btn.textContent = name;
-        btn.onclick = () => { soignerTarget = { playerId: id, name }; closeSoignerTargetPicker(); doRoll('Soigner', soignerPct); };
+        btn.onclick = () => { soignerTarget = { charId: id, name }; closeSoignerTargetPicker(); doRoll('Soigner', soignerPct); };
         container.appendChild(btn);
     });
     document.getElementById('soigner-scrim').classList.add('show');
@@ -1857,10 +1945,15 @@ function cancelSoigner() {
 function applySoigner(success) {
     const target = soignerTarget; // capture before async delay
     soignerTarget = null;
+    // The effect fires after a delay + a dice animation — if the user switches
+    // characters in that window, it must not apply to the newly loaded character.
+    const charAtRoll = currentCharId;
     // Small delay so the float card resolves first, then roll the secondary die via dddice
     setTimeout(() => {
+        if (currentCharId !== charAtRoll) return;
         if (success) {
             rollDieViaDddice(6, heal => {
+                if (currentCharId !== charAtRoll) return;
                 publishRoll({ skillName: 'Soigner (soins)', threshold: null, roll: heal, success: null, char: character.name, bonusMalus: 0, playerId });
                 if (!target) {
                     const max = getMaxHP();
@@ -1874,12 +1967,13 @@ function applySoigner(success) {
                     showToast('gm-heal-toast', `♥ Soins : +${heal} PV`);
                     sendPresence();
                 } else {
-                    if (ablyDamage) ablyDamage.publish('heal', { targetId: target.playerId, amount: heal, source: 'player' });
+                    if (ablyDamage) ablyDamage.publish('heal', { targetId: target.charId, amount: heal, source: 'player' });
                     showToast('gm-heal-toast', `♥ Soins : +${heal} PV → ${target.name}`);
                 }
             });
         } else {
             rollDieViaDddice(3, dmg => {
+                if (currentCharId !== charAtRoll) return;
                 publishRoll({ skillName: 'Soigner (blessure)', threshold: null, roll: dmg, success: null, char: character.name, bonusMalus: 0, playerId });
                 if (!target) {
                     const max = getMaxHP();
@@ -1890,22 +1984,16 @@ function applySoigner(success) {
                     localStorage.setItem(hpKey(), currentHP); debouncedSyncState();
                     updateHPDisplay();
                     triggerDamageVFX(dmg, true);
-                    showToast('gm-dmg-toast', `⚔ Blessure : -${dmg} PV`);
+                    showToast('gm-dmg-toast', `Blessure : -${dmg} PV`);
                     if (after <= 0) showMort();
                     sendPresence();
                 } else {
-                    if (ablyDamage) ablyDamage.publish('damage', { targetId: target.playerId, damage: dmg, source: 'player' });
-                    showToast('gm-dmg-toast', `⚔ Blessure : -${dmg} PV → ${target.name}`);
+                    if (ablyDamage) ablyDamage.publish('damage', { targetId: target.charId, damage: dmg, source: 'player' });
+                    showToast('gm-dmg-toast', `Blessure : -${dmg} PV → ${target.name}`);
                 }
             });
         }
     }, 1500);
-}
-// Classify a d100 roll as success, fail, crit-success, or crit-fail.
-function classify(roll, threshold, success) {
-    if (roll <= 10 && success) return 'crit-success';
-    if (roll >= 91 && !success) return 'crit-fail';
-    return success ? 'success' : 'fail';
 }
 let floatCardTimer = null;
 // Show the floating roll result card with verdict text and crit particle effects.
@@ -1918,15 +2006,16 @@ function showFloatCard(data) {
     document.getElementById('fc-char').textContent = data.char || '';
     document.getElementById('fc-skill').textContent = data.skillName;
     document.getElementById('fc-roll').textContent = data.roll;
-    document.getElementById('fc-bonus').textContent = data.bonusMalus && data.bonusMalus !== 0 ? `(Modificateur : ${data.bonusMalus > 0 ? '+' : ''}${data.bonusMalus})` : '';
+    const fcMod = data.bonusMalus && data.bonusMalus !== 0 ? ` · mod ${data.bonusMalus > 0 ? '+' : ''}${data.bonusMalus}` : '';
+    document.getElementById('fc-bonus').textContent = data.threshold === null ? '' : `seuil ${data.threshold}${fcMod}`;
     const vEl = document.getElementById('fc-verdict');
     const sEl = document.getElementById('fc-crit-sub');
     sEl.textContent = '';
     switch (type) {
         case 'crit-success': vEl.textContent = 'SUCCÈS CRITIQUE'; vEl.className = 'fc-verdict fv-crit-success'; sEl.textContent = '✦ les dieux sourient ✦'; card.classList.add('crit-success'); spawnFcParticles('success'); break;
         case 'crit-fail': vEl.textContent = 'ÉCHEC CRITIQUE'; vEl.className = 'fc-verdict fv-crit-fail'; sEl.textContent = '✦ les dieux se détournent ✦'; card.classList.add('crit-fail'); spawnFcParticles('fail'); break;
-        case 'success': vEl.textContent = 'SUCCÈS'; vEl.className = 'fc-verdict fv-success'; break;
-        case 'fail': vEl.textContent = 'ÉCHEC'; vEl.className = 'fc-verdict fv-fail'; break;
+        case 'success': vEl.textContent = 'SUCCÈS'; vEl.className = 'fc-verdict fv-success'; card.classList.add('success'); break;
+        case 'fail': vEl.textContent = 'ÉCHEC'; vEl.className = 'fc-verdict fv-fail'; card.classList.add('fail'); break;
     }
     void card.offsetWidth;
     scrim.classList.add('show');
@@ -1993,82 +2082,49 @@ function drawFcStar(ctx, r) { const spikes = 4, out = r / 2, inn = r / 5; let ro
 // Stop the float card particle animation and clear the canvas.
 function stopFcParticles() { if (fcAnimFrame) { cancelAnimationFrame(fcAnimFrame); fcAnimFrame = null; } fcCtx.clearRect(0, 0, fcCanvas.width, fcCanvas.height); fcParticles = []; }
 
-// ═══════════════════════════════════════════
-//  DDDICE
-// ═══════════════════════════════════════════
-// Extract the dddice room slug from a full URL or return the raw value.
-function extractRoomSlug(val) {
-    if (!val) return '';
-    const m = val.match(/\/room\/([^/?#]+)/);
-    return m ? m[1] : val.trim();
-}
-// Initialize the dddice SDK: fetch available themes, create the canvas renderer, and connect to the room.
+// Connect to dddice and route finished rolls into this panel's pending state. The
+// connection itself is initDddiceSDK() in aria-shared.js.
+//
+// Other participants' animations never show here: #dddice-wrap is visibility:hidden
+// until this tab calls showDddiceCanvas() before rolling. The SDK holds the canvas
+// element, not the wrapper, so it cannot override that.
 async function initDddice() {
-    const slug = extractRoomSlug(config.dddiceRoom);
-    if (!config.dddiceKey || !slug) return;
+    const ok = await initDddiceSDK(roll => {
+        // Ignore another participant's dice landing while ours is pending — only
+        // enforced when both UUIDs are known (older SDK shapes skip the check).
+        const finishedUuid = _ddRollUuid(roll);
+        const pendingUuid = pendingDddiceRoll?.uuid ?? pendingSecondaryRoll?.uuid;
+        if (pendingUuid && finishedUuid && finishedUuid !== pendingUuid) return;
+        const settle = () => {
+            clearTimeout(dddiceRollSafetyTimer);
+            setTimeout(() => { dddiceSDK?.clear(); hideDddiceCanvas(); }, 1500);
+        };
+        if (pendingDddiceRoll) {
+            const { skillName, threshold } = pendingDddiceRoll;
+            pendingDddiceRoll = null;
+            settle();
+            const total = roll.total_value ?? 0;
+            handleResult(skillName, threshold, total === 0 ? 100 : total);
+        } else if (pendingSecondaryRoll) {
+            const { callback, mapFn } = pendingSecondaryRoll;
+            pendingSecondaryRoll = null;
+            settle();
+            const total = roll.total_value ?? 1;
+            callback(mapFn ? mapFn(total) : total);
+        }
+        // else: not our roll — the canvas is already hidden, nothing to do
+    });
+    if (!ok) return;
+    // Warm the 3D assets without creating a server-side roll, so the first real roll
+    // is instant. loadThemeResources is an internal SDK method.
     try {
-        // Load the dddice browser SDK (embeds 3D dice renderer)
-        const { ThreeDDice, ThreeDDiceRollEvent } = await import('https://esm.sh/dddice-js');
-
-        // Fetch available themes for the dropdown
-        const h = { 'Authorization': `Bearer ${config.dddiceKey}`, 'Accept': 'application/json' };
-        const boxRes = await fetch('https://dddice.com/api/1.0/dice-box', { headers: h });
-        if (!boxRes.ok) throw new Error(`Dice box HTTP ${boxRes.status}`);
-        const themes = (await boxRes.json()).data || [];
-        if (!themes.length) throw new Error('Aucun thème.');
-
-        const sel = document.getElementById('cfg-dddice-theme');
-        sel.innerHTML = '';
-        themes.forEach(t => { const o = document.createElement('option'); o.value = t.id; o.textContent = t.name ? `${t.name} (${t.id})` : t.id; sel.appendChild(o); });
-        sel.disabled = false;
-        sel.value = config.dddiceTheme && themes.find(t => t.id === config.dddiceTheme) ? config.dddiceTheme : themes[0].id;
-
-        // Create the SDK renderer on the canvas, connect to the room
-        const canvas = document.getElementById('dddice-canvas');
-        dddiceSDK = new ThreeDDice(canvas, config.dddiceKey);
-        dddiceSDK.start();
-        await dddiceSDK.connect(slug);
-
-        // When the 3D animation finishes, read the result and handle it.
-        // Only act when this tab initiated the roll (pending state is set).
-        // Other players' roll animations never show because the wrapper div is visibility:hidden
-        // by default and only shown when this tab calls showDddiceCanvas() before rolling.
-        // The SDK holds a ref to the canvas element only, not the wrapper — so it cannot
-        // override the wrapper's visibility.
-        dddiceSDK.on(ThreeDDiceRollEvent.RollFinished, (roll) => {
-            if (pendingDddiceRoll) {
-                clearTimeout(dddiceRollSafetyTimer);
-                const { skillName, threshold } = pendingDddiceRoll;
-                pendingDddiceRoll = null;
-                setTimeout(() => { dddiceSDK?.clear(); hideDddiceCanvas(); }, 1500);
-                const total = roll.total_value ?? 0;
-                handleResult(skillName, threshold, total === 0 ? 100 : total);
-            } else if (pendingSecondaryRoll) {
-                clearTimeout(dddiceRollSafetyTimer);
-                const { callback, mapFn } = pendingSecondaryRoll;
-                pendingSecondaryRoll = null;
-                setTimeout(() => { dddiceSDK?.clear(); hideDddiceCanvas(); }, 1500);
-                const total = roll.total_value ?? 1;
-                callback(mapFn ? mapFn(total) : total);
-            }
-            // else: not our roll — canvas is already hidden, nothing to do
-        });
-
-        dddiceAPI = { key: config.dddiceKey, room: slug, theme: sel.value };
-        setDddiceStatus(true, themes.find(t => t.id === sel.value)?.name || sel.value);
-        sel.onchange = () => { if (dddiceAPI) dddiceAPI.theme = sel.value; config.dddiceTheme = sel.value; localStorage.setItem('aria-config', JSON.stringify(config)); };
-
-        // Preload 3D assets without creating a server-side roll, so the first real roll is instant.
-        // loadThemeResources is an internal SDK method — call it directly to warm up models/textures/sounds.
-        try {
-            if (typeof dddiceSDK.loadThemeResources === 'function') {
-                await dddiceSDK.loadThemeResources([
-                    { type: 'd10x', theme: dddiceAPI.theme },
-                    { type: 'd10', theme: dddiceAPI.theme }
-                ]);
-            }
-        } catch (_) {}
-    } catch (e) { console.error('dddice:', e); setDddiceStatus(false, e.message); dddiceSDK = null; dddiceAPI = null; }
+        if (typeof dddiceSDK.loadThemeResources === 'function') {
+            await dddiceSDK.loadThemeResources([
+                { type: 'd10x', theme: dddiceAPI.theme },
+                { type: 'd10',  theme: dddiceAPI.theme },
+            ]);
+        }
+    } catch (_) {}
 }
 // Show the dddice canvas wrapper (makes the 3D dice animation visible).
 function showDddiceCanvas() { const w = document.getElementById('dddice-wrap'); if (w) w.style.visibility = 'visible'; }
@@ -2079,7 +2135,7 @@ function hideDddiceCanvas() { const w = document.getElementById('dddice-wrap'); 
 async function rollViaDddice(skillName, threshold) {
     if (!dddiceSDK) { handleResult(skillName, threshold, Math.floor(Math.random() * 100) + 1); return; }
     try {
-        pendingDddiceRoll = { skillName, threshold };
+        pendingDddiceRoll = { skillName, threshold, uuid: null };
         showDddiceCanvas();
         // Safety fallback: if RollFinished never fires (e.g. network drop after roll creation),
         // unblock the UI after 12s. Cleared by the RollFinished handler on success.
@@ -2090,180 +2146,18 @@ async function rollViaDddice(skillName, threshold) {
                 handleResult(skillName, threshold, Math.floor(Math.random() * 100) + 1);
             }
         }, 12000);
-        await dddiceSDK.roll([{ type: 'd10x', theme: dddiceAPI.theme }, { type: 'd10', theme: dddiceAPI.theme }]);
+        const res = await dddiceSDK.roll([{ type: 'd10x', theme: dddiceAPI.theme }, { type: 'd10', theme: dddiceAPI.theme }]);
+        if (pendingDddiceRoll) pendingDddiceRoll.uuid = _ddRollUuid(res);
         // Do NOT clear the timer here — roll() resolves on API response (~200ms),
         // well before the animation ends. RollFinished handles the clear.
     } catch (e) { console.error('dddice roll:', e); pendingDddiceRoll = null; hideDddiceCanvas(); handleResult(skillName, threshold, Math.floor(Math.random() * 100) + 1); }
-}
-// Update the dddice status dot and text labels in the topbar and config modal.
-function setDddiceStatus(ok, detail) {
-    const d = ['dddice-dot', 'cfg-dddice-dot'], s = ['dddice-status', 'cfg-dddice-status'];
-    d.forEach(id => { const el = document.getElementById(id); if (el) el.className = 'status-dot ' + (ok ? 'connected' : 'error'); });
-    s.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = ok ? `dddice: ${detail || 'connecté'}` : `Erreur: ${detail || 'dddice'}`; });
 }
 
 // ═══════════════════════════════════════════
 //  MUSIC ENGINE (PLAYER)
 // ═══════════════════════════════════════════
 let _playerMusicList  = [];
-let musicMasterVolume = parseInt(localStorage.getItem('aria-music-volume') || '80');
-let musicFadeDuration = 3000;
-let musicCurrentIndex = -1;
-let musicIsPlaying    = false;
-let _musicCurrentSlot = 'A';
-let _musicFadeRaf     = null;
-let _musicMuted       = false;
 
-// Effective output volume: 0 when muted, otherwise the master volume.
-// Mute silences playback without moving the volume slider.
-function _musicEffVol() { return _musicMuted ? 0 : musicMasterVolume; }
-
-const _musicSlots = {
-    A: { audio: null, ytEndedCb: null },
-    B: { audio: null, ytEndedCb: null },
-};
-let _ytAPIReady   = false;
-let _ytPendingCbs = [];
-let _ytSlotA      = null;
-let _ytSlotB      = null;
-
-// Lazily create and return the Audio element for a given slot (A or B).
-function _getAudio(slot) {
-    if (!_musicSlots[slot].audio) _musicSlots[slot].audio = new Audio();
-    return _musicSlots[slot].audio;
-}
-
-// Set the volume (0–100) on a music slot's Audio element and YouTube player.
-function _setSlotVol(slot, vol) {
-    const v = Math.max(0, Math.min(100, vol));
-    const audio = _musicSlots[slot].audio;
-    if (audio) audio.volume = v / 100;
-    const yt = slot === 'A' ? _ytSlotA : _ytSlotB;
-    if (yt) { try { yt.setVolume(v); } catch(_) {} }
-}
-
-// Stop and clear a music slot: pause audio, stop YouTube, clear ended callback.
-function _stopSlot(slot) {
-    const audio = _musicSlots[slot].audio;
-    if (audio) { audio.pause(); audio.onended = null; audio.src = ''; }
-    const yt = slot === 'A' ? _ytSlotA : _ytSlotB;
-    if (yt) { try { yt.stopVideo(); } catch(_) {} }
-    _musicSlots[slot].ytEndedCb = null;
-}
-
-// Lazily load the YouTube IFrame API script and call back when it is ready.
-function _ensureYTAPI(cb) {
-    if (_ytAPIReady) { cb(); return; }
-    _ytPendingCbs.push(cb);
-    if (document.getElementById('yt-iframe-api')) return;
-    window.onYouTubeIframeAPIReady = () => {
-        _ytAPIReady = true;
-        _ytPendingCbs.splice(0).forEach(fn => fn());
-    };
-    const s = document.createElement('script');
-    s.id = 'yt-iframe-api';
-    s.src = 'https://www.youtube.com/iframe_api';
-    document.head.appendChild(s);
-}
-
-// Ensure both YouTube player slots A and B are initialized, then call back.
-function _ensureYTSlots(cb) {
-    _ensureYTAPI(() => {
-        if (_ytSlotA && _ytSlotB) { cb(); return; }
-        let readyCount = 0;
-        const onSlotReady = () => { readyCount++; if (readyCount === 2) cb(); };
-        _ytSlotA = new YT.Player('yt-player-a', {
-            width: '1', height: '1',
-            playerVars: { autoplay: 0, controls: 0, disablekb: 1, fs: 0 },
-            events: {
-                onReady: onSlotReady,
-                onStateChange: e => { if (e.data === YT.PlayerState.ENDED && _musicSlots.A.ytEndedCb) _musicSlots.A.ytEndedCb(); },
-            },
-        });
-        _ytSlotB = new YT.Player('yt-player-b', {
-            width: '1', height: '1',
-            playerVars: { autoplay: 0, controls: 0, disablekb: 1, fs: 0 },
-            events: {
-                onReady: onSlotReady,
-                onStateChange: e => { if (e.data === YT.PlayerState.ENDED && _musicSlots.B.ytEndedCb) _musicSlots.B.ytEndedCb(); },
-            },
-        });
-    });
-}
-
-// Load a track into a slot at volume 0 and call onStarted once playback begins.
-function _loadSlotAtZeroVol(track, slot, onStarted) {
-    _setSlotVol(slot, 0);
-    if (track.type === 'file') {
-        const audio = _getAudio(slot);
-        audio.onended = null;
-        audio.src = track.url;
-        audio.volume = 0;
-        const p = audio.play();
-        if (p) p.then(onStarted).catch(() => _showMusicUnlockPrompt(() => audio.play().then(onStarted)));
-        else onStarted();
-    } else {
-        _ensureYTSlots(() => {
-            const yt = slot === 'A' ? _ytSlotA : _ytSlotB;
-            _musicSlots[slot].ytEndedCb = null;
-            yt.loadVideoById(track.youtubeId);
-            yt.setVolume(0);
-            setTimeout(() => {
-                try { yt.playVideo(); } catch(_) {}
-                onStarted();
-                // Detect autoplay block: state stays unstarted/cued if browser blocked it
-                setTimeout(() => {
-                    try {
-                        const state = yt.getPlayerState();
-                        if (state !== 1 && state !== 3) { // not playing or buffering
-                            _showMusicUnlockPrompt(() => { try { yt.playVideo(); } catch(_) {} });
-                        }
-                    } catch(_) {}
-                }, 1500);
-            }, 800);
-        });
-    }
-}
-
-// Cross-fade volume from one audio slot to another over musicFadeDuration ms.
-function _runCrossfade(fromSlot, toSlot, onDone) {
-    if (_musicFadeRaf) { cancelAnimationFrame(_musicFadeRaf); _musicFadeRaf = null; }
-    const start = performance.now();
-    const fromStart = _musicEffVol();
-    function tick(now) {
-        const t = Math.min(1, (now - start) / musicFadeDuration);
-        _setSlotVol(fromSlot, (1 - t) * fromStart);
-        _setSlotVol(toSlot, t * _musicEffVol());
-        if (t < 1) { _musicFadeRaf = requestAnimationFrame(tick); }
-        else { _musicFadeRaf = null; _stopSlot(fromSlot); onDone(); }
-    }
-    _musicFadeRaf = requestAnimationFrame(tick);
-}
-
-// Register the "track ended" callback for a slot (audio onended or YouTube state change).
-function _setSlotEndedCallback(slot, track, cb) {
-    if (track.type === 'file') {
-        const audio = _musicSlots[slot].audio;
-        if (audio) audio.onended = cb;
-    } else {
-        _musicSlots[slot].ytEndedCb = cb;
-    }
-}
-
-// Show a "click to enable audio" banner for browsers that block autoplay.
-function _showMusicUnlockPrompt(onUnlock) {
-    let el = document.getElementById('music-unlock-prompt');
-    if (!el) {
-        el = document.createElement('div');
-        el.id = 'music-unlock-prompt';
-        el.className = 'music-unlock-prompt';
-        el.textContent = '▶ Cliquer pour activer le son';
-        document.body.appendChild(el);
-    }
-    el.style.display = 'flex';
-    const handler = () => { el.style.display = 'none'; el.removeEventListener('click', handler); onUnlock(); };
-    el.addEventListener('click', handler);
-}
 
 // Advance to the next track when the current one ends; stops if the list is exhausted.
 function _musicAutoAdvance() {
@@ -2273,23 +2167,6 @@ function _musicAutoAdvance() {
     _musicTriggerPlay(_playerMusicList[nextIdx], nextIdx);
 }
 
-// Start playing a track on the inactive slot and cross-fade in from the current slot.
-function _musicTriggerPlay(track, index) {
-    if (_musicFadeRaf) { cancelAnimationFrame(_musicFadeRaf); _musicFadeRaf = null; }
-    const currentSlot = _musicCurrentSlot;
-    const nextSlot    = currentSlot === 'A' ? 'B' : 'A';
-    _musicSlots[currentSlot].ytEndedCb = null;
-    if (_musicSlots[currentSlot].audio) _musicSlots[currentSlot].audio.onended = null;
-    musicCurrentIndex = index;
-    musicIsPlaying    = true;
-    _updatePlayerMusicBar(track);
-    _loadSlotAtZeroVol(track, nextSlot, () => {
-        _runCrossfade(currentSlot, nextSlot, () => {
-            _musicCurrentSlot = nextSlot;
-            _setSlotEndedCallback(nextSlot, track, _musicAutoAdvance);
-        });
-    });
-}
 
 // Update the music bar title and make it visible when a track starts.
 function _updatePlayerMusicBar(track) {
@@ -2320,26 +2197,20 @@ function toggleMusicMute() {
 function _updateMusicMuteIcon() {
     const ic = document.getElementById('music-bar-vol-icon');
     if (ic) {
-        ic.textContent = _musicMuted ? '🔇' : '🔊';
+        ic.textContent = _musicMuted ? '⊘' : '♪';
         ic.title = _musicMuted ? 'Réactiver le son' : 'Couper le son';
     }
 }
 
-// ═══════════════════════════════════════════
-//  ABLY
-// ═══════════════════════════════════════════
-// Suffix a base Ably channel name with this character's campaign join code so each
-// campaign runs on its own isolated channels (rolls/cards/damage/music). Empty key →
-// global channel (backward compatible). The GM and overlay derive the same suffix.
-function campaignChannel(base) {
-    const t = (character.campaignKey || '').trim().toUpperCase();
-    return t ? `${base}-${t}` : base;
-}
 // Initialize Ably channels and subscribe to all game events (rolls, damage, music, cards).
 function initAbly() {
     console.log('[PLAYER] initAbly: connecting with key', config.ablyKey?.slice(0, 8) + '...', '| campaign channel suffix:', character.campaignKey || '(global)');
     try {
-        ablyInstance = new Ably.Realtime({ key: config.ablyKey, transports: ['web_socket'] });
+        // clientId is the character UUID: it is what identifies us in the presence
+        // set, and what every consumer keys this participant by. Two tabs share it
+        // and are told apart by the connectionId Ably assigns each connection, so
+        // there is no per-tab id to invent, publish, or reconcile.
+        ablyInstance = new Ably.Realtime({ key: config.ablyKey, clientId: currentCharId, transports: ['web_socket'] });
         ablyRolls = ablyInstance.channels.get(campaignChannel('aria-rolls'));
         ablyRollsHidden = ablyInstance.channels.get(campaignChannel('aria-rolls-hidden'));
         ablyCards = ablyInstance.channels.get(campaignChannel('aria-cards'));
@@ -2366,6 +2237,8 @@ function initAbly() {
                 _stopSlot('A');
                 _stopSlot('B');
                 musicIsPlaying = false;
+                const bar = document.getElementById('music-bar');
+                if (bar) bar.style.visibility = 'hidden';
             } else if (d.type === 'pause') {
                 console.log('[PLAYER] music PAUSE received');
                 const slot = _musicCurrentSlot;
@@ -2373,7 +2246,6 @@ function initAbly() {
                 const yt = slot === 'A' ? _ytSlotA : _ytSlotB;
                 if (yt) { try { yt.pauseVideo(); } catch(_) {} }
                 musicIsPlaying = false;
-                if (_musicProgressRaf) { cancelAnimationFrame(_musicProgressRaf); _musicProgressRaf = null; }
             } else if (d.type === 'resume') {
                 console.log('[PLAYER] music RESUME received');
                 const slot = _musicCurrentSlot;
@@ -2383,37 +2255,49 @@ function initAbly() {
                 musicIsPlaying = true;
             }
         });
+        ablyMap = ablyInstance.channels.get(campaignChannel('aria-map'));
+        ablyMap.subscribe('state', msg => {
+            // `state` replaces, it never patches: drop what we had and take this.
+            mapState = msg.data || null;
+            // The cache follows the state unconditionally, same as the publisher that
+            // sends it: a null state (last map deleted) must clear the cached key too,
+            // not just skip writing it. Otherwise a stale cache outlives the map it
+            // pictures and loadCharacterState() resurrects a deleted map on next load,
+            // with no GM online to correct it. A cached picture of a deleted map is
+            // worse than no picture.
+            if (mapState) localStorage.setItem(charKey('map'), JSON.stringify(mapState));
+            else localStorage.removeItem(charKey('map'));
+            mapSelectedPoiId = null;
+            // An acceptance is recognised by the token having arrived, not by a message.
+            if (mapPendingPoiId && mapState?.positions?.[currentCharId] === mapPendingPoiId) mapPendingPoiId = null;
+            applyTabVisibility();   // → renderMapTab, and shows the tab on first arrival
+        });
+        ablyMap.subscribe('move-denied', msg => {
+            if (msg.data?.charId !== currentCharId) return;
+            mapPendingPoiId = null;
+            mapDeniedPoiId = msg.data.poiId;
+            renderMapTab();
+        });
+        // Covers arriving late: the GM answers a request with the whole state.
+        ablyMap.publish('request', {});
         ablyInstance.connection.on('connected',    () => { console.log('[PLAYER] Ably connected'); setAblyStatus(true); sendPresence(); });
         ablyInstance.connection.on('failed',       () => { console.error('[PLAYER] Ably connection FAILED'); setAblyStatus(false); });
         ablyInstance.connection.on('disconnected', () => console.warn('[PLAYER] Ably disconnected'));
         ablyInstance.connection.on('suspended',    () => console.warn('[PLAYER] Ably suspended'));
-        // Listen for GM damage/heal targeted at this player
-        const myId = playerId;
+        // The roster. Any change to the set — someone entered, left, or updated their
+        // data — is re-read in full rather than patched, so there is no local replica
+        // that can drift from the server's.
+        ablyPresence = ablyInstance.channels.get(campaignChannel('aria-presence'));
+        ablyPresence.presence.subscribe(() => refreshPresenceSet());
+        sendPresence();
+        // Targeted messages are addressed to the CHARACTER, not to one tab. Every tab
+        // of a character receives and applies them, so a message can no longer be
+        // delivered to the one tab that just closed — which is what the "repoint the
+        // stored playerId at a surviving session" dance existed to avoid.
+        const myId = currentCharId;
         ablyDamage.subscribe(msg => {
             const d = msg.data;
             if (!d) return;
-            // Track other players' presence for Soigner targeting
-            if (msg.name === 'presence' && d.playerId && d.playerId !== myId) {
-                knownPlayers[d.playerId] = { name: d.name, ts: Date.now() };
-                console.log('[VDO] received peer presence:', d.name, '| charId:', d.charId, '| streamId:', d.streamId, '| campaignKey:', d.campaignKey);
-                if (d.charId) {
-                    if (d.streamId) {
-                        peerCameras.set(d.charId, { name: d.name || d.charId, streamId: d.streamId });
-                        console.log('[VDO] peerCameras.set:', d.charId, '→', { name: d.name, streamId: d.streamId });
-                    } else {
-                        peerCameras.delete(d.charId);
-                        console.log('[VDO] peerCameras.delete (no streamId):', d.charId);
-                    }
-                    console.log('[VDO] peerCameras now:', [...peerCameras.entries()].map(([k,v]) => `${k}:${v.name}(${v.streamId})`).join(', '));
-                    updateCamerasTabVisibility();
-                } else {
-                    console.warn('[VDO] peer presence missing charId:', d);
-                }
-                return;
-            }
-            if (msg.name === 'presence' && d.playerId === myId) {
-                console.log('[VDO] received OWN presence echo (playerId match), ignoring for peerCameras');
-            }
             // Handle player-to-player heal/damage (from another player's Soigner)
             if (d.source === 'player') {
                 if (d.targetId === myId) {
@@ -2436,16 +2320,17 @@ function initAbly() {
                 return;
             }
             if (msg.name === 'tab-config') {
-                if (d.playerId !== myId) return;
+                if (d.charId !== myId) return;
                 console.log('[PLAYER] tab-config received:', JSON.stringify(d.tabs));
                 playerTabs = { ...playerTabs, ...d.tabs };
-                localStorage.setItem('aria-player-tabs-' + currentCharId, JSON.stringify(playerTabs));
+                localStorage.setItem(charKey('tabs'), JSON.stringify(playerTabs));
                 debouncedSyncState();
                 applyTabVisibility();
+                schedulePresence();   // `tabs` rides along in our presence data
                 return;
             }
             if (msg.name === 'potion-grant') {
-                if (d.playerId !== myId) return;
+                if (d.charId !== myId) return;
                 if (!d.potion) return;
                 console.log('[PLAYER] potion-grant received:', d.potion.name);
                 if (!character.potionRecipes) character.potionRecipes = [];
@@ -2458,7 +2343,7 @@ function initAbly() {
                 return;
             }
             if (msg.name === 'potion-revoke') {
-                if (d.playerId !== myId) return;
+                if (d.charId !== myId) return;
                 console.log('[PLAYER] potion-revoke received:', d.potionId);
                 character.potionRecipes = (character.potionRecipes || []).filter(r => r.id !== d.potionId);
                 saveCurrentCharacter();
@@ -2466,7 +2351,7 @@ function initAbly() {
                 return;
             }
             if (msg.name === 'vial-grant') {
-                if (d.playerId !== myId) return;
+                if (d.charId !== myId) return;
                 console.log('[PLAYER] vial-grant received:', d.qty, 'vials');
                 character.vials = (character.vials ?? 0) + (d.qty || 1);
                 saveCurrentCharacter();
@@ -2476,12 +2361,12 @@ function initAbly() {
                 return;
             }
             if (msg.name === 'file-grant') {
-                if (d.playerId !== myId && d.playerId !== 'all') return;
+                if (d.charId !== myId && d.charId !== 'all') return;
                 if (!d.file?.id) return;
-                console.log('[PLAYER] file-grant received:', d.file.name, '| for:', d.playerId === 'all' ? 'all' : 'me');
+                console.log('[PLAYER] file-grant received:', d.file.name, '| for:', d.charId === 'all' ? 'all' : 'me');
                 if (!playerFiles.find(f => f.id === d.file.id)) {
                     playerFiles.push(d.file);
-                    localStorage.setItem('aria-player-files-' + currentCharId, JSON.stringify(playerFiles));
+                    localStorage.setItem(charKey('files'), JSON.stringify(playerFiles));
                     syncCharacterFile(d.file, currentCharId);
                     applyTabVisibility();
                     renderPlayerFiles();
@@ -2490,18 +2375,18 @@ function initAbly() {
                 return;
             }
             if (msg.name === 'file-revoke') {
-                if (d.playerId !== myId && d.playerId !== 'all') return;
+                if (d.charId !== myId && d.charId !== 'all') return;
                 if (!d.fileId) return;
                 console.log('[PLAYER] file-revoke received:', d.fileId);
                 playerFiles = playerFiles.filter(f => f.id !== d.fileId);
-                localStorage.setItem('aria-player-files-' + currentCharId, JSON.stringify(playerFiles));
+                localStorage.setItem(charKey('files'), JSON.stringify(playerFiles));
                 deleteCharacterFile(d.fileId);
                 applyTabVisibility();
                 renderPlayerFiles();
                 return;
             }
             if (msg.name === 'karma-set') {
-                if (d.playerId !== myId) return;
+                if (d.charId !== myId) return;
                 console.log('[PLAYER] karma-set received:', d.karma);
                 character.karma = d.karma ?? 0;
                 saveCurrentCharacter();
@@ -2510,28 +2395,17 @@ function initAbly() {
                 renderCombatSidebar();
                 return;
             }
-            if (msg.name === 'gm-presence') {
-                console.log('[VDO] received gm-presence:', d, '| previous gmStreamId:', gmStreamId, '| previous vdoRoom:', vdoRoom);
-                gmStreamId = d.streamId || '';
-                console.log('[VDO] gmStreamId set to:', gmStreamId);
-                if (d.vdoRoom !== undefined) {
-                    vdoRoom = d.vdoRoom || '';
-                    vdoRoomPassword = d.vdoRoomPassword || '';
-                    console.log('[VDO] vdoRoom set to:', vdoRoom, '| calling updatePushIframe()');
-                    updatePushIframe();
-                } else {
-                    console.log('[VDO] gm-presence had no vdoRoom field, push iframe unchanged');
-                }
-                updateCamerasTabVisibility();
-                return;
-            }
             if (d.targetId && d.targetId !== myId) return;
             if (msg.name === 'damage') { console.log('[PLAYER] GM damage received: -', d.damage, 'PV | HP:', d.hpBefore, '→', d.hpAfter, '/', d.maxHP); handleGMDamage(d); }
             if (msg.name === 'heal')   { console.log('[PLAYER] GM heal received: +',  d.amount,  'PV | HP:', d.hpBefore, '→', d.hpAfter, '/', d.maxHP); handleGMHeal(d); }
         });
         ablyRolls.subscribe('roll', msg => {
             const d = msg.data;
-            if (!d || d.playerId === myId) return;
+            // Rolls still carry the per-tab `playerId` — it is what suppresses the
+            // toast for our OWN roll, and it is deliberately not the charId: a second
+            // tab of this character should still be told about a roll made in the
+            // first. (`myId` above is the charId, which addresses the character.)
+            if (!d || d.playerId === playerId) return;
             console.log('[PLAYER] other player rolled:', d.char, '| skill:', d.skillName, '| roll:', d.roll, '| threshold:', d.threshold, '|', d.success ? 'SUCCÈS' : 'ÉCHEC');
             showOtherRollToast(d);
         });
@@ -2557,6 +2431,7 @@ function copyOverlayUrl() {
     const params = new URLSearchParams({ mode: 'player', ably: config.ablyKey || '' });
     if (config.dddiceKey) params.set('dddice_key', config.dddiceKey);
     if (config.dddiceRoom) params.set('dddice_room', extractRoomSlug(config.dddiceRoom));
+    if (currentCharId) params.set('overlay', 'player_' + currentCharId);  // loads this character's overlay editor layout
     if (character.campaignKey) params.set('campaign', character.campaignKey);  // scopes the rolls/cards/damage channels to this campaign
     const url = `${base}?${params}`;
     navigator.clipboard.writeText(url).then(() => {
@@ -2568,15 +2443,22 @@ function copyOverlayUrl() {
 }
 // Publish a card event (draw/reshuffle) to the aria-cards Ably channel.
 function publishCard(type, extra = {}) {
-    if (ablyCards) ablyCards.publish(type, { ...extra, excluded: [...cardExcluded], drawn: [...cardDrawn], deckIds: cardDeck.map(c => c.id), lastCardId });
+    if (ablyCards) ablyCards.publish(type, { ...extra, ...deck.state() });
 }
-// Publish the player's full presence heartbeat to the aria-damage channel.
-function sendPresence() {
-    if (!ablyDamage) { console.warn('[ARIA] sendPresence: ablyDamage not ready'); return; }
-    const sid = derivedStreamId();
-    console.log('[VDO] sendPresence: publishing streamId:', sid, '| playerId:', playerId, '| charId:', currentCharId);
-    ablyDamage.publish('presence', {
-        playerId, charId: currentCharId, name: character.name, charClass: character.class,
+// ── Presence: publish ─────────────────────────────────────────────────────────
+let presenceEntered = false;
+let _presenceTimer = null;
+// The member data this tab publishes. Sent on entry and on every change — never on
+// a timer, so a table sitting still costs nothing.
+function presenceData() {
+    // Advertise a stream ID only while this character's camera is actually being
+    // published: an ID nobody is pushing makes every receiver open a viewer iframe on
+    // a dead stream — a black box on the GM's card, on each peer's rail, and on the
+    // OBS output. cam.live() is shared state, so every tab of this character
+    // publishes the same value and the tile cannot flip between them.
+    return {
+        role: 'player',
+        charId: currentCharId, name: character.name, charClass: character.class,
         hp: currentHP, maxHP: getMaxHP(), stats: character.stats,
         protection: character.protection,
         skills: character.skills,
@@ -2588,29 +2470,134 @@ function sendPresence() {
         potionRecipeIds: (character.potionRecipes || []).map(r => r.id),
         tabs: playerTabs,
         money: character.money || { couronne: 0, orbe: 0, sceptre: 0, sou: 0 },
+        karma: character.karma ?? 0,
         campaignKey: character.campaignKey || '',
         ariaType: character.ariaType || 'ancient',
-        streamId: sid,
-    }, err => { if (err) console.error('[ARIA] publish error:', err); });
+        streamId: cam.advertisedId(),
+        ts: Date.now(),
+    };
 }
-// Update the Ably status dot and text labels in the topbar and config modal.
-function setAblyStatus(ok) {
-    ['ably-dot', 'cfg-ably-dot2'].forEach(id => { const el = document.getElementById(id); if (el) el.className = 'status-dot ' + (ok ? 'connected' : 'error'); });
-    ['ably-status', 'cfg-ably-status2'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = ok ? 'Ably connecté' : 'Ably erreur'; });
+// Announce ourselves, or republish after a change. `enter` is only used once; the
+// SDK re-enters automatically after a reconnect, so there is no resend loop here.
+function sendPresence() {
+    if (!ablyPresence) return;
+    const d = presenceData();
+    if (presenceEntered) {
+        ablyPresence.presence.update(d).catch(err => console.error('[PLAYER] presence update:', err));
+    } else {
+        ablyPresence.presence.enter(d).then(
+            () => { presenceEntered = true; console.log('[PLAYER] entered presence as', currentCharId); },
+            err => console.error('[PLAYER] presence enter:', err));
+    }
+}
+// Coalesce bursts — editing the character sheet touches several fields in a row.
+function schedulePresence() {
+    clearTimeout(_presenceTimer);
+    _presenceTimer = setTimeout(sendPresence, 250);
 }
 
-// ═══════════════════════════════════════════
-//  CONFIG
-// ═══════════════════════════════════════════
-// Toggle light mode on the document body.
-function applyTheme(light) {
-    document.body.classList.toggle('light-mode', !!light);
+// Collapse members to participants. Several tabs of one person share a clientId and
+// differ by connectionId; so does the ghost of a tab that refreshed, until Ably reaps
+// it 15s later. Newest ts wins, which is always a live tab.
+function _mergeMembers(members) {
+    const byId = new Map();
+    (members || []).forEach(m => {
+        const key = m.clientId || '';
+        const d = m.data || {};
+        if (!key) return;
+        const prev = byId.get(key);
+        if (!prev || (d.ts || 0) >= (prev.ts || 0)) byId.set(key, d);
+    });
+    return byId;
 }
+function applyPresenceSet(members) {
+    const byId = _mergeMembers(members);
+    // The GM decides the room, the MJ tile and the spotlight. No members ⇒ no GM ⇒
+    // no session: the room goes and the push iframe stops. A GM refresh does not
+    // reach this state, because the reconnected tab has already entered by the time
+    // the dropped connection is reaped.
+    const gm = [...byId.values()].find(d => d.role === 'gm');
+    const gmWas = gmOnline;
+    gmOnline = !!gm;
+    if (gmWas !== gmOnline) renderMapTab();   // the move button is gated on it
+    const room = gm ? (gm.vdoRoom || '') : '';
+    const pw = gm ? (gm.vdoRoomPassword || '') : '';
+    const roomChanged = room !== vdoRoom || pw !== vdoRoomPassword;
+    vdoRoom = room;
+    vdoRoomPassword = pw;
+    gmStreamId = gm ? (gm.streamId || '') : '';
+    spotlightCharId = gm ? (gm.spotlightCharId || null) : null;
+    // Peers, for the camera tiles and the Soigner target picker. Both are keyed by
+    // charId: Soigner now targets the character, so every tab of the target applies
+    // the HP change and none of them can be addressed after closing.
+    peerCameras.clear();
+    Object.keys(knownPlayers).forEach(k => delete knownPlayers[k]);
+    byId.forEach((d, charId) => {
+        if (d.role !== 'player' || charId === currentCharId) return;
+        knownPlayers[charId] = { name: d.name };
+        if (d.streamId) peerCameras.set(charId, { name: d.name || charId, streamId: d.streamId });
+    });
+    // Everything the camera layer depends on arrives here and nowhere else, so this
+    // is the log that says whether the session even has a picture to render: no GM
+    // member ⇒ no room ⇒ nothing is published by anybody, and every downstream
+    // "black tile" question is answered already.
+    camLog('[VDO] presence applied |', members?.length ?? 0, 'members →', byId.size, 'participants |',
+        'GM:', gm ? 'present' : 'ABSENT (no room, no session)',
+        '| room:', vdoRoom || '(none)', vdoRoomPassword ? '(password set)' : '(no password)',
+        '| roomChanged:', roomChanged,
+        '| MJ streamId:', gmStreamId || '(none — MJ not publishing)',
+        '| spotlight:', spotlightCharId || '(none)',
+        '| peers publishing:', [...peerCameras].map(([id, p]) => `${p.name}=${p.streamId}`).join(', ') || '(none)');
+    // The room is what decides whether we publish at all, so a change to it changes
+    // the stream ID we advertise — say so now rather than leaving receivers to guess.
+    if (roomChanged) { cam.syncPushFrame(); sendPresence(); }
+    updateCamerasTabVisibility();   // → renderPresenceUI + renderCamerasTab
+}
+
+// One command that prints the whole camera path for this tab: our own publishing
+// state (cam.diag), what the GM told us, who else is publishing, and what is
+// actually rendered right now with the URL of every tile. Type ariaCamDiag() in the
+// console — this is the thing to paste into a bug report.
+window.ariaCamDiag = function () {
+    const tiles = [...document.querySelectorAll('#cameras-grid .camera-cell')].map(c => ({
+        self: !!c.dataset.self, sid: cellSid(c),
+        src: (c.querySelector('iframe')?.src || '(none)').replace(/([?&]password=)[^&]*/, '$1***'),
+    }));
+    const rail = [...document.querySelectorAll('#presence-rail-grid .pr-tile')].map(t => ({
+        label: t._label?.textContent,
+        src: (t._frame?.src || '(none)').replace(/([?&]password=)[^&]*/, '$1***'),
+    }));
+    ariaCamLog(true);   // the pushStats reply below arrives async, on camLog
+    console.log('[VDO] ── camera diagnostic ─────────────────────────────');
+    console.log('[VDO] me:', cam.diag());
+    console.log('[VDO] session: room=', vdoRoom || '(none)', '| MJ stream=', gmStreamId || '(none)',
+        '| spotlight=', spotlightCharId || '(none)', '| ably=', ablyPresence ? 'connected' : 'NOT CONNECTED',
+        '| campaignKey=', character.campaignKey || '(EMPTY — this character is on the global channels, it will never see a GM on a join code)');
+    console.log('[VDO] peers:', [...peerCameras].map(([id, p]) => `${p.name} → ${p.streamId}`));
+    console.log('[VDO] Caméras tab:', camerasAvailable() ? 'available' : 'hidden (no room)',
+        '| pane open:', openPanes.includes('tab-cameras'), '| mode:', presenceMode);
+    console.log('[VDO] grid tiles:', tiles);
+    console.log('[VDO] rail tiles:', rail);
+    cam.pushStats();
+    return 'see console — cam.pushStats() reply arrives in a moment';
+};
+// Update the Ably status dot and text labels in the topbar and config modal.
+function setAblyStatus(ok) {
+    // classList (not className=) so extra classes like .tb-conn-dot on the topbar dot survive.
+    ['ably-dot', 'cfg-ably-dot2'].forEach(id => { const node = document.getElementById(id); if (node) { node.classList.add('status-dot'); node.classList.remove('connected', 'error'); node.classList.add(ok ? 'connected' : 'error'); } });
+    ['ably-status', 'cfg-ably-status2'].forEach(id => { const node = document.getElementById(id); if (node) node.textContent = ok ? 'Ably connecté' : 'Ably erreur'; });
+}
+
 window.addEventListener('storage', e => {
-    if (e.key !== 'aria-config') return;
-    const newCfg = JSON.parse(e.newValue || '{}');
-    config = { ...config, ...newCfg };
-    applyTheme(!!config.lightMode);
+    if (e.key === 'aria-config') {
+        const newCfg = JSON.parse(e.newValue || '{}');
+        config = { ...config, ...newCfg };
+        applyTheme(!!config.lightMode);
+        return;
+    }
+    // Keep every tab of this character agreeing on the kill switch — see
+    // cam.syncFromStorage(), which re-renders and republishes presence when it moved.
+    cam.syncFromStorage(e);
 });
 // Populate the config modal inputs from the current config and character.
 function loadConfigInputs() {
@@ -2620,9 +2607,18 @@ function loadConfigInputs() {
     document.getElementById('cfg-dddice-theme').value = config.dddiceTheme || '';
     document.getElementById('cfg-light-mode').checked = !!config.lightMode;
 }
-// Save config modal changes to localStorage and reinitialize Ably and dddice.
+// Save config modal changes to localStorage. Reconnects Ably only on a campaign
+// switch (or when the connection is gone) — see below.
 function saveConfig() {
-    character.campaignKey = document.getElementById('cfg-campaign-key').value.trim().toUpperCase();
+    const newCampaignKey = document.getElementById('cfg-campaign-key').value.trim().toUpperCase();
+    // Editing the join code re-subscribes every channel onto another campaign's
+    // suffix (campaignChannel() reads character.campaignKey), so it is a campaign
+    // switch and needs the same teardown switchCharacter does — otherwise the push
+    // iframe goes on broadcasting the webcam into the room of the campaign just left
+    // and the old table's peer tiles stay live. Leaving the old campaign's presence
+    // set is handled by closing the old connection.
+    const campaignChanged = newCampaignKey !== (character.campaignKey || '');
+    character.campaignKey = newCampaignKey;
     saveCurrentCharacter();
     config = {
         ...config,
@@ -2630,17 +2626,30 @@ function saveConfig() {
         lightMode: document.getElementById('cfg-light-mode').checked,
     };
     localStorage.setItem('aria-config', JSON.stringify(config));
-    if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch (_) {} dddiceSDK = null; }
+    teardownDddice();
     clearTimeout(dddiceRollSafetyTimer);
     pendingDddiceRoll = null;
-    dddiceAPI = null; ablyRolls = null; ablyCards = null; ablyDamage = null; ablyMusic = null; ablyInstance = null;
     if (config.dddiceKey && config.dddiceRoom) initDddice();
-    if (config.ablyKey) initAbly();
-}
-// Toggle the config modal and scrim visibility.
-function toggleConfig() {
-    document.getElementById('config-modal').classList.toggle('show');
-    document.getElementById('config-scrim').classList.toggle('show');
+    // The Ably connection is only torn down when the campaign changed. It used to be
+    // closed unconditionally, which left the presence set: every peer saw us leave and
+    // rebuilt our tile, and this tab rebuilt its whole grid from an empty set — one
+    // "Reconnecter" and the table's cameras all restarted. Nothing else in this modal
+    // touches the connection (the Ably key comes from index.html). Reconnecting is
+    // still the fallback when the connection is actually gone.
+    if (campaignChanged) {
+        // Close before reinit — nulling the refs without closing leaves the old
+        // WebSocket subscribed, duplicating every incoming message. The close is also
+        // what leaves the old campaign's presence set, so there is nothing to publish
+        // first and nothing to await before closing.
+        if (ablyInstance) { try { ablyInstance.close(); } catch (_) {} }
+        ablyRolls = null; ablyRollsHidden = null; ablyCards = null; ablyDamage = null; ablyMusic = null; ablyInstance = null;
+        ablyPresence = null; presenceEntered = false;
+        resetCameraState();
+        // Soigner targets are campaign-scoped too; the new campaign's presence set
+        // repopulates the picker.
+        Object.keys(knownPlayers).forEach(k => delete knownPlayers[k]);
+    }
+    if (!ablyInstance && config.ablyKey) initAbly();
 }
 
 // ═══════════════════════════════════════════
@@ -2652,8 +2661,8 @@ function renderEditorForm() {
     document.getElementById('ed-class').value = character.class || '';
     const attrsBlock = document.getElementById('cs-attrs-block');
     if (attrsBlock) {
-        attrsBlock.querySelectorAll('.cs-attr:not(.cs-attr-pv)').forEach(el => {
-            el.style.display = character.ariaType === 'contemporary' ? 'none' : '';
+        attrsBlock.querySelectorAll('.cs-attr:not(.cs-attr-pv)').forEach(node => {
+            node.style.display = character.ariaType === 'contemporary' ? 'none' : '';
         });
     }
     if (character.ariaType !== 'contemporary') {
@@ -2688,7 +2697,14 @@ function renderWeaponsEditor() {
     (character.weapons || []).forEach((w, i) => {
         const row = document.createElement('div');
         row.className = 'weap-row';
-        row.innerHTML = `<input class="editor-input" value="${w.nom}" placeholder="Nom de l'arme" oninput="character.weapons[${i}].nom=this.value;renderCombatSidebar()" /><input class="editor-input weap-dmg" value="${w.degats}" placeholder="ex: 2d6+2" oninput="character.weapons[${i}].degats=this.value;renderCombatSidebar()" /><button class="weap-fav-btn${w.favourite ? ' active' : ''}" title="Équipée (affichée dans la barre de combat)" onclick="toggleWeaponFavourite(${i})">★</button><button class="del-btn" onclick="removeWeapon(${i})">✕</button>`;
+        fill(row,
+            el('input', { className: 'editor-input', value: w.nom, placeholder: "Nom de l'arme",
+                oninput: e => { character.weapons[i].nom = e.target.value; renderCombatSidebar(); } }),
+            el('input', { className: 'editor-input weap-dmg', value: w.degats, placeholder: 'ex: 2d6+2',
+                oninput: e => { character.weapons[i].degats = e.target.value; renderCombatSidebar(); } }),
+            el('button', { className: 'weap-fav-btn' + (w.favourite ? ' active' : ''), textContent: '★',
+                title: 'Équipée (affichée dans la barre de combat)', onclick: () => toggleWeaponFavourite(i) }),
+            el('button', { className: 'del-btn', textContent: '✕', onclick: () => removeWeapon(i) }));
         list.appendChild(row);
     });
 }
@@ -2696,44 +2712,38 @@ function renderWeaponsEditor() {
 function addWeapon() {
     if (!character.weapons) character.weapons = [];
     character.weapons.push({ nom: '', degats: '', favourite: false });
-    renderWeaponsEditor();
-    saveCurrentCharacter();
+    commitCharacter({ editors: true });
 }
 // Remove a weapon by index and re-render the editor and combat sidebar.
 function removeWeapon(i) {
     character.weapons.splice(i, 1);
-    renderWeaponsEditor();
-    renderCombatSidebar();
-    saveCurrentCharacter();
+    commitCharacter({ editors: true });
 }
 // Toggle a weapon's equipped (favourite) status and refresh both editor and combat sidebar.
 function toggleWeaponFavourite(i) {
     character.weapons[i].favourite = !character.weapons[i].favourite;
-    renderWeaponsEditor();
-    renderCombatSidebar();
-    saveCurrentCharacter();
+    commitCharacter({ editors: true });
 }
 // Render the money editor fields based on character type (ancient coins vs. contemporary francs).
 function renderMoneyEditor() {
-    const el = document.getElementById('inv-money-editor');
-    if (!el) return;
+    const node = document.getElementById('inv-money-editor');
+    if (!node) return;
     const m = character.money || {};
-    if (character.ariaType === 'contemporary') {
-        el.innerHTML = `<div class="money-editor-row"><div class="money-field">
-            <span class="money-label">💶 Francs</span>
-            <input class="editor-input money-input" type="text" inputmode="numeric" value="${m.francs ?? 0}" oninput="updateMoney('francs',this.value)" />
-        </div></div>`;
-    } else {
-        el.innerHTML = `<div class="money-editor-row">${MONEY_COINS.map(c =>
-            `<div class="money-field">
-                <span class="money-dot" style="color:${c.color}">●</span>
-                <span class="money-label">${c.label}</span>
-                <input class="editor-input money-input" type="text" inputmode="numeric" value="${m[c.key] ?? 0}" oninput="updateMoney('${c.key}',this.value)" />
-            </div>`
-        ).join('')}</div>`;
-    }
+    // Each denomination is its own box: label on the left, − value + on the right (value editable).
+    const coinBox = (key, label, color) => el('div', { className: 'money-box' },
+        el('span', { className: 'money-box-label', textContent: label },
+            color && el('span', { className: 'money-box-dot', style: { color }, textContent: '●' })),
+        el('div', { className: 'money-box-ctrl' },
+            el('button', { className: 'qty-btn', textContent: '−', onclick: () => bumpMoney(key, -1) }),
+            el('input', { className: 'money-box-input', type: 'text', inputMode: 'numeric', value: m[key] ?? 0,
+                oninput: e => updateMoney(key, e.target.value) }),
+            el('button', { className: 'qty-btn', textContent: '+', onclick: () => bumpMoney(key, 1) })));
+    fill(node, el('div', { className: 'inv-money-grid' },
+        character.ariaType === 'contemporary'
+            ? coinBox('francs', 'Francs', '')
+            : MONEY_COINS.map(c => coinBox(c.key, c.label, c.color))));
 }
-// Update a single money denomination value and refresh the inventory sidebar.
+// Update a single money denomination value (from the editable field).
 function updateMoney(key, val) {
     if (!character.money) {
         character.money = character.ariaType === 'contemporary'
@@ -2741,8 +2751,17 @@ function updateMoney(key, val) {
             : { couronne: 0, orbe: 0, sceptre: 0, sou: 0 };
     }
     character.money[key] = parseInt(val.replace(/[^0-9]/g, '')) || 0;
-    saveCurrentCharacter();
-    renderInventorySidebar();
+    commitCharacter();   // typed into the money field — leave the editors alone
+}
+// Increment/decrement a money denomination via the +/- buttons.
+function bumpMoney(key, delta) {
+    if (!character.money) {
+        character.money = character.ariaType === 'contemporary'
+            ? { francs: 0 }
+            : { couronne: 0, orbe: 0, sceptre: 0, sou: 0 };
+    }
+    character.money[key] = Math.max(0, (character.money[key] || 0) + delta);
+    commitCharacter({ editors: true });
 }
 // Render the inventory editor list with item rows and vials counter if alchemy is enabled.
 function renderInventoryEditor() {
@@ -2750,24 +2769,34 @@ function renderInventoryEditor() {
     const list = document.getElementById('inv-editor-list');
     if (!list) return;
     list.innerHTML = '';
-    (character.inventory || []).forEach((it, i) => {
-        const row = document.createElement('div');
-        row.className = 'inv-row';
-        row.innerHTML = `<input class="editor-input" value="${it.name || ''}" placeholder="Nom de l'objet" oninput="character.inventory[${i}].name=this.value;renderInventorySidebar()" /><input class="editor-input inv-qty" type="text" inputmode="numeric" value="${it.qty || 1}" oninput="this.value=this.value.replace(/[^0-9]/g,'');character.inventory[${i}].qty=+this.value||1;renderInventorySidebar()" /><button class="del-btn" onclick="removeInventoryRow(${i})">✕</button>`;
-        list.appendChild(row);
-    });
+    // Name stays editable; quantity is adjusted only via the +/- buttons.
+    const qtyCtrl = (value, dec, inc, decDisabled) => el('div', { className: 'inv-qty-ctrl' },
+        el('button', { className: 'qty-btn', textContent: '−', disabled: !!decDisabled, onclick: dec }),
+        el('span', { className: 'inv-qty-val', textContent: value }),
+        el('button', { className: 'qty-btn', textContent: '+', onclick: inc }));
+    fill(list, (character.inventory || []).map((it, i) => el('div', { className: 'inv-row' },
+        el('input', { className: 'inv-name-input', value: it.name || '', placeholder: "Nom de l'objet",
+            oninput: e => { character.inventory[i].name = e.target.value; } }),
+        qtyCtrl(it.qty || 1, () => bumpInventoryQty(i, -1), () => bumpInventoryQty(i, 1)),
+        el('button', { className: 'del-btn', textContent: '✕', onclick: () => removeInventoryRow(i) }))));
     if (playerTabs.alchemy) {
         const v = character.vials ?? 0;
-        const vRow = document.createElement('div');
-        vRow.className = 'inv-row';
-        vRow.innerHTML = `<span style="font-family:'EB Garamond',serif;font-size:14px;font-style:italic;padding:6px 8px;color:var(--parchment-dim);">Fioles vides</span><input class="editor-input inv-qty" type="text" inputmode="numeric" value="${v}" oninput="this.value=this.value.replace(/[^0-9]/g,'');character.vials=Math.max(0,+this.value||0);saveCurrentCharacter();renderInventorySidebar();renderPotions()" /><span></span>`;
-        list.insertBefore(vRow, list.firstChild);
+        list.insertBefore(el('div', { className: 'inv-row inv-row-vials' },
+            el('span', { className: 'inv-vials-name', textContent: 'Fioles vides' }),
+            qtyCtrl(v, () => changeVials(-1), () => changeVials(1), v <= 0),
+            el('span')), list.firstChild);
     }
 }
+// Adjust an inventory item's quantity via the +/- buttons (min 0).
+function bumpInventoryQty(i, delta) {
+    if (!character.inventory[i]) return;
+    character.inventory[i].qty = Math.max(0, (character.inventory[i].qty || 0) + delta);
+    commitCharacter({ editors: true });
+}
 // Add a new empty inventory item and refresh the editor and sidebar.
-function addInventoryRow() { character.inventory.push({ name: '', qty: 1 }); renderInventoryEditor(); renderInventorySidebar(); }
+function addInventoryRow() { character.inventory.push({ name: '', qty: 1 }); commitCharacter({ editors: true }); }
 // Remove an inventory item by index and refresh the editor and sidebar.
-function removeInventoryRow(i) { character.inventory.splice(i, 1); renderInventoryEditor(); renderInventorySidebar(); }
+function removeInventoryRow(i) { character.inventory.splice(i, 1); commitCharacter({ editors: true }); }
 
 // ── POTIONS ──────────────────────────────────
 // Render the alchemy tab: vials counter, known recipes, and crafted potions stock.
@@ -2781,59 +2810,51 @@ function renderPotions() {
 
     container.innerHTML = '';
 
-    // Vials counter
-    const vialsDiv = document.createElement('div');
-    vialsDiv.className = 'alchemy-vials';
-    vialsDiv.innerHTML = `
-        <span class="alchemy-vials-label">Fioles vides</span>
-        <div class="alchemy-vials-ctrl">
-            <button class="vial-btn" onclick="changeVials(-1)" ${vials <= 0 ? 'disabled' : ''}>−</button>
-            <span class="vial-count">${vials}</span>
-            <button class="vial-btn" onclick="changeVials(1)">+</button>
-        </div>`;
-    container.appendChild(vialsDiv);
-
-    // Recipes section
+    // Recipes section — card grid (design frame 09)
     if (recipes.length) {
         const hdr = document.createElement('div');
         hdr.className = 'alchemy-section-hdr';
         hdr.textContent = 'Recettes connues';
         container.appendChild(hdr);
+        const grid = document.createElement('div');
+        grid.className = 'potion-grid';
         recipes.forEach((r, i) => {
-            const row = document.createElement('div');
-            row.className = 'recipe-row';
+            const chance = rollThreshold(r.successChance || 0);
             const meta = [r.ingredients || '', r.desc || ''].filter(Boolean).join(' — ');
-            row.innerHTML = `
-                <span class="recipe-name">${r.name}</span>
-                ${meta ? `<span class="recipe-meta">${meta}</span>` : '<span class="recipe-meta"></span>'}
-                <span class="recipe-chance">${Math.max(0, Math.min(100, (r.successChance || 0) + liveBM()))}%</span>
-                <button class="recipe-craft-btn" onclick="craftPotion(${i})" ${vials <= 0 || isRolling ? 'disabled' : ''}>Créer</button>`;
-            container.appendChild(row);
+            grid.append(el('div', { className: 'potion-card' },
+                el('div', { className: 'potion-card-top' },
+                    el('span', { className: 'potion-card-name', textContent: r.name })),
+                el('div', { className: 'potion-card-desc', textContent: meta || '\u00a0' }),
+                el('div', { className: 'potion-card-foot' },
+                    el('span', { className: 'potion-card-chance', textContent: `Succès ${chance}%` }),
+                    el('button', { className: 'potion-card-action', textContent: 'Créer →',
+                        disabled: vials <= 0 || isRolling, onclick: () => craftPotion(i) }))));
         });
+        container.appendChild(grid);
     }
 
-    // Crafted potions section
+    // Crafted potions section — card grid
     const stock = potions.filter(p => p.name);
     if (stock.length) {
         const hdr = document.createElement('div');
         hdr.className = 'alchemy-section-hdr';
         hdr.textContent = 'Potions en stock';
         container.appendChild(hdr);
+        const grid = document.createElement('div');
+        grid.className = 'potion-grid';
         potions.forEach((p, i) => {
             if (!p.name) return;
-            const row = document.createElement('div');
-            row.className = 'potion-row';
-            row.innerHTML = `
-                <div class="potion-info">
-                    <div class="potion-name">${p.name}</div>
-                </div>
-                <div class="potion-actions">
-                    <span class="potion-qty${!p.qty ? ' depleted' : ''}">×${p.qty ?? 0}</span>
-                    <button class="potion-use-btn" onclick="usePotion(${i})" ${!p.qty ? 'disabled' : ''}>Utiliser</button>
-                    <button class="del-btn" onclick="removePotion(${i})">✕</button>
-                </div>`;
-            container.appendChild(row);
+            grid.append(el('div', { className: 'potion-card' + (!p.qty ? ' depleted' : '') },
+                el('div', { className: 'potion-card-top' },
+                    el('span', { className: 'potion-card-name', textContent: p.name }),
+                    el('span', { className: 'potion-card-qty' + (!p.qty ? ' depleted' : ''), textContent: `×${p.qty ?? 0}` })),
+                el('div', { className: 'potion-card-desc', textContent: p.desc || '\u00a0' }),
+                el('div', { className: 'potion-card-foot' },
+                    el('button', { className: 'potion-card-del', title: 'Retirer', textContent: '✕', onclick: () => removePotion(i) }),
+                    el('button', { className: 'potion-card-action use', textContent: 'Utiliser →',
+                        disabled: !p.qty, onclick: () => usePotion(i) }))));
         });
+        container.appendChild(grid);
     }
 
     const hasContent = recipes.length > 0 || stock.length > 0;
@@ -2844,10 +2865,7 @@ function renderPotions() {
 // Increment or decrement the vials counter and update all related views.
 function changeVials(delta) {
     character.vials = Math.max(0, (character.vials ?? 0) + delta);
-    saveCurrentCharacter();
-    renderInventoryEditor();
-    renderInventorySidebar();
-    renderPotions();
+    commitCharacter({ editors: true });
 }
 // Toggle the custom potion add form visibility.
 function toggleCustomPotionForm() {
@@ -2877,13 +2895,17 @@ function craftPotion(recipeIdx) {
     if (!recipe) return;
     character.vials = (character.vials ?? 0) - 1;
     saveCurrentCharacter();
-    pendingCraft = recipeIdx;
+    // Store the recipe id, not the index — a potion-revoke arriving before the
+    // roll resolves would shift indexes and credit the wrong recipe.
+    pendingCraft = recipe.id;
     doRoll(recipe.name, recipe.successChance || 0);
 }
 // Apply the craft roll result: add to stock on success, show toast, update inventory.
-function applyCraft(success, recipeIdx) {
+function applyCraft(success, recipeId) {
+    const charAtRoll = currentCharId; // bail if the user switches characters mid-delay
     setTimeout(() => {
-        const recipe = (character.potionRecipes || [])[recipeIdx];
+        if (currentCharId !== charAtRoll) return;
+        const recipe = (character.potionRecipes || []).find(r => r.id === recipeId);
         if (!recipe) return;
         if (success) {
             if (!character.potions) character.potions = [];
@@ -2904,7 +2926,6 @@ function applyCraft(success, recipeIdx) {
         saveCurrentCharacter();
         renderPotions();
         renderInventoryEditor();
-        renderInventorySidebar();
         sendPresence();
     }, 1500);
 }
@@ -2925,7 +2946,6 @@ function usePotion(i) {
     saveCurrentCharacter();
     renderPotions();
     renderInventoryEditor();
-    renderInventorySidebar();
     showToast('gm-heal-toast', `${p.name || 'Potion'} utilisée${p.qty > 0 ? ` (×${p.qty} restante${p.qty > 1 ? 's' : ''})` : ' — épuisée'}`);
 }
 // Render the skills percentage editor list, sorted alphabetically.
@@ -2938,7 +2958,13 @@ function renderSkillsEditor() {
         .forEach(({ sk, i }) => {
             const row = document.createElement('div');
             row.className = 'skill-editor-row';
-            row.innerHTML = `<span class="sname">${sk.name}</span><input class="spct" type="text" inputmode="numeric" value="${sk.pct}" title="Seuil de base (%)" oninput="this.value=this.value.replace(/[^0-9]/g,'');character.skills[${i}].pct=+this.value||0" /><input class="smod" type="text" inputmode="numeric" value="${sk.bonus ? sk.bonus : ''}" placeholder="mod" title="Modificateur permanent (±)" oninput="this.value=this.value.replace(/[^0-9-]/g,'').replace(/(?!^)-/g,'');character.skills[${i}].bonus=parseInt(this.value)||0" />`;
+            fill(row,
+                el('span', { className: 'sname', textContent: sk.name }),
+                el('input', { className: 'spct', type: 'text', inputMode: 'numeric', value: sk.pct, title: 'Seuil de base (%)',
+                    oninput: e => { e.target.value = e.target.value.replace(/[^0-9]/g, ''); character.skills[i].pct = +e.target.value || 0; } }),
+                el('input', { className: 'smod', type: 'text', inputMode: 'numeric', value: sk.bonus ? sk.bonus : '',
+                    placeholder: 'mod', title: 'Modificateur permanent (±)',
+                    oninput: e => { e.target.value = e.target.value.replace(/[^0-9-]/g, '').replace(/(?!^)-/g, ''); character.skills[i].bonus = parseInt(e.target.value) || 0; } }));
             list.appendChild(row);
         });
 }
@@ -2950,14 +2976,24 @@ function renderSpecialsEditor() {
     (character.specials || []).forEach((sp, i) => {
         const row = document.createElement('div');
         row.className = 'specials-row';
-        row.innerHTML = `<input value="${sp.name || ''}" placeholder="Nom" oninput="character.specials[${i}].name=this.value" /><input type="text" inputmode="numeric" value="${sp.pct || 0}" oninput="this.value=this.value.replace(/[^0-9]/g,'');character.specials[${i}].pct=+this.value||0" /><input type="text" inputmode="numeric" value="${sp.bonus ? sp.bonus : ''}" placeholder="mod" title="Modificateur permanent (±)" oninput="this.value=this.value.replace(/[^0-9-]/g,'').replace(/(?!^)-/g,'');character.specials[${i}].bonus=parseInt(this.value)||0" /><input value="${sp.desc || ''}" placeholder="Description" oninput="character.specials[${i}].desc=this.value" /><button class="del-btn" onclick="removeSpecial(${i})">✕</button>`;
+        fill(row,
+            el('input', { value: sp.name || '', placeholder: 'Nom',
+                oninput: e => { character.specials[i].name = e.target.value; } }),
+            el('input', { type: 'text', inputMode: 'numeric', value: sp.pct || 0,
+                oninput: e => { e.target.value = e.target.value.replace(/[^0-9]/g, ''); character.specials[i].pct = +e.target.value || 0; } }),
+            el('input', { type: 'text', inputMode: 'numeric', value: sp.bonus ? sp.bonus : '', placeholder: 'mod',
+                title: 'Modificateur permanent (±)',
+                oninput: e => { e.target.value = e.target.value.replace(/[^0-9-]/g, '').replace(/(?!^)-/g, ''); character.specials[i].bonus = parseInt(e.target.value) || 0; } }),
+            el('input', { value: sp.desc || '', placeholder: 'Description',
+                oninput: e => { character.specials[i].desc = e.target.value; } }),
+            el('button', { className: 'del-btn', textContent: '✕', onclick: () => removeSpecial(i) }));
         list.appendChild(row);
     });
 }
 // Add a new empty special skill entry and re-render.
-function addSpecialRow() { character.specials.push({ name: '', desc: '', pct: 0 }); renderSpecialsEditor(); }
+function addSpecialRow() { character.specials.push({ name: '', desc: '', pct: 0 }); commitCharacter({ editors: true }); }
 // Remove a special skill by index and re-render.
-function removeSpecial(i) { character.specials.splice(i, 1); renderSpecialsEditor(); }
+function removeSpecial(i) { character.specials.splice(i, 1); commitCharacter({ editors: true }); }
 // Read all character editor form inputs back into the character object.
 function readEditorInputs() {
     character.name = document.getElementById('ed-name').value.trim();
@@ -3006,132 +3042,46 @@ function autoSaveChar() {
         }
         localStorage.setItem(hpKey(), currentHP);
     }
-    saveCurrentCharacter();
-    // Refresh non-editor UI only — avoids rebuilding editor DOM and losing focus
-    document.getElementById('char-display').textContent = `${character.name} — ${character.class}`;
-    document.title = character.name ? `ARIA – ${character.name}` : 'ARIA – Joueur';
-    renderSkills();
-    renderStats();
-    updateHPDisplay();
-    renderInventorySidebar();
-    renderCombatSidebar();
-    renderPotions();
-    sendPresence();
+    // Derived views only — the caret is in an editor field right now. That rule used
+    // to be an inlined list of renderers here; it is commitCharacter's default.
+    commitCharacter();
+    sendPresence();   // immediate, rather than the 250ms debounce saveCurrentCharacter arms
     flashSaveStatus();
 }
 let saveStatusTimer = null;
 // Briefly flash the "saved" status indicator in the character editor.
 function flashSaveStatus() {
-    const el = document.getElementById('cs-save-status');
-    if (!el) return;
-    el.classList.add('show');
+    const node = document.getElementById('cs-save-status');
+    if (!node) return;
+    node.classList.add('show');
     clearTimeout(saveStatusTimer);
-    saveStatusTimer = setTimeout(() => el.classList.remove('show'), 2000);
+    saveStatusTimer = setTimeout(() => node.classList.remove('show'), 2000);
 }
 
 // ═══════════════════════════════════════════
 //  CARD SYSTEM
 // ═══════════════════════════════════════════
-// Build the card tracker grid of suit rows and rank pills.
-function buildTracker() {
-    const container = document.getElementById('tracker-suits');
-    container.innerHTML = '';
-    for (const suit of SUITS) {
-        const row = document.createElement('div'); row.className = 'suit-row-t';
-        const sym = document.createElement('span'); sym.className = `suit-sym ${suit.cls}`; sym.textContent = suit.sym;
-        row.appendChild(sym);
-        const pills = document.createElement('div'); pills.className = 'rank-pills';
-        for (const rank of RANKS) { pills.appendChild(makePill(`${rank}-${suit.name}`, rank, suit.pillCls)); }
-        row.appendChild(pills); container.appendChild(row);
-    }
-    const jRow = document.createElement('div'); jRow.className = 'suit-row-t';
-    const jSym = document.createElement('span'); jSym.className = 'suit-sym c-purple'; jSym.textContent = '★';
-    jRow.appendChild(jSym);
-    const jPills = document.createElement('div'); jPills.className = 'rank-pills';
-    jPills.appendChild(makePill('joker-red', 'R★', 'is-joker'));
-    jPills.appendChild(makePill('joker-black', 'N★', 'is-joker'));
-    jRow.appendChild(jPills); container.appendChild(jRow);
+// The engine is makeDeck() in aria-shared.js. The player's deck is the shared one:
+// persisted per character and mirrored to the table over Ably.
+const deck = makeDeck({
+    persist: saveCardState,
+    publish: (type, extra) => publishCard(type, { ...extra, playerName: character.name }),
+    fly: animateFly,
+    announce: async remainingOnly => {
+        const flash = document.getElementById('reshuffle-flash');
+        document.getElementById('reshuffle-msg').textContent = remainingOnly ? '↺ Restant mélangé' : '↺ Mélangé';
+        flash.classList.add('show');
+        await delay(900);
+        flash.classList.remove('show');
+    },
+});
+
+// Persist the deck state and schedule the Supabase state sync.
+function saveCardState() {
+    localStorage.setItem(cardKey(), JSON.stringify(deck.state()));
+    debouncedSyncState();
 }
-// Create a rank pill element for the card tracker.
-function makePill(id, label, extraCls) {
-    const p = document.createElement('span');
-    p.id = `pill-${id}`; p.className = 'rank-pill' + (extraCls ? ' ' + extraCls : ''); p.textContent = label;
-    refreshPill(p, id); p.addEventListener('click', () => togglePill(id)); return p;
-}
-// Update a pill's visual state to reflect drawn/excluded/normal status.
-function refreshPill(p, id) { const drawn = cardDrawn.has(id), excl = cardExcluded.has(id); p.classList.toggle('drawn', drawn); p.classList.toggle('excluded', excl); }
-// Refresh all pills in the tracker to match the current deck state.
-function refreshAllPills() { ALL_CARDS.forEach(c => { const p = document.getElementById(`pill-${c.id}`); if (p) refreshPill(p, c.id); }); }
-// Cycle a card's state: normal → excluded → returned to deck, updating the deck.
-function togglePill(id) {
-    if (cardDrawing) return;
-    const card = cardById(id);
-    const name = card.isJoker ? card.label : `${card.rank} de ${SUIT_FR[card.suit.name] || card.suit.name}`;
-    if (cardExcluded.has(id)) { cardExcluded.delete(id); cardDeck.splice(Math.floor(Math.random() * (cardDeck.length + 1)), 0, card); updateDeckCount(); showCardStatus(`${name} re-inclus`); }
-    else if (cardDrawn.has(id)) { cardDrawn.delete(id); cardDeck.splice(Math.floor(Math.random() * (cardDeck.length + 1)), 0, card); updateDeckCount(); showCardStatus(`${name} remis`); }
-    else { cardExcluded.add(id); const idx = cardDeck.findIndex(c => c.id === id); if (idx !== -1) { cardDeck.splice(idx, 1); updateDeckCount(); } showCardStatus(`${name} exclu`); }
-    const p = document.getElementById(`pill-${id}`); if (p) refreshPill(p, id);
-    updateClearBtn(); saveCardState();
-}
-// Remove all card exclusions and put excluded cards back in the deck.
-function clearExclusions() { if (cardDrawing) return; cardExcluded.forEach(id => { const c = cardById(id); if (c) cardDeck.splice(Math.floor(Math.random() * (cardDeck.length + 1)), 0, c); }); cardExcluded.clear(); updateDeckCount(); refreshAllPills(); updateClearBtn(); saveCardState(); showCardStatus('Exclusions effacées'); }
-// Persist the current card deck state (excluded, drawn, deckIds) to localStorage.
-function saveCardState() { localStorage.setItem(cardKey(), JSON.stringify({ excluded: [...cardExcluded], drawn: [...cardDrawn], deckIds: cardDeck.map(c => c.id), lastCardId })); debouncedSyncState(); }
-// Update the deck count label and toggle reshuffle/clear button visibility.
-function updateDeckCount() {
-    const n = cardDeck.length;
-    document.getElementById('deck-count').textContent = n === 0 ? 'Vide' : `${n} carte${n !== 1 ? 's' : ''}`;
-    document.getElementById('deck-wrap').classList.toggle('empty', n === 0);
-    document.getElementById('reshuffle-btn').classList.toggle('visible', n === 0);
-    document.getElementById('reshuffle-remaining-btn').classList.toggle('visible', n > 1 && n < ALL_CARDS.length - cardExcluded.size);
-    updateClearBtn();
-}
-// Show or hide the clear-exclusions button based on whether any cards are excluded.
-function updateClearBtn() { document.getElementById('clear-exclusions-btn').classList.toggle('visible', cardExcluded.size > 0); }
-// Show a temporary status message in the card tab for 2.2 seconds.
-function showCardStatus(msg) { const el = document.getElementById('card-status'); el.textContent = msg; clearTimeout(cardStatusTimer); cardStatusTimer = setTimeout(() => el.textContent = '', 2200); }
-// Return a Promise that resolves after ms milliseconds.
-function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
-// Render the face of a playing card into the drawn-card element.
-function renderCardContent(card) {
-    const el = document.getElementById('drawn-card');
-    if (card.isJoker) {
-        el.className = `flip-face ${card.jokerColor === 'red' ? 'c-red' : 'c-black'}`;
-        el.innerHTML = `<div class="card-corner tl"><span class="rank" style="font-size:14px;color:var(--card-purple)">JKR</span></div><div class="card-center" style="flex-direction:column;gap:6px;"><span style="font-size:50px;line-height:1;color:var(--card-purple)">★</span><span style="font-family:'Playfair Display',serif;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--card-purple)">${card.label.toUpperCase()}</span></div><div class="card-corner br"><span class="rank" style="font-size:14px;color:var(--card-purple)">JKR</span></div>`;
-    } else {
-        el.className = `flip-face ${card.suit.cls}`;
-        el.innerHTML = `<div class="card-corner tl"><span class="rank">${card.rank}</span><span class="suit-small">${card.suit.sym}</span></div><div class="card-center">${card.suit.sym}</div><div class="card-corner br"><span class="rank">${card.rank}</span><span class="suit-small">${card.suit.sym}</span></div>`;
-    }
-}
-// Restore the last drawn card display after a page reload without animation.
-function restoreCard() {
-    const card = cardById(lastCardId); if (!card) return;
-    const flipWrap = document.getElementById('flip-wrap');
-    renderCardContent(card);
-    document.getElementById('drawn-card').classList.add('ready');
-    flipWrap.classList.remove('hidden');
-    flipWrap.style.transition = 'none';
-    flipWrap.classList.add('flipped');
-    flipWrap.getBoundingClientRect();
-    flipWrap.style.transition = '';
-}
-// Play the card shuffle animation using ghost card elements.
-async function animateShuffle() {
-    const overlay = document.getElementById('shuffle-overlay');
-    const wrap = document.getElementById('deck-wrap');
-    const rect = wrap.getBoundingClientRect();
-    const ghosts = [];
-    for (let i = 0; i < 4; i++) {
-        const g = document.createElement('div'); g.className = 'shuffle-ghost';
-        g.appendChild(Object.assign(document.createElement('div'), { className: 'deck-pattern' }));
-        g.style.cssText = `width:${rect.width}px;height:${rect.height}px;left:${rect.left}px;top:${rect.top}px;`;
-        overlay.appendChild(g); ghosts.push(g);
-    }
-    const dirs = ['left', 'right', 'left', 'right'];
-    ghosts.forEach((g, i) => { g.style.animation = `shuffle-${dirs[i]} 0.52s ${i * 0.08}s ease-in-out forwards`; });
-    wrap.classList.remove('shuffling'); wrap.getBoundingClientRect(); wrap.classList.add('shuffling');
-    await delay(680); ghosts.forEach(g => g.remove()); wrap.classList.remove('shuffling');
-}
+
 // Animate a card flying from the deck position to the stage area.
 async function animateFly() {
     const stage = document.querySelector('.card-stage');
@@ -3149,63 +3099,14 @@ async function animateFly() {
     flyEl.classList.remove('flying'); flyEl.getBoundingClientRect(); flyEl.classList.add('flying');
     await delay(430); flyEl.classList.remove('flying'); flyEl.style.opacity = '0';
 }
-// Render a card face and flip it into view with a CSS transition.
-async function revealCard(card) {
-    const flipWrap = document.getElementById('flip-wrap');
-    const drawnEl = document.getElementById('drawn-card');
-    renderCardContent(card); drawnEl.classList.add('ready');
-    flipWrap.classList.remove('hidden'); flipWrap.getBoundingClientRect();
-    await delay(30); flipWrap.classList.add('flipped');
-}
-// Draw the top card from the deck with fly and flip animations, then publish to Ably.
-async function drawCard() {
-    if (cardDrawing || cardDeck.length === 0) return;
-    cardDrawing = true;
-    const flipWrap = document.getElementById('flip-wrap');
-    flipWrap.classList.remove('flipped'); flipWrap.classList.add('hidden');
-    document.getElementById('drawn-card').classList.remove('ready');
-    await animateFly();
-    const drawn = cardDeck.pop();
-    cardDrawn.add(drawn.id); lastCardId = drawn.id;
-    const pill = document.getElementById(`pill-${drawn.id}`); if (pill) refreshPill(pill, drawn.id);
-    updateDeckCount(); await revealCard(drawn);
-    showCardStatus(drawn.isJoker ? drawn.label : `${drawn.rank} de ${SUIT_FR[drawn.suit.name] || drawn.suit.name}`);
-    saveCardState(); publishCard('draw', { cardId: drawn.id, playerName: character.name });
-    cardDrawing = false;
-}
-// Reshuffle all or remaining cards with shuffle animation and publish to Ably.
-async function manualReshuffle(remainingOnly) {
-    if (cardDrawing) return;
-    cardDrawing = true;
-    const flipWrap = document.getElementById('flip-wrap');
-    flipWrap.classList.remove('flipped');
-    await delay(200); flipWrap.classList.add('hidden');
-    document.getElementById('drawn-card').classList.remove('ready');
-    await animateShuffle();
-    if (remainingOnly) { cardDeck = shuffle(cardDeck); }
-    else { cardDrawn.clear(); cardDeck = shuffle([...ALL_CARDS].filter(c => !cardExcluded.has(c.id))); lastCardId = null; }
-    buildTracker(); updateDeckCount(); updateClearBtn(); saveCardState(); publishCard('reshuffle');
-    const flash = document.getElementById('reshuffle-flash');
-    document.getElementById('reshuffle-msg').textContent = remainingOnly ? '↺ Restant mélangé' : '↺ Mélangé';
-    flash.classList.add('show'); await delay(900); flash.classList.remove('show');
-    cardDrawing = false;
-}
 
 // ═══════════════════════════════════════════
 //  PLAYER FILES
 // ═══════════════════════════════════════════
-// Escape HTML special characters for safe injection into player file display.
-function _pfEscHtml(s) {
-    return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-// Return an emoji icon string for a file MIME type.
-function _pfFileIcon(type) {
-    if (!type) return '📄';
-    if (type.startsWith('image/')) return '🖼';
-    if (type === 'application/pdf') return '📕';
-    if (type.startsWith('text/')) return '📝';
-    return '📄';
-}
+
+// The preview modal for a GM-granted file. Same engine as the GM's, which reaches
+// the identical markup through the 'gm-' id prefix.
+const fileViewer = makeFileViewer({ files: () => playerFiles });
 
 // Render the GM-granted files list in the Fichiers tab.
 function renderPlayerFiles() {
@@ -3218,88 +3119,149 @@ function renderPlayerFiles() {
         return;
     }
     if (empty) empty.style.display = 'none';
+    // Files are granted by the GM over Ably — name and id are remote strings.
     playerFiles.forEach(f => {
-        const row = document.createElement('div');
-        row.className = 'player-file-row';
-        row.innerHTML = `
-            <div class="pf-icon">${_pfFileIcon(f.type)}</div>
-            <div class="pf-name">${_pfEscHtml(f.name)}</div>
-            <button class="pf-open-btn" onclick="openFileViewer('${f.id}')">Ouvrir</button>`;
-        list.appendChild(row);
+        list.append(el('div', { className: 'player-file-row' },
+            el('div', { className: 'pf-icon', textContent: fileIcon(f.type) }),
+            el('div', { className: 'pf-name', textContent: f.name }),
+            el('button', { className: 'pf-open-btn', textContent: 'Ouvrir', onclick: () => fileViewer.open(f.id) })));
     });
 }
 
-// Open the file viewer modal for a player file, rendering image/PDF/text inline.
-function openFileViewer(fileId) {
-    const f = playerFiles.find(f => f.id === fileId);
-    if (!f) return;
-    document.getElementById('fv-title').textContent = f.name;
-    const body = document.getElementById('fv-body');
-    body.innerHTML = '';
-    if (f.type.startsWith('image/')) {
-        const img = document.createElement('img');
-        img.src = f.url;
-        img.className = 'fv-image';
-        body.appendChild(img);
-        wireImageZoom(img);
-    } else if (f.type === 'application/pdf') {
-        const iframe = document.createElement('iframe');
-        iframe.src = f.url;
-        iframe.className = 'fv-iframe';
-        body.appendChild(iframe);
-    } else if (f.type.startsWith('text/')) {
-        const pre = document.createElement('pre');
-        pre.className = 'fv-text';
-        pre.textContent = 'Chargement…';
-        body.appendChild(pre);
-        fetch(f.url)
-            .then(r => r.text())
-            .then(text => { pre.textContent = text; })
-            .catch(() => { pre.textContent = 'Erreur de chargement.'; });
-    } else {
-        const wrap = document.createElement('div');
-        wrap.className = 'fv-unsupported';
-        wrap.innerHTML = `<div class="fv-unsupported-icon">${_pfFileIcon(f.type)}</div>
-            <div class="fv-unsupported-name">${_pfEscHtml(f.name)}</div>
-            <a class="fv-download-link" href="${f.url}" target="_blank" rel="noopener">Ouvrir dans un nouvel onglet</a>`;
-        body.appendChild(wrap);
-    }
-    document.getElementById('file-viewer-scrim').classList.add('show');
-    document.getElementById('file-viewer-modal').classList.add('show');
+// ═══════════════════════════════════════════
+//  CARTE
+// ═══════════════════════════════════════════
+
+// The POIs this character may see. One definition, shared with the GM tab and both
+// overlays — see visiblePois() in aria-supabase.js.
+function _mapVisible() { return visiblePois(mapState, currentCharId); }
+
+// Tokens standing on one POI, as { charId, name, isMe }. Other players' tokens fall out
+// for free: we only render POIs we know, so a player standing somewhere we don't know has
+// nowhere to be drawn.
+function _mapTokensAt(poiId) {
+    const pos = mapState?.positions || {};
+    return Object.keys(pos)
+        .filter(cid => pos[cid] === poiId)
+        .map(cid => ({ charId: cid, name: cid === currentCharId ? 'Vous' : (mapState.players?.[cid] || '?'),
+                       isMe: cid === currentCharId }));
 }
 
-// Close the file viewer modal and clear its body.
-function closeFileViewer() {
-    document.getElementById('file-viewer-scrim').classList.remove('show');
-    document.getElementById('file-viewer-modal').classList.remove('show');
-    document.getElementById('fv-body').innerHTML = '';
+// Ask the GM to move our token onto a POI. No GM in the presence set ⇒ no request:
+// publishing anyway would leave the button stuck on "sent" waiting for an answer
+// nobody received. There is no acceptance message — a `state` with our token on
+// this POI clears mapPendingPoiId (see the `state` subscriber above); only a
+// refusal needs to be told to us.
+function requestMove(poiId) {
+    if (!ablyMap || !gmOnline) return;
+    mapPendingPoiId = poiId;
+    mapDeniedPoiId = null;
+    ablyMap.publish('move-request', { charId: currentCharId, charName: character.name || '', poiId });
+    renderMapTab();
 }
 
-// Wire wheel-zoom (toward cursor), drag-to-pan and double-click reset onto a file-viewer image.
-// The img is recreated on every open (body.innerHTML = ''), so no explicit teardown is needed.
-function wireImageZoom(img) {
-    let scale = 1, tx = 0, ty = 0;
-    const apply = () => { img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`; };
-    img.addEventListener('wheel', e => {
-        e.preventDefault();
-        const ns = Math.min(6, Math.max(1, scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
-        const rect = img.getBoundingClientRect();
-        const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
-        tx -= cx * (ns / scale - 1);
-        ty -= cy * (ns / scale - 1);
-        scale = ns;
-        if (scale === 1) { tx = 0; ty = 0; }
-        apply();
-    }, { passive: false });
-    img.addEventListener('mousedown', e => {
-        if (scale === 1) return;
-        e.preventDefault();
-        const sx = e.clientX - tx, sy = e.clientY - ty;
-        img.classList.add('panning');
-        const move = ev => { tx = ev.clientX - sx; ty = ev.clientY - sy; apply(); };
-        const up = () => { img.classList.remove('panning'); document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
-        document.addEventListener('mousemove', move);
-        document.addEventListener('mouseup', up);
+let _mapNoteTimer = null;
+// Auto-save a map note. localStorage is the runtime truth; character_state is the
+// persistence layer, reached through the same debounced state sync as HP and tabs.
+function saveMapNote(poiId, text) {
+    mapNotes[poiId] = text;
+    localStorage.setItem(charKey('mapNotes'), JSON.stringify(mapNotes));
+    clearTimeout(_mapNoteTimer);
+    _mapNoteTimer = setTimeout(() => debouncedSyncState(), 500);
+}
+
+function renderMapTab() {
+    const stage = document.getElementById('map-stage');
+    const title = document.getElementById('map-title');
+    if (!stage || !title) return;
+    if (!mapState || !mapState.imageUrl) { title.textContent = ''; fill(stage); return; }
+    title.textContent = mapState.name || '';
+
+    const pins = el('div', { className: 'map-pins' });
+    _mapVisible().forEach(p => {
+        pins.append(el('div', {
+            className: 'map-pin discovered' + (p.id === mapSelectedPoiId ? ' selected' : ''),
+            style: { left: p.x + '%', top: p.y + '%' },
+            onclick: () => {
+                mapSelectedPoiId = mapSelectedPoiId === p.id ? null : p.id;
+                renderMapTab();
+                // The card reads, the drawer writes: clicking a pin unfolds the drawer and
+                // puts the caret on that POI's row.
+                const dr = document.getElementById('map-notes-drawer');
+                if (dr && mapSelectedPoiId) { dr.open = true; document.getElementById('map-note-' + p.id)?.focus(); }
+            },
+        },
+            el('span', { className: 'map-pin-dot' }),
+            el('span', { className: 'map-pin-label', textContent: p.name }),
+            el('div', { className: 'map-tokens' },
+                _mapTokensAt(p.id).map(t => el('span', {
+                    className: 'map-token' + (t.isMe ? ' me' : ''), textContent: t.name })))));
     });
-    img.addEventListener('dblclick', e => { e.preventDefault(); scale = 1; tx = 0; ty = 0; apply(); });
+
+    const sel = _mapVisible().find(p => p.id === mapSelectedPoiId) || null;
+    fill(stage, el('div', { className: 'aria-frame', id: 'map-frame' },
+        el('img', { className: 'aria-map', src: mapState.imageUrl, alt: mapState.name || '', draggable: false }),
+        _mapZoneLayer(_mapVisible().filter(p => (p.zone || []).length), fogZones(mapState, currentCharId)),
+        pins,
+        sel && _poiCardPlayer(sel)));
+
+    document.getElementById('map-frame')?.addEventListener('click', e => {
+        if (e.target.closest('.map-pin') || e.target.closest('.map-poi-card')) return;
+        if (mapSelectedPoiId) { mapSelectedPoiId = null; renderMapTab(); }
+    });
+
+    renderMapNotesDrawer();
 }
+
+// The grouping view AND the only writing surface. One row per DISCOVERED POI: it is
+// filtered by _mapVisible(), so if the GM takes a discovery back the note stays stored but
+// leaves the list — otherwise the place's name would leak through its own note.
+function renderMapNotesDrawer() {
+    const list = document.getElementById('map-notes-list');
+    const empty = document.getElementById('map-notes-empty');
+    if (!list) return;
+    const pois = _mapVisible();
+    // The empty-state message lives as a sibling of #map-notes-list, not inside it —
+    // reconcile() only tracks children it created itself (container._ariaKeyed), so a
+    // message appended as a plain child via fill() was invisible to it: never in `seen`,
+    // never removed, and every later row landed after it. Toggling a sibling keeps
+    // reconcile() the sole owner of the list.
+    if (empty) empty.style.display = pois.length ? 'none' : '';
+    // Presence churn (an HP tick, a tab-config change, anyone's saveCurrentCharacter())
+    // republishes the map constantly, and this drawer is the writing surface — it was
+    // chosen for exactly this reason (spec decision 10). reconcile() keeps each row's
+    // node identity, and the activeElement check below leaves an input the player is
+    // typing in alone; without both, a rebuild-by-fill() reset the caret on every tick.
+    reconcile(list, pois.map(p => [p.id, p]),
+        (id, p) => el('div', { className: 'map-note-row' },
+            el('span', { className: 'map-note-name' }),
+            el('input', { className: 'map-note-input', id: 'map-note-' + p.id,
+                placeholder: 'Ma note', oninput: e => saveMapNote(p.id, e.target.value) })),
+        (node, p) => {
+            node.querySelector('.map-note-name').textContent = p.name;
+            const input = node.querySelector('.map-note-input');
+            if (input !== document.activeElement) input.value = mapNotes[p.id] || '';
+        });
+}
+
+// The floating card READS; the drawer writes. A floating card closes on an outside click,
+// and a player is not made to type into a volatile container — see Task 10 for the drawer.
+function _poiCardPlayer(poi) {
+    return el('div', { className: 'map-poi-card' + (poi.x > 55 ? ' left' : ''),
+                       style: { left: poi.x + '%', top: poi.y + '%' } },
+        el('div', { className: 'map-poi-title', textContent: poi.name }),
+        poi.publicDesc && el('div', { className: 'map-poi-desc', textContent: poi.publicDesc }),
+        mapNotes[poi.id] && el('div', { className: 'map-poi-label', textContent: 'Ma note' }),
+        mapNotes[poi.id] && el('div', { className: 'map-poi-mynote', textContent: mapNotes[poi.id] }),
+        el('button', {
+            className: 'map-move-btn' + (mapDeniedPoiId === poi.id ? ' denied' : ''),
+            disabled: !gmOnline || mapPendingPoiId === poi.id || mapState?.positions?.[currentCharId] === poi.id,
+            textContent: !gmOnline                     ? 'MJ absent'
+                       : mapPendingPoiId === poi.id    ? 'Demande envoyée…'
+                       : mapDeniedPoiId  === poi.id    ? 'Refusé'
+                       : 'Demander à s’y rendre',
+            onclick: () => requestMove(poi.id) }));
+}
+
+
+

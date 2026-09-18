@@ -1,39 +1,42 @@
 // ═══════════════════════════════════════════
-//  CARD CONSTANTS
+//  PANEL WIRING
 // ═══════════════════════════════════════════
-const SUITS = [
-    { name: 'spades', sym: '♠', cls: 'c-black', pillCls: '' },
-    { name: 'clubs', sym: '♣', cls: 'c-black', pillCls: '' },
-    { name: 'hearts', sym: '♥', cls: 'c-red', pillCls: 'c-red' },
-    { name: 'diamonds', sym: '♦', cls: 'c-red', pillCls: 'c-red' },
-];
-const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
-const SUIT_FR = { spades: 'Pique', clubs: 'Trèfle', hearts: 'Cœur', diamonds: 'Carreau' };
-const ALL_CARDS = [];
-for (const s of SUITS) for (const r of RANKS) ALL_CARDS.push({ id: `${r}-${s.name}`, rank: r, suit: s });
-ALL_CARDS.push({ id: 'joker-red', isJoker: true, jokerColor: 'red', label: 'Joker Rouge' });
-ALL_CARDS.push({ id: 'joker-black', isJoker: true, jokerColor: 'black', label: 'Joker Noir' });
-// Look up a card in ALL_CARDS by its ID string.
-function cardById(id) { return ALL_CARDS.find(c => c.id === id); }
-// Fisher-Yates shuffle of an array, returning a new array.
-function shuffle(a) { const b = [...a]; for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[b[i], b[j]] = [b[j], b[i]]; } return b; }
-// Build a freshly shuffled deck of all 54 cards.
-function buildDeck() { return shuffle([...ALL_CARDS]); }
+// Everything the two panels share lives in aria-shared.js, loaded before this file.
+// The differences between them are these hooks, not forked copies of the functions.
+ARIA.configure({
+    role:         'gm',
+    tag:          'GM',
+    splitKey:     'aria-gm-split-layout',
+    defaultPane:  'tab-players',
+    joinCode:     () => currentJoinCode || '',
+    syncAll:      () => _syncAllGMData(),
+    clearLocal:   () => _clearLocalGMData(),
+    afterRestore: () => restoreLastCampaign(),
+    onMusicPhase: (phase) => { renderMusicTab(); if (phase === 'faded') _startMusicProgress(); },
+});
 
-// ═══════════════════════════════════════════
-//  STATE
-// ═══════════════════════════════════════════
-let config = JSON.parse(localStorage.getItem('aria-config') || '{}');
-if (config.lightMode) document.body.classList.add('light-mode');
 let ablyInstance = null, ablyRolls = null, ablyCards = null, ablyDamage = null, ablyRollsHidden = null;
-let dddiceSDK = null;            // ThreeDDice SDK instance
-let dddiceAPI = null;            // { theme } once connected
 let pendingGMRoll = null;        // { name, threshold, atk } for GM rolls in progress
-let dddiceResizeHandler = null;  // stored so we can remove it before re-registering
+let gmRollSafetyTimer = null;    // fallback timer in case RollFinished never fires
 
-// Players presence map: charId (stable UUID) -> {playerId,name,charClass,hp,maxHP,stats,ts,...}
+// Players, keyed by charId (stable UUID) -> presence data + { online }.
+//
+// This map is a projection of the `aria-presence` channel's presence set, not a
+// replica maintained by hand. Ably decides who is present: a member enters, updates
+// or leaves and the whole set is re-read. Three things follow, each of which used to
+// be a mechanism here:
+//
+//  · No heartbeat and no offline sweep. `online` is membership in the set.
+//  · No per-character session bookkeeping. One character open in several tabs is
+//    several members sharing a clientId (= charId) and differing by connectionId, so
+//    closing one tab cannot drop the card — the other member is still in the set.
+//  · No teardown-on-unload to interpret. A refresh re-enters under a new connectionId
+//    before Ably reaps the old one (15s), so the set never empties and nothing here
+//    observes a departure that is about to be undone.
+//
+// Entries persisted in aria-gm-known-players-{id} are seeded with online:false so the
+// Joueurs tab still lists the table while nobody is connected.
 const players = new Map();
-const PRESENCE_TIMEOUT = 30000; // 30s offline threshold
 
 // Campaign state — loaded after selection
 let currentCampaignId = null;
@@ -45,16 +48,47 @@ let rollFeed = [];
 let rollFilter   = new Set();
 let playerFilter = new Set();
 let cardHistory = [];
-let sweepIntervalId = null;
-let gmPresenceIntervalId = null;
 let currentVdoRoom = '';
 let currentVdoRoomPassword = '';
-let gmSelfViewStream = null;
+// GM-side camera, the mirror of the player's. The GM decides the room; this decides
+// whether the GM publishes into it — without it the only way to go camera-off was
+// clearing the room, which cuts every player's camera too. Cutting it is deliberately
+// NOT a session-over signal: vdoRoom stays in the member data, so players go on
+// publishing and only the MJ tile disappears.
+//
+// The Web Lock, the URL builders and the cross-tab kill-switch sync all live in
+// makeCamera(); only the preview and topbar work below is GM-specific.
+const cam = makeCamera({
+    tag: '[GM]',
+    sidPrefix: 'aria_gm_',
+    lockPrefix: 'aria-gm-push-',
+    frameId: 'vdo-gm-push-frame',
+    ownerId:  () => currentCampaignId,
+    offKey:   () => campKey('camera'),
+    room:     () => currentVdoRoom,
+    password: () => currentVdoRoomPassword,
+    onChange: () => updateGMPushIframe(),
+    announce: () => publishGMPresence(),
+});
+let ablyPresence = null;   // the aria-presence channel — its presence set IS the roster
 let gmClickHandlerRegistered = false;
 let renderPlayerCardsTimer = null;
 let renderMonstersTimer = null;
 let gmPotions = [];
 let gmFiles = [];
+let gmMaps = [];          // [{ id, name, imageUrl, imagePath, sourceUrl, pois, positions }]
+let activeMapId = null;   // map shown to the table (local: campaign_maps has no flag for it)
+let mapSelectedPoiId = null;   // POI whose floating card is open (GM tab only)
+let mapTableView = false;      // preview what the table sees, through the very same filter
+let moveRequests = [];   // [{ charId, charName, poiId }] — persistent badge, not a toast:
+                         // the GM may be looking elsewhere for ten minutes.
+let zoneEditPoiId = null;   // POI whose zone is being traced
+let zoneDraft = [];         // vertices placed so far, in percentages
+// Serialised { charId: name } snapshot, compared in applyPresenceSet() so the map is
+// republished (and the open POI card, if any, refreshed) only when the roster actually
+// changed — not on every presence event, which during play is constant (an HP tick, a
+// tab-config change, anyone's saveCurrentCharacter()).
+let _lastMapPlayerNames = '';
 // Monster and file grouping (navigation aid). Groups are a campaign-scoped list
 // of { id, name }; membership is a flat { entityId: groupId } map. Both live in a
 // separate localStorage key (NOT in the synced monsters/campaign_files tables), so
@@ -75,99 +109,61 @@ let gmPlaylists = [];          // [{ id, name, tracks: [{id,name,type,url,youtub
 let activePlaylistId = null;   // playlist currently shown/edited in the Musique tab
 let musicPlayingPlaylistId = null; // playlist the now-playing track belongs to
 let ablyMusic = null;
+let ablyMap = null;
 const filesGrantedSessions = new Set();
-let saveKey        = localStorage.getItem('aria-save-key') || null;
-let _pendingNewKey = null;
 
-// ═══════════════════════════════════════════
-//  CLOUD SAVE — RELATIONAL SYNC
-// ═══════════════════════════════════════════
-// Check whether a save key is set (required for all Supabase writes).
-function _supabaseReady() { return !!saveKey; }
-// Return the current UTC time as an ISO 8601 string.
-function _nowISO() { return new Date().toISOString(); }
+// Every row shape below comes from ENT in aria-supabase.js — see the note there.
+// A debounced "sync the whole list" is the same shape for monsters, potions, files
+// and music, so it is written once too.
+function _debouncedListSync(entity, listFn, positioned = false) {
+    let timer = null;
+    return () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+            if (_supabaseReady() && currentCampaignId) sbPutAll(entity, listFn(), currentCampaignId, positioned);
+        }, 800);
+    };
+}
 
 // Upsert campaign metadata (name, join code, VDO room) to Supabase. Returns true if successful.
 async function syncCampaign(camp) {
     if (!_supabaseReady()) return false;
-    return await sbUpsert('campaigns', { id: camp.id, save_key: saveKey, name: camp.name, join_code: camp.joinCode || null, vdo_room: camp.vdoRoom || null, vdo_room_password: camp.vdoRoomPassword || null, aria_type: camp.ariaType || 'ancient', updated_at: _nowISO() });
+    return await sbPut(ENT.campaign, camp, saveKey);
 }
 
-// Upsert a single monster's stats and attacks to Supabase.
-async function syncMonster(m) {
-    if (!_supabaseReady() || !currentCampaignId) return;
-    await sbUpsert('monsters', { id: String(m.id), campaign_id: currentCampaignId, name: m.name, pv: m.pv, max_pv: m.maxPV, armor: m.armor || 0, stats: m.stats || null, attacks: m.attacks || null, updated_at: _nowISO() });
-}
-
-let _monstersTimer = null;
-// Debounced sync of all monsters for the current campaign.
-function debouncedSyncMonsters() {
-    clearTimeout(_monstersTimer);
-    _monstersTimer = setTimeout(() => { if (_supabaseReady() && currentCampaignId) Promise.all(monsters.map(m => syncMonster(m))); }, 800);
-}
+const debouncedSyncMonsters = _debouncedListSync(ENT.monster, () => monsters);
 
 // Insert a new roll entry into the campaign_rolls table.
 async function insertRoll(data) {
     if (!_supabaseReady() || !currentCampaignId) return;
-    await sbInsert('campaign_rolls', { campaign_id: currentCampaignId, skill_name: data.skillName || '', threshold: data.threshold ?? null, roll: data.roll, success: !!data.success, char_name: data.char || data.playerId || '', bonus_malus: data.bonusMalus || 0, created_at: _nowISO() });
+    await sbInsert(ENT.roll.table, toRow(ENT.roll, data, currentCampaignId));
 }
 
 // Insert a new card draw entry into the campaign_card_history table.
 async function insertCardHistory(cardId) {
     if (!_supabaseReady() || !currentCampaignId) return;
-    await sbInsert('campaign_card_history', { campaign_id: currentCampaignId, card_id: cardId, drawn_at: _nowISO() });
+    await sbInsert(ENT.cardDraw.table, toRow(ENT.cardDraw, { cardId }, currentCampaignId));
 }
 
-// Upsert a GM potion recipe to the campaign_potions table.
-async function syncPotion(p) {
-    if (!_supabaseReady() || !currentCampaignId) return;
-    await sbUpsert('campaign_potions', { id: p.id, campaign_id: currentCampaignId, name: p.name, description: p.desc || '', ingredients: p.ingredients || null, success_chance: p.successChance || 0, updated_at: _nowISO() });
-}
+const debouncedSyncPotions = _debouncedListSync(ENT.potion, () => gmPotions);
 
-let _potionsTimer = null;
-// Debounced sync of all GM potion recipes for the current campaign.
-function debouncedSyncPotions() {
-    clearTimeout(_potionsTimer);
-    _potionsTimer = setTimeout(() => { if (_supabaseReady() && currentCampaignId) Promise.all(gmPotions.map(p => syncPotion(p))); }, 800);
-}
+const debouncedSyncFiles = _debouncedListSync(ENT.campaignFile, () => gmFiles);
 
-// Upsert a campaign file record (URL, grants) to Supabase.
-async function syncFile(f) {
-    if (!_supabaseReady() || !currentCampaignId) return;
-    await sbUpsert('campaign_files', { id: f.id, campaign_id: currentCampaignId, name: f.name, type: f.type || '', url: f.url || '', path: f.path || '', granted_to: f.grantedTo || [], updated_at: _nowISO() });
-}
+const debouncedSyncMaps = _debouncedListSync(ENT.map, () => gmMaps, true);
 
-let _filesTimer = null;
-// Debounced sync of all campaign files.
-function debouncedSyncFiles() {
-    clearTimeout(_filesTimer);
-    _filesTimer = setTimeout(() => { if (_supabaseReady() && currentCampaignId) Promise.all(gmFiles.map(f => syncFile(f))); }, 800);
-}
-
-// Upsert a music track record to the campaign_music table.
+// Upsert a music track record. `position` is the track's index in the flattened
+// playlists — campaign_music has no playlist column (see _mergeMusicGrouping).
 async function syncMusicTrack(t) {
     if (!_supabaseReady() || !currentCampaignId) return;
     const pos = _allTracks().findIndex(x => x.id === t.id);
-    await sbUpsert('campaign_music', {
-        id: t.id, campaign_id: currentCampaignId, name: t.name,
-        type: t.type, url: t.url || null, youtube_id: t.youtubeId || null,
-        path: t.path || null, position: pos >= 0 ? pos : 0, updated_at: _nowISO(),
-    });
+    await sbPut(ENT.music, t, currentCampaignId, { position: Math.max(0, pos) });
 }
-
-let _musicSyncTimer = null;
-// Debounced sync of all music tracks for the current campaign.
-function debouncedSyncMusic() {
-    clearTimeout(_musicSyncTimer);
-    _musicSyncTimer = setTimeout(() => {
-        if (_supabaseReady() && currentCampaignId) Promise.all(_allTracks().map(t => syncMusicTrack(t)));
-    }, 800);
-}
+const debouncedSyncMusic = _debouncedListSync(ENT.music, _allTracks, true);
 
 // Delete a music track from the campaign_music table by ID.
 async function deleteMusicTrackFromDB(id) {
     if (!_supabaseReady()) return;
-    await sbDelete('campaign_music', 'id=eq.' + encodeURIComponent(id));
+    await sbDelete(ENT.music.table, 'id=eq.' + encodeURIComponent(id));
 }
 
 // Reconcile flat DB tracks into the existing local playlist grouping for a campaign.
@@ -193,21 +189,21 @@ function _mergeMusicGrouping(lsKey, dbTracks) {
     return playlists;
 }
 
-// Upsert a GM note to the campaign_notes table.
-async function syncGMNote(note) {
+// Upsert a GM note to the campaign_notes table. The notes engine owns the list and
+// passes the note's position in it.
+async function syncGMNote(note, position = 0) {
     if (!_supabaseReady() || !currentCampaignId) return;
-    const pos = gmNotesList.findIndex(n => n.id === note.id);
-    await sbUpsert('campaign_notes', { id: note.id, campaign_id: currentCampaignId, name: note.name || 'Note', content: note.content || '', position: pos >= 0 ? pos : 0, updated_at: _nowISO() });
+    await sbPut(ENT.campaignNote, note, currentCampaignId, { position: Math.max(0, position) });
 }
 
 let _gmNoteTimer = null;
 // Debounced sync of a single GM note.
-function debouncedSyncGMNote(note) { clearTimeout(_gmNoteTimer); _gmNoteTimer = setTimeout(() => syncGMNote(note), 800); }
+function debouncedSyncGMNote(note, position = 0) { clearTimeout(_gmNoteTimer); _gmNoteTimer = setTimeout(() => syncGMNote(note, position), 800); }
 
 // Delete a GM note from Supabase by ID.
 async function deleteGMNoteFromDB(id) {
     if (!_supabaseReady()) return;
-    await sbDelete('campaign_notes', 'id=eq.' + encodeURIComponent(id));
+    await sbDelete(ENT.campaignNote.table, 'id=eq.' + encodeURIComponent(id));
 }
 
 // Upsert a known player record for this campaign to Supabase.
@@ -218,183 +214,122 @@ async function syncKnownPlayer(charId, data) {
         const ok = await syncCampaign(camp);
         if (!ok) return; // campaign FK must exist first; skip to avoid cascade error
     }
-    await sbUpsert('campaign_known_players', { id: charId + ':' + currentCampaignId, campaign_id: currentCampaignId, char_id: charId, data, updated_at: _nowISO() }, 'campaign_id,char_id');
+    await sbPutKnownPlayer(charId, data, currentCampaignId);
 }
 
-// Full sync of ALL GM data across every campaign to Supabase.
+// Read a campaign-scoped JSON key, tolerating absent or corrupt values.
+function _campJSON(which, cid, fallback) {
+    const raw = localStorage.getItem(campKey(which, cid));
+    if (!raw) return fallback;
+    try { return JSON.parse(raw) ?? fallback; } catch (_) { return fallback; }
+}
+
+// Full sync of ALL GM data across every campaign to Supabase. Reads localStorage
+// rather than the in-memory state because it covers every campaign, not just the
+// open one; the row shapes are the same ENT descriptors the per-entity syncs use.
 async function _syncAllGMData() {
     if (!_supabaseReady()) return;
     await sbUpsert('saves', { save_key: saveKey, type: 'gm' });
     const campaigns = getCampaigns();
     await Promise.all(campaigns.map(c => syncCampaign(c)));
-    const now = _nowISO();
-    for (const c of campaigns) {
-        const cid = c.id;
-        const mons = JSON.parse(localStorage.getItem('aria-gm-monsters-' + cid) || '[]');
-        await Promise.all(mons.map(m => sbUpsert('monsters', {
-            id: String(m.id), campaign_id: cid, name: m.name, pv: m.pv, max_pv: m.maxPV,
-            armor: m.armor || 0, stats: m.stats || null, attacks: m.attacks || null, updated_at: now,
-        })));
-        const pots = JSON.parse(localStorage.getItem('aria-gm-potions-' + cid) || '[]');
-        await Promise.all(pots.map(p => sbUpsert('campaign_potions', {
-            id: p.id, campaign_id: cid, name: p.name, description: p.desc || '',
-            ingredients: p.ingredients || null, success_chance: p.successChance || 0, updated_at: now,
-        })));
-        const files = JSON.parse(localStorage.getItem('aria-gm-files-' + cid) || '[]');
-        await Promise.all(files.map(f => sbUpsert('campaign_files', {
-            id: f.id, campaign_id: cid, name: f.name, type: f.type || '',
-            url: f.url || '', path: f.path || '', granted_to: f.grantedTo || [], updated_at: now,
-        })));
-        // Music is stored as playlists locally but synced flat (campaign_music has no
-        // playlist column); flatten across playlists, preserving order.
-        const musicPlaylists = _normalizeMusicData(localStorage.getItem('aria-gm-music-' + cid));
-        const musicTracks = musicPlaylists.flatMap(p => p.tracks);
-        await Promise.all(musicTracks.map((t, i) => sbUpsert('campaign_music', {
-            id: t.id, campaign_id: cid, name: t.name, type: t.type,
-            url: t.url || null, youtube_id: t.youtubeId || null, path: t.path || null,
-            position: i, updated_at: now,
-        })));
-        const rawNotes = localStorage.getItem('aria-gm-notes-' + cid);
-        let notes = [];
-        if (rawNotes) { try { const p = JSON.parse(rawNotes); notes = Array.isArray(p) ? p : []; } catch(e) {} }
-        await Promise.all(notes.map((n, i) => sbUpsert('campaign_notes', {
-            id: n.id, campaign_id: cid, name: n.name || 'Note',
-            content: n.content || '', position: i, updated_at: now,
-        })));
-        const kp = JSON.parse(localStorage.getItem('aria-gm-known-players-' + cid) || '{}');
-        await Promise.all(Object.values(kp).map(p => {
-            if (!p?.charId) return Promise.resolve();
-            return sbUpsert('campaign_known_players', {
-                id: p.charId + ':' + cid, campaign_id: cid, char_id: p.charId,
-                data: p, updated_at: now,
-            }, 'campaign_id,char_id');
-        }));
+    for (const { id: cid } of campaigns) {
+        await sbPutAll(ENT.monster,      _campJSON('monsters', cid, []), cid);
+        await sbPutAll(ENT.potion,       _campJSON('potions',  cid, []), cid);
+        await sbPutAll(ENT.campaignFile, _campJSON('files',    cid, []), cid);
+        await sbPutAll(ENT.map, _campJSON('maps', cid, []), cid, true);
+        // Music is grouped into playlists locally but stored flat — campaign_music
+        // has no playlist column, so position is the index across all playlists.
+        await sbPutAll(ENT.music, _normalizeMusicData(localStorage.getItem(campKey('music', cid))).flatMap(p => p.tracks), cid, true);
+        const notes = _campJSON('notes', cid, []);
+        await sbPutAll(ENT.campaignNote, Array.isArray(notes) ? notes : [], cid, true);
+        const kp = _campJSON('knownPlayers', cid, {});
+        await Promise.all(Object.values(kp).filter(p => p?.charId).map(p => sbPutKnownPlayer(p.charId, p, cid)));
     }
 }
 
 // Load all GM data from Supabase into localStorage for the current save key.
+// The child tables are written unconditionally (even when empty): the campaign row
+// only exists in the DB after a full sync, so an empty result means "deleted on
+// another device" — the old `if (rows.length)` guards let deleted monsters/files/
+// potions survive locally and get re-upserted by the next sync (resurrection bug).
+// Returns true when the load completed (even with no data), false on error —
+// callers must not push local data back up after a failed load.
 async function loadFromSupabase() {
-    if (!_supabaseReady()) return;
+    if (!_supabaseReady()) return false;
     await runMigration(saveKey, 'gm');
     try {
-        const camps = await sbSelect('campaigns', 'save_key=eq.' + encodeURIComponent(saveKey) + '&select=id,name,join_code,vdo_room,vdo_room_password,aria_type');
-        if (!camps.length) return;
-        const campaigns = camps.map(c => ({ id: c.id, name: c.name, joinCode: c.join_code, vdoRoom: c.vdo_room || '', vdoRoomPassword: c.vdo_room_password || '', ariaType: c.aria_type || 'ancient' }));
+        const camps = await sbSelect(ENT.campaign.table, 'save_key=eq.' + encodeURIComponent(saveKey) + '&select=*');
+        if (!camps.length) return true;
+        const campaigns = camps.map(c => fromRow(ENT.campaign, c));
         localStorage.setItem('aria-gm-campaigns', JSON.stringify(campaigns));
-        for (const c of campaigns) {
-            const [mons, pots, files, kp, notes, music] = await Promise.all([
-                sbSelect('monsters', 'campaign_id=eq.' + encodeURIComponent(c.id) + '&select=*'),
-                sbSelect('campaign_potions', 'campaign_id=eq.' + encodeURIComponent(c.id) + '&select=*'),
-                sbSelect('campaign_files', 'campaign_id=eq.' + encodeURIComponent(c.id) + '&select=*'),
-                sbSelect('campaign_known_players', 'campaign_id=eq.' + encodeURIComponent(c.id) + '&select=*'),
-                sbSelect('campaign_notes', 'campaign_id=eq.' + encodeURIComponent(c.id) + '&select=*&order=position.asc'),
-                sbSelect('campaign_music', 'campaign_id=eq.' + encodeURIComponent(c.id) + '&select=*&order=position.asc'),
+        // Campaigns load concurrently, not one after another: a sequential loop cost
+        // one round-trip PER CAMPAIGN before the app was usable. Each iteration writes
+        // only its own campaign-scoped keys, so there is nothing to serialize.
+        // (This used to be load-bearing for the camera teardown too — startup had to
+        // finish inside the players' 12s grace period or a refresh restarted every
+        // camera. Presence removed that constraint; the speed is still worth having.)
+        await Promise.all(campaigns.map(async c => {
+            const scope = 'campaign_id=eq.' + encodeURIComponent(c.id) + '&select=*';
+            const byPos = scope + '&order=position.asc';
+            const [mons, pots, files, kp, notes, music, maps] = await Promise.all([
+                sbSelect(ENT.monster.table, scope),
+                sbSelect(ENT.potion.table, scope),
+                sbSelect(ENT.campaignFile.table, scope),
+                sbSelect(ENT.knownPlayer.table, scope),
+                sbSelect(ENT.campaignNote.table, byPos),
+                sbSelect(ENT.music.table, byPos),
+                sbSelect(ENT.map.table, byPos),
             ]);
-            if (mons.length) localStorage.setItem('aria-gm-monsters-' + c.id, JSON.stringify(mons.map(m => ({ id: m.id, name: m.name, pv: m.pv, maxPV: m.max_pv, armor: m.armor || 0, stats: m.stats || {}, attacks: m.attacks || [] }))));
-            if (pots.length) localStorage.setItem('aria-gm-potions-' + c.id, JSON.stringify(pots.map(p => ({ id: p.id, name: p.name, desc: p.description, ingredients: p.ingredients, successChance: p.success_chance }))));
-            if (files.length) localStorage.setItem('aria-gm-files-' + c.id, JSON.stringify(files.map(f => ({ id: f.id, name: f.name, type: f.type, url: f.url, path: f.path, grantedTo: f.granted_to || [] }))));
-            if (kp.length) {
-                const obj = {};
-                kp.forEach(row => { if (row.char_id) obj[row.char_id] = row.data; });
-                localStorage.setItem('aria-gm-known-players-' + c.id, JSON.stringify(obj));
-            }
-            if (notes.length) localStorage.setItem('aria-gm-notes-' + c.id, JSON.stringify(notes.map(n => ({ id: n.id, name: n.name, content: n.content }))));
-            if (music.length) {
-                const dbTracks = music.map(t => ({ id: t.id, name: t.name, type: t.type, url: t.url, youtubeId: t.youtube_id, path: t.path }));
-                localStorage.setItem('aria-gm-music-' + c.id, JSON.stringify(_mergeMusicGrouping('aria-gm-music-' + c.id, dbTracks)));
-            }
-        }
-    } catch(e) { console.warn('[ARIA] GM load failed:', e); }
+            const store = (which, value) => localStorage.setItem(campKey(which, c.id), JSON.stringify(value));
+            store('monsters', mons.map(m => fromRow(ENT.monster, m)));
+            store('potions',  pots.map(p => fromRow(ENT.potion, p)));
+            store('files',    files.map(f => fromRow(ENT.campaignFile, f)));
+            store('notes',    notes.map(n => fromRow(ENT.campaignNote, n)));
+            const known = {};
+            kp.forEach(row => { if (row.char_id) known[row.char_id] = row.data; });
+            store('knownPlayers', known);
+            store('music', _mergeMusicGrouping(campKey('music', c.id), music.map(t => fromRow(ENT.music, t))));
+            store('maps', maps.map(m => fromRow(ENT.map, m)));
+        }));
+        return true;
+    } catch(e) { console.warn('[ARIA] GM load failed:', e); return false; }
 }
 
-// Show the save-key creation panel with a freshly generated key.
-function showGateway() {
-    _pendingNewKey = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
-    document.getElementById('gateway-key-display').textContent = _pendingNewKey;
-    document.getElementById('gateway-new').style.display = '';
-    document.getElementById('gateway-existing').style.display = 'none';
-    document.getElementById('file-gateway').style.display = 'flex';
+// Every per-campaign localStorage key, named once — the GM-side twin of CHAR_KEYS.
+// campKey(which, id) is the only way to build one and _CAMPAIGN_KEY_PREFIXES, the
+// list every deletion path walks, is derived from the same table. deleteCampaign
+// used to re-type all ten by hand next to a constant that already listed them, and
+// neither copy knew about 'aria-gm-camera-off-', so it leaked on every delete.
+const CAMP_KEYS = {
+    monsters:      'aria-gm-monsters-',
+    rolls:         'aria-gm-rolls-',
+    cardHist:      'aria-gm-card-history-',
+    potions:       'aria-gm-potions-',
+    knownPlayers:  'aria-gm-known-players-',
+    files:         'aria-gm-files-',
+    notes:         'aria-gm-notes-',
+    music:         'aria-gm-music-',
+    monsterGroups: 'aria-gm-monster-groups-',
+    fileGroups:    'aria-gm-file-groups-',
+    maps:          'aria-gm-maps-',
+    activeMap:     'aria-gm-active-map-',
+    camera:        'aria-gm-camera-off-',
+};
+const _CAMPAIGN_KEY_PREFIXES = Object.values(CAMP_KEYS);
+
+// Storage key for one campaign's slice of `which`; defaults to the open campaign.
+function campKey(which, id = currentCampaignId) { return CAMP_KEYS[which] + id; }
+
+// Remove every scoped key belonging to one campaign.
+function _dropCampaignKeys(id) {
+    _CAMPAIGN_KEY_PREFIXES.forEach(p => localStorage.removeItem(p + id));
 }
 
-// Switch the gateway panel to the "enter an existing key" form.
-function showGatewayExisting() {
-    document.getElementById('gateway-new').style.display = 'none';
-    document.getElementById('gateway-existing').style.display = '';
-    const input = document.getElementById('gateway-key-input');
-    if (input) { input.value = ''; input.focus(); }
-}
-
-// Hide the file-gateway panel.
-function hideGateway() {
-    document.getElementById('file-gateway').style.display = 'none';
-}
-
-// Copy the displayed save key to the clipboard.
-function copyGatewayKey() {
-    const key = document.getElementById('gateway-key-display').textContent;
-    navigator.clipboard.writeText(key).catch(() => {});
-    const btn = document.getElementById('gateway-copy-btn');
-    if (btn) { btn.textContent = 'Copié !'; setTimeout(() => { btn.textContent = 'Copier'; }, 2000); }
-}
-
-// Confirm new save key creation: persist it, create the Supabase row, and sync data.
-async function confirmNewKey() {
-    if (!_pendingNewKey) return;
-    saveKey = _pendingNewKey;
-    localStorage.setItem('aria-save-key', saveKey);
-    await sbUpsert('saves', { save_key: saveKey, type: 'gm' });
-    await _syncAllGMData();
-    hideGateway();
-    showSelectionScreen();
-}
-
-// Load data from Supabase using an existing save key entered by the user.
-async function submitExistingKey() {
-    const input = document.getElementById('gateway-key-input');
-    const key = input ? input.value.trim() : '';
-    if (!key) return;
-    saveKey = key;
-    localStorage.setItem('aria-save-key', key);
-    await loadFromSupabase();
-    hideGateway();
-    showSelectionScreen();
-}
-
-// Update the save-key status label on the campaign selection screen.
-function updateSaveKeyStatus() {
-    const label = document.getElementById('sel-save-label');
-    if (!label) return;
-    label.textContent = saveKey ? saveKey.slice(0, 8) + '…' : '—';
-    label.className = 'sel-save-label' + (saveKey ? ' connected' : '');
-}
-
-// Show the existing-key form so the user can switch save keys.
-function changeSaveKey() {
-    showGatewayExisting();
-    document.getElementById('file-gateway').style.display = 'flex';
-}
-
-// Copy the current save key to the clipboard.
-function copySaveKey() {
-    if (!saveKey) return;
-    navigator.clipboard.writeText(saveKey).catch(() => {});
-    const btns = document.querySelectorAll('.sel-save-btn');
-    const copyBtn = [...btns].find(b => b.textContent === 'Copier');
-    if (copyBtn) { copyBtn.textContent = 'Copié !'; setTimeout(() => { copyBtn.textContent = 'Copier'; }, 2000); }
-}
-
-// Cancel key entry: hide the gateway if a key exists, else show the creation panel.
-function cancelGateway() {
-    if (saveKey) { hideGateway(); } else { showGateway(); }
-}
-
-// On load: restore from Supabase if a save key exists, otherwise show the gateway.
-async function tryRestoreSupabase() {
-    if (!saveKey) { showGateway(); return; }
-    await loadFromSupabase();
-    hideGateway();
-    showSelectionScreen();
-    _syncAllGMData();
+// Remove all locally stored campaigns and their scoped keys (used when switching
+// to a different save key, so the old key's data never merges into the new one).
+function _clearLocalGMData() {
+    getCampaigns().forEach(c => _dropCampaignKeys(c.id));
+    localStorage.removeItem('aria-gm-campaigns');
 }
 
 // ═══════════════════════════════════════════
@@ -409,25 +344,32 @@ function generateJoinCode() {
 }
 
 // Return the campaign-scoped localStorage key for monsters.
-function monstersKey()      { return 'aria-gm-monsters-'      + currentCampaignId; }
+function monstersKey()      { return campKey('monsters'); }
 // Return the campaign-scoped localStorage key for rolls.
-function rollsKey()         { return 'aria-gm-rolls-'          + currentCampaignId; }
+function rollsKey()         { return campKey('rolls'); }
 // Return the campaign-scoped localStorage key for card history.
-function cardHistKey()      { return 'aria-gm-card-history-'   + currentCampaignId; }
+function cardHistKey()      { return campKey('cardHist'); }
 // Return the campaign-scoped localStorage key for potion recipes.
-function potionsKey()       { return 'aria-gm-potions-'        + currentCampaignId; }
+function potionsKey()       { return campKey('potions'); }
 // Return the campaign-scoped localStorage key for known players.
-function knownPlayersKey()  { return 'aria-gm-known-players-'  + currentCampaignId; }
+function knownPlayersKey()  { return campKey('knownPlayers'); }
 // Return the campaign-scoped localStorage key for files.
-function filesKey()         { return 'aria-gm-files-'          + currentCampaignId; }
+function filesKey()         { return campKey('files'); }
 // Return the campaign-scoped localStorage key for monster groups.
-function monsterGroupsKey() { return 'aria-gm-monster-groups-' + currentCampaignId; }
+function monsterGroupsKey() { return campKey('monsterGroups'); }
 // Return the campaign-scoped localStorage key for file groups.
-function fileGroupsKey()    { return 'aria-gm-file-groups-'    + currentCampaignId; }
+function fileGroupsKey()    { return campKey('fileGroups'); }
+// Return the campaign-scoped localStorage key for maps.
+function mapsKey()      { return campKey('maps'); }
+// Return the campaign-scoped localStorage key for the active map id.
+function activeMapKey() { return campKey('activeMap'); }
+
+// The map currently shown to the table, or null when the campaign has none.
+function _activeMap() { return gmMaps.find(m => m.id === activeMapId) || null; }
 // Return the campaign-scoped localStorage key for GM notes.
-function gmNotesKey()       { return 'aria-gm-notes-'          + currentCampaignId; }
+function gmNotesKey()       { return campKey('notes'); }
 // Return the campaign-scoped localStorage key for the music playlist.
-function musicKey()         { return 'aria-gm-music-'          + currentCampaignId; }
+function musicKey()         { return campKey('music'); }
 
 // Persist the players Map to localStorage as a plain object.
 function saveKnownPlayers() {
@@ -448,11 +390,11 @@ function migrateGMIfNeeded() {
     const oldRolls    = localStorage.getItem('aria-gm-rolls');
     const oldCards    = localStorage.getItem('aria-gm-card-history');
     if (!oldMonsters && !oldRolls && !oldCards) return;
-    const id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+    const id = uid();
     saveCampaigns([{ id, name: 'Campagne 1', joinCode: generateJoinCode() }]);
-    if (oldMonsters) localStorage.setItem('aria-gm-monsters-' + id, oldMonsters);
-    if (oldRolls)    localStorage.setItem('aria-gm-rolls-' + id, oldRolls);
-    if (oldCards)    localStorage.setItem('aria-gm-card-history-' + id, oldCards);
+    if (oldMonsters) localStorage.setItem(campKey('monsters', id), oldMonsters);
+    if (oldRolls)    localStorage.setItem(campKey('rolls', id), oldRolls);
+    if (oldCards)    localStorage.setItem(campKey('cardHist', id), oldCards);
 }
 
 // Load a campaign by ID into module state, initializing all scoped data.
@@ -466,11 +408,19 @@ function loadCampaignState(id) {
     currentCampaignType = camp.ariaType || 'ancient';
     currentVdoRoom = camp.vdoRoom || '';
     currentVdoRoomPassword = camp.vdoRoomPassword || '';
+    // Read after currentCampaignId is set — the kill-switch key is scoped to it. A
+    // GM who opted out must not be re-broadcast by the next page load.
+    cam.loadOff();
     monsters    = JSON.parse(localStorage.getItem(monstersKey())  || '[]');
     rollFeed    = JSON.parse(localStorage.getItem(rollsKey())     || '[]');
     cardHistory = JSON.parse(localStorage.getItem(cardHistKey()) || '[]');
     gmPotions   = JSON.parse(localStorage.getItem(potionsKey())  || '[]');
     gmFiles     = JSON.parse(localStorage.getItem(filesKey())    || '[]');
+    gmMaps      = JSON.parse(localStorage.getItem(mapsKey()) || '[]');
+    activeMapId = localStorage.getItem(activeMapKey()) || null;
+    // The active map is a local preference (campaign_maps has no flag for it), so a
+    // fresh device falls back to the first map rather than showing nothing.
+    if (!_activeMap()) activeMapId = gmMaps[0] ? gmMaps[0].id : null;
     loadMonsterGroups();
     loadFileGroups();
     gmPlaylists = _normalizeMusicData(localStorage.getItem(musicKey()));
@@ -480,10 +430,16 @@ function loadCampaignState(id) {
     players.clear();
     const knownRaw = JSON.parse(localStorage.getItem(knownPlayersKey()) || '{}');
     Object.entries(knownRaw).forEach(([, p]) => {
-        if (!p.charId) return;
+        // Same id check as handlePresence. This snapshot is written from presence
+        // data, but entries persisted before that validation existed can hold
+        // anything — and they land in the same element ids and inline handlers, so
+        // the guard has to cover this path too, not just the live one.
+        if (!p.charId || !_isIdToken(p.charId)) return;
+        // Seeded offline; whoever is actually connected is marked online by the first
+        // applyPresenceSet, which arrives as soon as the channel attaches.
         players.set(p.charId, { ...p, online: false });
     });
-    console.log('[GM] loadCampaignState:', camp.name, '| joinCode:', currentJoinCode, '| type:', currentCampaignType, '| vdoRoom:', currentVdoRoom || '(none)', '| monsters:', monsters.length, '| knownPlayers:', players.size, '| playlists:', gmPlaylists.length, '| music tracks:', _allTracks().length, '| files:', gmFiles.length);
+    console.log('[GM] loadCampaignState:', camp.name, '| joinCode:', currentJoinCode, '| type:', currentCampaignType, '| vdoRoom:', currentVdoRoom || '(none)', '| monsters:', monsters.length, '| knownPlayers:', players.size, '| playlists:', gmPlaylists.length, '| music tracks:', _allTracks().length, '| files:', gmFiles.length, '| maps:', gmMaps.length);
     return true;
 }
 
@@ -497,14 +453,18 @@ function renderCampaignScreen() {
         return;
     }
     campaigns.forEach(c => {
-        const card = document.createElement('div');
-        card.className = 'sel-card';
-        const typeBadge = c.ariaType === 'contemporary'
-            ? '<span class="sel-card-type contemporary">🕵 Contemporain</span>'
-            : '<span class="sel-card-type">⚔ Médiéval</span>';
-        card.innerHTML = `<button class="sel-card-delete" onclick="event.stopPropagation();deleteCampaign('${c.id}')" title="Supprimer">✕</button><div class="sel-card-row"><div class="sel-card-name">${c.name}</div><div class="sel-card-joincode" onclick="event.stopPropagation();copyJoinCodeFromCard(this,'${c.joinCode||''}')">🔑 ${c.joinCode || '—'}</div></div>${typeBadge}`;
-        card.addEventListener('click', () => selectCampaign(c.id));
-        grid.appendChild(card);
+        const stop = fn => e => { e.stopPropagation(); fn(e); };
+        grid.append(el('div', { className: 'sel-card', onclick: () => selectCampaign(c.id) },
+            el('button', { className: 'sel-card-delete', title: 'Supprimer', textContent: '×',
+                onclick: stop(() => deleteCampaign(c.id)) }),
+            el('div', { className: 'sel-card-head' },
+                el('span', { className: 'sel-card-diamond' }),
+                el('span', { className: 'sel-card-type' + (c.ariaType === 'contemporary' ? ' contemporary' : ''),
+                    textContent: c.ariaType === 'contemporary' ? 'Contemporain' : 'Médiéval' })),
+            el('div', { className: 'sel-card-name', textContent: c.name }),
+            el('div', { className: 'sel-card-joincode', textContent: 'Code · ' + (c.joinCode || '—'),
+                onclick: stop(e => copyJoinCodeFromCard(e.currentTarget, c.joinCode || '')) }),
+            el('div', { className: 'sel-card-cta', textContent: 'Diriger →' })));
     });
 }
 
@@ -515,54 +475,74 @@ function showSelectionScreen() {
     document.getElementById('new-campaign-form').style.display = 'none';
     renderCampaignScreen();
     updateSaveKeyStatus();
+    if (window.ariaDungeonBg) window.ariaDungeonBg.setActive(true);
 }
 
 // Copy a join code to the clipboard from a campaign card element, showing feedback.
-function copyJoinCodeFromCard(el, code) {
+function copyJoinCodeFromCard(node, code) {
     if (!code) return;
     navigator.clipboard.writeText(code).catch(() => {});
-    const orig = el.textContent;
-    el.textContent = '✓ Copié !';
-    setTimeout(() => { el.textContent = orig; }, 1500);
+    const orig = node.textContent;
+    node.textContent = '✓ Copié !';
+    setTimeout(() => { node.textContent = orig; }, 1500);
 }
 
 // Switch the UI to the main GM app view.
 function showApp() {
     document.getElementById('selection-screen').style.display = 'none';
     document.getElementById('app-wrapper').style.display = 'flex';
+    if (window.ariaDungeonBg) window.ariaDungeonBg.setActive(false);
 }
+
+// Remembered across reloads so a refresh comes straight back into the campaign.
+// This is now a convenience, not a correctness requirement: it used to be the only
+// thing that got the GM broadcasting again inside the players' 12s camera grace
+// period, so a refresh that paused on the selection screen restarted every player's
+// camera. Presence has no such window — the reconnected tab is simply a new member.
+// Cleared by an explicit "changer de campagne", which is a deliberate exit.
+const LAST_CAMPAIGN_KEY = 'aria-gm-last-campaign';
 
 // Select a campaign, load its state, and initialize the GM app.
 function selectCampaign(id) {
     if (!loadCampaignState(id)) return;
+    localStorage.setItem(LAST_CAMPAIGN_KEY, id);
     showApp();
     initApp();
+}
+
+// Re-enter the campaign this browser was last in, if it still exists.
+function restoreLastCampaign() {
+    const id = localStorage.getItem(LAST_CAMPAIGN_KEY);
+    if (!id) return false;
+    if (!getCampaigns().some(c => c.id === id)) { localStorage.removeItem(LAST_CAMPAIGN_KEY); return false; }
+    console.log('[GM] restoring last campaign:', id);
+    selectCampaign(id);
+    return true;
 }
 
 // Delete a campaign and all its scoped localStorage data and Supabase rows.
 function deleteCampaign(id) {
     if (!confirm('Supprimer cette campagne ? Tous les monstres et données seront perdus.')) return;
-    sbDelete('campaigns',                'id=eq.'          + encodeURIComponent(id));
-    sbDelete('monsters',                 'campaign_id=eq.' + encodeURIComponent(id));
-    sbDelete('campaign_potions',         'campaign_id=eq.' + encodeURIComponent(id));
-    sbDelete('campaign_files',           'campaign_id=eq.' + encodeURIComponent(id));
-    sbDelete('campaign_music',           'campaign_id=eq.' + encodeURIComponent(id));
-    sbDelete('campaign_notes',           'campaign_id=eq.' + encodeURIComponent(id));
-    sbDelete('campaign_known_players',   'campaign_id=eq.' + encodeURIComponent(id));
-    sbDelete('campaign_rolls',           'campaign_id=eq.' + encodeURIComponent(id));
-    sbDelete('campaign_card_history',    'campaign_id=eq.' + encodeURIComponent(id));
+    if (localStorage.getItem(LAST_CAMPAIGN_KEY) === id) localStorage.removeItem(LAST_CAMPAIGN_KEY);
+    // Delete uploaded objects from Supabase Storage first (the DB rows hold the
+    // only record of their paths — removing rows first would orphan the files).
+    try {
+        const files = JSON.parse(localStorage.getItem(campKey('files', id)) || '[]');
+        files.forEach(f => { if (f.path) deleteFileFromStorage(f.path); });
+        const tracks = _normalizeMusicData(localStorage.getItem(campKey('music', id))).flatMap(p => p.tracks);
+        tracks.forEach(t => { if (t.type === 'file' && t.path) deleteMusicFileFromStorage(t.path); });
+        // Map images go through the same campaign-files bucket (uploadFileToStorage), and
+        // aria-gm-maps-{id} / campaign_maps are their only record of the path — deleteMap()
+        // already does this one map at a time; this is the same cleanup for the whole campaign.
+        const maps = JSON.parse(localStorage.getItem(campKey('maps', id)) || '[]');
+        maps.forEach(m => { if (m.imagePath) deleteFileFromStorage(m.imagePath); });
+    } catch(_) {}
+    // The child tables come from ENT, so adding a campaign-scoped entity cannot
+    // leave rows behind here. This used to be nine hand-written sbDelete calls.
+    sbDeleteCascade(ENT.campaign, 'campaign_id', id);
     const campaigns = getCampaigns().filter(c => c.id !== id);
     saveCampaigns(campaigns);
-    localStorage.removeItem('aria-gm-monsters-' + id);
-    localStorage.removeItem('aria-gm-rolls-' + id);
-    localStorage.removeItem('aria-gm-card-history-' + id);
-    localStorage.removeItem('aria-gm-potions-' + id);
-    localStorage.removeItem('aria-gm-known-players-' + id);
-    localStorage.removeItem('aria-gm-files-' + id);
-    localStorage.removeItem('aria-gm-notes-' + id);
-    localStorage.removeItem('aria-gm-music-' + id);
-    localStorage.removeItem('aria-gm-monster-groups-' + id);
-    localStorage.removeItem('aria-gm-file-groups-' + id);
+    _dropCampaignKeys(id);
     renderCampaignScreen();
 }
 
@@ -577,7 +557,7 @@ function createCampaign() {
 function confirmCreateCampaign() {
     const name = document.getElementById('new-campaign-name').value.trim() || 'Nouvelle campagne';
     const ariaType = document.querySelector('input[name="new-campaign-type"]:checked')?.value || 'ancient';
-    const id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+    const id = uid();
     const campaigns = getCampaigns();
     campaigns.push({ id, name, joinCode: generateJoinCode(), ariaType });
     saveCampaigns(campaigns);
@@ -625,20 +605,43 @@ function switchCampaign() {
     musicCurrentIndex = -1;
     ablyMusic = null;
     filesGrantedSessions.clear();
-    if (sweepIntervalId) { clearInterval(sweepIntervalId); sweepIntervalId = null; }
-    if (gmPresenceIntervalId) { clearInterval(gmPresenceIntervalId); gmPresenceIntervalId = null; }
     currentVdoRoom = '';
     currentVdoRoomPassword = '';
+    cam.releaseLock();     // while currentCampaignId still resolves the lock name
     stopGMSelfView();
     if (renderPlayerCardsTimer) { clearTimeout(renderPlayerCardsTimer); renderPlayerCardsTimer = null; }
     if (renderMonstersTimer) { clearTimeout(renderMonstersTimer); renderMonstersTimer = null; }
     if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch(_){} dddiceSDK = null; }
-    if (ablyInstance) { try { ablyInstance.close(); } catch(_){} ablyInstance = null; }
-    ablyRolls = null; ablyRollsHidden = null; ablyCards = null; ablyDamage = null; ablyMusic = null;
+    clearTimeout(gmRollSafetyTimer);
+    pendingGMRoll = null;
+    // Closing the connection leaves the presence set, which is how players learn the
+    // session is over — no message to publish first, and nothing to await before
+    // closing (a fire-and-forget publish followed by close() would have been dropped).
+    if (ablyInstance) { try { ablyInstance.close(); } catch(_){} }
+    ablyInstance = null;
+    ablyRolls = null; ablyRollsHidden = null; ablyCards = null; ablyDamage = null; ablyMusic = null; ablyMap = null;
+    ablyPresence = null; gmPresenceEntered = false;
+    // moveRequests is in-memory only, never persisted — a stale entry surviving the switch
+    // would carry a charId from the campaign just left, and acceptMove() doesn't re-check
+    // membership before calling mapBringHere(), so accepting it would write a foreign id
+    // into the new campaign's positions.
+    moveRequests = [];
+    mapSelectedPoiId = null;
+    mapTableView = false;
+    _renderMapTabBadge();
     players.clear();
+    // Emptying the Map is not enough — nothing re-renders the grid on this path
+    // (renderTabLayout doesn't touch player cards), so #players-grid kept live
+    // viewer iframes on the previous campaign's players for as long as the user
+    // stayed on the selection screen. With the Map empty this render clears the grid.
+    renderPlayerCards();
     rollFilter.clear(); playerFilter.clear();
+    localStorage.removeItem(LAST_CAMPAIGN_KEY);   // deliberate exit — don't auto-re-enter
     currentCampaignId = null;
     currentCampaignType = 'ancient';
+    gmSpotlightCharId = null;
+    resetSplitState();
+    renderTabLayout();
     showSelectionScreen();
 }
 
@@ -650,36 +653,56 @@ window.addEventListener('DOMContentLoaded', async () => {
     await tryRestoreSupabase();
 });
 
+// No `beforeunload` teardown, deliberately — see the note in aria-player.js. Saying
+// "session over" on unload could not tell a close from a refresh, so players needed a
+// grace period to ignore it and the GM needed auto-re-entry to satisfy that grace
+// period. Ably reaps the dropped connection 15s later; a refresh has re-entered under
+// a new connectionId well before that, so the set never empties and no player reacts.
+// The Web Lock is released by the browser on unload, crash included.
+
 // Initialize the full GM app after a campaign is selected.
 function initApp() {
     console.log('[GM] initApp: campaign:', currentCampaignId, '| joinCode:', currentJoinCode, '| ablyKey:', config.ablyKey ? 'set' : 'MISSING', '| dddice:', config.dddiceKey ? 'set' : 'none');
     renderPlayerCards();
     renderMonsters();
+    renderMapTab();
     renderRollFeed();
     renderCardHistory();
     renderGMPotions();
     renderGmFiles();
     renderMusicTab();
-    loadGMNotes();
+    gmNotes.load();
     initGmDeck();
+    renderTabLayout(); // apply the restored multi-pane layout
     loadConfigInputs();
     if (config.dddiceKey && config.dddiceRoom) initDddice();
-    if (config.ablyKey) initAbly();
-    startGMPresenceBroadcast();
-    updateGMPushIframe();
-    startGMSelfView();
-    if (sweepIntervalId) clearInterval(sweepIntervalId);
-    sweepIntervalId = setInterval(sweepOfflinePlayers, 10000);
+    if (config.ablyKey) initAbly();   // enters presence with the room + spotlight
+    cam.acquireLock();
+    updateGMPushIframe();   // drives the topbar button, the push frame and the preview
+    applyReadTable();
     if (!gmClickHandlerRegistered) {
         document.addEventListener('click', e => { if (!e.target.closest('.gm-select')) closeAllSelects(); });
+        // Suppr removes the last placed vertex while a zone trace is in progress. Registered
+        // here, once, alongside the click handler above — not inside renderMapTab(), which
+        // runs on every map mutation and would stack a new listener each time.
+        document.addEventListener('keydown', e => {
+            if (e.key !== 'Delete' || !zoneEditPoiId) return;
+            zoneDraft.pop();
+            renderMapTab();
+        });
         gmClickHandlerRegistered = true;
     }
     const campaigns = getCampaigns();
     const camp = campaigns.find(c => c.id === currentCampaignId);
-    const el = document.getElementById('campaign-display');
-    if (el && camp) el.value = camp.name;
+    const node = document.getElementById('campaign-display');
+    if (node && camp) node.value = camp.name;
     const jel = document.getElementById('joincode-display');
     if (jel) jel.textContent = currentJoinCode || '';
+    const tbJoin = document.getElementById('tb-joincode');
+    if (tbJoin) {
+        tbJoin.textContent = currentJoinCode || '—';
+        tbJoin.style.display = currentJoinCode ? '' : 'none';
+    }
     updateOverlayEditorBtn();
 }
 
@@ -705,8 +728,10 @@ function publishMonsterStateToOverlay() {
 function copyJoinCode() {
     if (!currentJoinCode) return;
     navigator.clipboard.writeText(currentJoinCode).catch(() => {});
-    const el = document.getElementById('joincode-display');
-    if (el) { const t = el.textContent; el.textContent = '✓ Copié !'; setTimeout(() => { el.textContent = t; }, 1500); }
+    const node = document.getElementById('joincode-display');
+    if (node) { const t = node.textContent; node.textContent = '✓ Copié !'; setTimeout(() => { node.textContent = t; }, 1500); }
+    const tbEl = document.getElementById('tb-joincode');
+    if (tbEl) { const t = tbEl.textContent; tbEl.textContent = '✓ Copié'; setTimeout(() => { tbEl.textContent = t; }, 1500); }
 }
 
 // ═══════════════════════════════════════════
@@ -727,10 +752,10 @@ function toggleSelect(trigger) {
 function getSelectValue(id) { return document.getElementById(id)?.dataset.value ?? ''; }
 // Set the displayed value and label of a custom select element.
 function setSelectValue(id, value, label) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.dataset.value = value;
-    const lbl = el.querySelector('.gm-select-label');
+    const node = document.getElementById(id);
+    if (!node) return;
+    node.dataset.value = value;
+    const lbl = node.querySelector('.gm-select-label');
     if (lbl) lbl.textContent = label;
     closeAllSelects();
 }
@@ -743,27 +768,19 @@ function addSelectOpt(panel, value, label, onClick) {
     panel.appendChild(opt);
 }
 
-// ═══════════════════════════════════════════
-//  TABS
-// ═══════════════════════════════════════════
-// Switch the active GM panel tab and refresh the monster select if on the GM Roll tab.
-function switchTab(id, btn) {
-    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById(id).classList.add('active');
-    btn.classList.add('active');
-    if (id === 'tab-gm-roll') refreshMonsterSelect();
+// Apply the shared layout pass, then the GM-specific pane work.
+function renderTabLayout() {
+    applyTabLayout();
+    if (openPanes.includes('tab-gm-roll')) refreshMonsterSelect();
+    // Both of these hold camera iframes, which survive .tab-content{display:none} with
+    // their WebRTC connections intact. Each function drops its iframes when the
+    // Joueurs pane is closed and rebuilds them when it opens, so this is the one place
+    // that has to run on every layout change.
+    renderPlayerCards();
+    updateGMPushIframe();
+    finishTabLayout();
 }
 
-// ═══════════════════════════════════════════
-//  DDDICE
-// ═══════════════════════════════════════════
-// Extract the dddice room slug from a full URL or return the raw value.
-function extractRoomSlug(val) {
-    if (!val) return '';
-    const m = val.match(/\/room\/([^/?#]+)/);
-    return m ? m[1] : val.trim();
-}
 function copyOverlayUrl() {
     const base = window.location.href.replace(/aria-gm\.html.*$/, 'aria-overlay.html');
     const params = new URLSearchParams({ mode: 'gm', ably: config.ablyKey || '' });
@@ -781,80 +798,56 @@ function copyOverlayUrl() {
     });
 }
 // Initialize the dddice SDK for GM rolls: fetch themes, create renderer, connect to room.
-async function initDddice() {
-    const slug = extractRoomSlug(config.dddiceRoom);
-    if (!config.dddiceKey || !slug) return;
-    try {
-        const { ThreeDDice, ThreeDDiceRollEvent } = await import('https://esm.sh/dddice-js');
-
-        // Fetch themes for the dropdown
-        const h = { 'Authorization': `Bearer ${config.dddiceKey}`, 'Accept': 'application/json' };
-        const boxRes = await fetch('https://dddice.com/api/1.0/dice-box', { headers: h });
-        if (!boxRes.ok) throw new Error(`Dice box HTTP ${boxRes.status}`);
-        const themes = (await boxRes.json()).data || [];
-        if (!themes.length) throw new Error('Aucun thème.');
-
-        const sel = document.getElementById('cfg-dddice-theme');
-        sel.innerHTML = '';
-        themes.forEach(t => { const o = document.createElement('option'); o.value = t.id; o.textContent = t.name ? `${t.name} (${t.id})` : t.id; sel.appendChild(o); });
-        sel.disabled = false;
-        sel.value = config.dddiceTheme && themes.find(t => t.id === config.dddiceTheme) ? config.dddiceTheme : themes[0].id;
-
-        const canvas = document.getElementById('dddice-canvas');
-        dddiceSDK = new ThreeDDice(canvas, config.dddiceKey);
-        dddiceSDK.start();
-        await dddiceSDK.connect(slug);
-
-        // RollFinished fires for both incoming player rolls and GM rolls initiated locally.
-        // Only act on it when a GM roll is pending.
-        dddiceSDK.on(ThreeDDiceRollEvent.RollFinished, (roll) => {
-            setTimeout(() => dddiceSDK?.clear(), 1500);
-            if (!pendingGMRoll) return;
-            const { name, threshold, atk } = pendingGMRoll;
-            pendingGMRoll = null;
-            const total = (roll.total_value ?? 0) === 0 ? 100 : (roll.total_value ?? 0);
-            const success = total <= threshold;
-            const dmgResult = (success && atk?.dmg?.trim()) ? rollDiceFormula(atk.dmg) : null;
-            showGMRollResult(name, threshold, total, success, dmgResult);
-        });
-
-        // Keep WebGL viewport in sync with window size
-        if (dddiceResizeHandler) window.removeEventListener('resize', dddiceResizeHandler);
-        dddiceResizeHandler = () => dddiceSDK?.resize();
-        window.addEventListener('resize', dddiceResizeHandler);
-
-        dddiceAPI = { theme: sel.value };
-        setDddiceStatus(true, themes.find(t => t.id === sel.value)?.name || sel.value);
-        sel.onchange = () => { if (dddiceAPI) dddiceAPI.theme = sel.value; config.dddiceTheme = sel.value; localStorage.setItem('aria-config', JSON.stringify(config)); };
-    } catch (e) { console.error('dddice:', e); setDddiceStatus(false, e.message); dddiceSDK = null; dddiceAPI = null; }
-}
-// Update the dddice status dot and text labels in the topbar and config modal.
-function setDddiceStatus(ok, detail) {
-    ['dddice-dot', 'cfg-dddice-dot'].forEach(id => { const el = document.getElementById(id); if (el) el.className = 'status-dot ' + (ok ? 'connected' : 'error'); });
-    ['dddice-status', 'cfg-dddice-status'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = ok ? `dddice: ${detail || 'connecté'}` : `Erreur: ${detail || 'dddice'}`; });
+// Connect to dddice and resolve finished rolls against the GM's pending roll. The
+// connection itself is initDddiceSDK() in aria-shared.js.
+//
+// RollFinished fires for incoming player rolls as well as the GM's own, so the
+// canvas is always cleared but only a pending GM roll is consumed.
+function initDddice() {
+    return initDddiceSDK(roll => {
+        setTimeout(() => dddiceSDK?.clear(), 1500);
+        if (!pendingGMRoll) return;
+        // Another participant's dice landing mid-animation must not be taken as the
+        // GM's result (only enforced when both UUIDs are known).
+        const finishedUuid = _ddRollUuid(roll);
+        if (pendingGMRoll.uuid && finishedUuid && finishedUuid !== pendingGMRoll.uuid) return;
+        clearTimeout(gmRollSafetyTimer);
+        const { name, threshold, atk } = pendingGMRoll;
+        pendingGMRoll = null;
+        const total = (roll.total_value ?? 0) === 0 ? 100 : (roll.total_value ?? 0);
+        const success = total <= threshold;
+        const dmgResult = (success && atk?.dmg?.trim()) ? rollDiceFormula(atk.dmg) : null;
+        showGMRollResult(name, threshold, total, success, dmgResult);
+    });
 }
 
-// ═══════════════════════════════════════════
-//  ABLY
-// ═══════════════════════════════════════════
-// Suffix a base Ably channel name with the active campaign's join code so each
-// campaign runs on its own isolated channels (rolls/cards/damage/music). Empty join
-// code → global channel (backward compatible). Players and the overlay derive the
-// same suffix from the join code, so all three apps land on the same channel.
-function campaignChannel(base) {
-    const t = (currentJoinCode || '').trim().toUpperCase();
-    return t ? `${base}-${t}` : base;
-}
 // Initialize Ably channels and subscribe to all game events (rolls, cards, presence).
 function initAbly() {
     console.log('[GM] initAbly: connecting with key', config.ablyKey?.slice(0, 8) + '...', '| campaign channel suffix:', currentJoinCode || '(global)');
     try {
-        ablyInstance = new Ably.Realtime({ key: config.ablyKey, transports: ['web_socket'] });
+        // clientId identifies the GM in the presence set. Two GM tabs on one campaign
+        // share it and are told apart by the connectionId Ably assigns each connection.
+        ablyInstance = new Ably.Realtime({ key: config.ablyKey, clientId: 'gm-' + currentCampaignId, transports: ['web_socket'] });
         ablyRolls = ablyInstance.channels.get(campaignChannel('aria-rolls'));
         ablyRollsHidden = ablyInstance.channels.get(campaignChannel('aria-rolls-hidden'));
         ablyCards = ablyInstance.channels.get(campaignChannel('aria-cards'));
         ablyDamage = ablyInstance.channels.get(campaignChannel('aria-damage'));
         ablyMusic = ablyInstance.channels.get(campaignChannel('aria-music'));
+        ablyMap = ablyInstance.channels.get(campaignChannel('aria-map'));
+        // A late joiner — a player connecting an hour in, or an OBS browser source
+        // restarted mid-session — asks, and gets the whole state back.
+        ablyMap.subscribe('request', () => publishMapState());
+        // Incoming move requests are remote-controlled — anyone holding the Ably key can
+        // publish one — so charId is validated the same way handlePresence() validates it.
+        ablyMap.subscribe('move-request', msg => {
+            const d = msg.data || {};
+            if (!_isIdToken(d.charId) || !d.poiId) return;
+            // One pending request per player: asking twice replaces, it doesn't queue.
+            moveRequests = moveRequests.filter(r => r.charId !== d.charId);
+            moveRequests.push({ charId: d.charId, charName: String(d.charName || ''), poiId: d.poiId });
+            renderMapTab();
+            _renderMapTabBadge();
+        });
         ablyInstance.connection.on('connected', () => { console.log('[GM] Ably connected'); setAblyStatus(true); });
         ablyInstance.connection.on('failed',    () => { console.error('[GM] Ably connection FAILED'); setAblyStatus(false); });
         ablyInstance.connection.on('disconnected', () => console.warn('[GM] Ably disconnected'));
@@ -863,95 +856,228 @@ function initAbly() {
         ablyRollsHidden.subscribe('roll', msg => { console.log('[GM] received HIDDEN roll from', msg.data?.char, '| skill:', msg.data?.skillName, '| roll:', msg.data?.roll); handleIncomingRoll(msg.data); });
         ablyCards.subscribe('draw',     msg => { console.log('[GM] received card draw:', msg.data?.cardId, 'by player'); handlePlayerCard(msg.data); });
         ablyCards.subscribe('reshuffle', () => { console.log('[GM] received card reshuffle'); handlePlayerReshuffle(); });
-        ablyDamage.subscribe('presence', msg => { handlePresence(msg.data); });
-        ablyDamage.subscribe('leave', msg => {
-            const sessionId = msg.data?.playerId;
-            if (!sessionId) return;
-            for (const [key, p] of players) {
-                if (p.playerId === sessionId) { console.log('[GM] player LEFT (Ably leave):', p.name, '| charId:', key); players.delete(key); renderPlayerCards(); break; }
-            }
-        });
+        // The roster. Any change to the set is re-read in full rather than patched,
+        // so the Joueurs tab cannot drift from who is actually connected.
+        ablyPresence = ablyInstance.channels.get(campaignChannel('aria-presence'));
+        ablyPresence.presence.subscribe(() => refreshPresenceSet());
+        publishGMPresence();
+        publishMapState();
         console.log('[GM] initAbly: subscribed to all channels');
     } catch (e) { console.error('[GM] initAbly error:', e); setAblyStatus(false); }
 }
 // Update the Ably status dot and text labels in the topbar and config modal.
 function setAblyStatus(ok) {
-    ['ably-dot', 'cfg-ably-dot'].forEach(id => { const el = document.getElementById(id); if (el) el.className = 'status-dot ' + (ok ? 'connected' : 'error'); });
-    ['ably-status', 'cfg-ably-status'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = ok ? 'Ably connecté' : 'Ably erreur'; });
+    ['ably-dot', 'cfg-ably-dot'].forEach(id => { const node = document.getElementById(id); if (node) node.className = 'status-dot ' + (ok ? 'connected' : 'error'); });
+    ['ably-status', 'cfg-ably-status'].forEach(id => { const node = document.getElementById(id); if (node) node.textContent = ok ? 'Ably connecté' : 'Ably erreur'; });
 }
-// Start broadcasting gm-presence (streamId + VDO room) to players every 8s.
-function startGMPresenceBroadcast() {
-    if (gmPresenceIntervalId) { clearInterval(gmPresenceIntervalId); gmPresenceIntervalId = null; }
-    if (!currentVdoRoom || !ablyDamage) { console.log('[GM] startGMPresenceBroadcast: skipped (vdoRoom:', currentVdoRoom || 'empty', '| ablyDamage:', !!ablyDamage, ')'); return; }
-    const gmStreamId = 'aria-gm-' + currentCampaignId.slice(0, 8);
-    const publish = () => { console.log('[GM] broadcasting gm-presence | streamId:', gmStreamId, '| room:', currentVdoRoom); ablyDamage.publish('gm-presence', { streamId: gmStreamId, vdoRoom: currentVdoRoom, vdoRoomPassword: currentVdoRoomPassword }); };
-    publish();
-    gmPresenceIntervalId = setInterval(publish, 8000);
-    console.log('[GM] startGMPresenceBroadcast: broadcasting every 8s | streamId:', gmStreamId);
+// ── Presence: publish ─────────────────────────────────────────────────────────
+// What the GM tells the table: the VDO room, the MJ stream, and the spotlight.
+// Published as presence member data, so it is part of the roster rather than a
+// broadcast that has to be repeated on a timer for late joiners — `presence.get()`
+// hands a player who connects an hour from now exactly the same thing.
+//
+// There is no "session over" message to publish, and so none to be misread as one:
+// leaving the presence set IS the signal, and Ably emits it when the connection
+// goes. That also removes the second-GM-tab hazard the old flag guarded against —
+// a tab that has entered cannot make the set look empty while its sibling is in it.
+let gmPresenceEntered = false;
+function gmPresenceData() {
+    return {
+        role: 'gm',
+        streamId: cam.advertisedId(),
+        vdoRoom: currentVdoRoom,
+        vdoRoomPassword: currentVdoRoomPassword,
+        spotlightCharId: gmSpotlightCharId,
+        ts: Date.now(),
+    };
 }
-// Set the GM VDO.ninja push iframe src so the GM camera streams to the room.
+// Announce, or republish after a change to the room / kill switch / spotlight.
+function publishGMPresence() {
+    if (!ablyPresence) return;
+    const d = gmPresenceData();
+    if (gmPresenceEntered) {
+        ablyPresence.presence.update(d).catch(err => console.error('[GM] presence update:', err));
+    } else {
+        ablyPresence.presence.enter(d).then(
+            () => { gmPresenceEntered = true; console.log('[GM] entered presence | room:', currentVdoRoom || '(none)', '| streamId:', d.streamId || '(none)'); },
+            err => console.error('[GM] presence enter:', err));
+    }
+}
+
+function applyPresenceSet(members) {
+    // Collapse members to participants: several tabs of one character share a
+    // clientId and differ by connectionId, as does the ghost of a tab that refreshed
+    // until Ably reaps it. Newest ts wins, which is always a live tab.
+    const byId = new Map();
+    (members || []).forEach(m => {
+        const d = m.data || {};
+        if (!m.clientId || d.role !== 'player') return;
+        const prev = byId.get(m.clientId);
+        if (!prev || (d.ts || 0) >= (prev.ts || 0)) byId.set(m.clientId, d);
+    });
+    // Everyone currently in the set is online; everyone we knew who is not, is not.
+    // No sweep, no PRESENCE_TIMEOUT, no last-seen arithmetic. Entries are marked
+    // offline rather than deleted: `players` doubles as the known-players snapshot
+    // that lists the table when nobody is connected.
+    players.forEach(p => { p.online = false; });
+    byId.forEach((data, charId) => { handlePresence(charId, data); });
+    // Bootstrap sessions that have just appeared, and forget the ones that went, so a
+    // player who reconnects is bootstrapped again. Keyed by connectionId — the real
+    // per-tab identity, which (unlike the old sessionStorage id) cannot survive a
+    // reload and leave a refreshed tab looking already-served.
+    const liveConns = new Set((members || []).map(m => m.connectionId).filter(Boolean));
+    [...filesGrantedSessions].forEach(c => { if (!liveConns.has(c)) filesGrantedSessions.delete(c); });
+    let anyNewSession = false;
+    (members || []).forEach(m => {
+        const d = m.data || {};
+        if (!m.connectionId || d.role !== 'player') return;
+        // `online` is the proof handlePresence ACCEPTED this member — `players` can
+        // also hold offline entries restored from the known-players snapshot, and
+        // bootstrapping off those would send this campaign's files to a member whose
+        // campaignKey or ariaType we just rejected.
+        const p = players.get(m.clientId);
+        if (!p || p.online !== true) return;
+        if (filesGrantedSessions.has(m.connectionId)) return;
+        filesGrantedSessions.add(m.connectionId);
+        sendFileGrantsToPlayer(p);
+        anyNewSession = true;
+    });
+    // Once per apply, not once per new member: publishMusicPlay is a broadcast to the
+    // whole table, so a loop would re-send it to everyone for each arrival.
+    if (anyNewSession && musicIsPlaying && _currentTrack()) publishMusicPlay(_currentTrack());
+    // Drop the spotlight when the player carrying it leaves the set — it is otherwise
+    // only cleared by clicking ☀ again, so it stayed armed on a departed player,
+    // invisible (the card carrying the ☀ state is gone) and silently re-applied if
+    // they came back. Ably has already waited out a reconnect before reporting the
+    // departure, so this no longer fires on a refresh or a closed second tab.
+    if (gmSpotlightCharId && !byId.has(gmSpotlightCharId)) {
+        console.log('[GM] spotlighted player left — clearing spotlight');
+        gmSpotlightCharId = null;
+        publishGMPresence();
+    }
+    saveKnownPlayers();
+    // Who the table thinks is publishing. A player with no streamId here is either
+    // camera-off, on file://, or has not received our room yet — the GM card for them
+    // will show the hatched placeholder, not a black rectangle.
+    console.log('[GM] presence applied |', members?.length ?? 0, 'members →', byId.size, 'players |',
+        'room:', currentVdoRoom || '(NONE — nobody can publish; set it in ⚙)',
+        '| online publishers:', [...players].filter(([, p]) => p.online && p.streamId).map(([id, p]) => `${p.name}=${p.streamId}`).join(', ') || '(none)',
+        '| online without a stream:', [...players].filter(([, p]) => p.online && !p.streamId).map(([, p]) => p.name).join(', ') || '(none)');
+    clearTimeout(renderPlayerCardsTimer);
+    renderPlayerCardsTimer = setTimeout(renderPlayerCards, 150);
+    // state.players carries display names from presence — republish so a player who
+    // connects after the map was last saved still gets their name on the token. But only
+    // when that projection actually changed: applyPresenceSet() runs on every presence
+    // event, and gating on the real signal (not "an event happened") is what keeps a
+    // player's map-notes drawer input and the GM's own open POI card (below) from losing
+    // their caret to someone else's HP tick.
+    const names = {};
+    players.forEach((p, charId) => { names[charId] = p.name || ''; });
+    const namesSig = JSON.stringify(names);
+    if (namesSig !== _lastMapPlayerNames) {
+        _lastMapPlayerNames = namesSig;
+        publishMapState();
+        // The open card's "Découvert par" / "Amener ici" lists are built from `players`
+        // too (_poiCard) — refresh on the same signal so a player who connects after the
+        // card was opened gets a button without waiting on the next map edit. An
+        // unconditional renderMapTab() here would cost the GM their caret exactly the way
+        // the unguarded publish cost the player theirs.
+        if (mapSelectedPoiId) renderMapTab();
+    }
+}
+
+// One command that prints the whole GM-side camera path: our own publishing state,
+// the room we are advertising, and every player card's camera decision with its URL.
+// Type ariaCamDiag() in the console.
+window.ariaCamDiag = function () {
+    ariaCamLog(true);   // the pushStats reply below arrives async, on camLog
+    console.log('[GM] ── camera diagnostic ─────────────────────────────');
+    console.log('[GM] me:', cam.diag());
+    console.log('[GM] session: room=', currentVdoRoom || '(NONE)', '| password=', currentVdoRoomPassword ? '(set)' : '(none)',
+        '| joinCode=', currentJoinCode || '(none)', '| ably=', ablyPresence ? 'connected' : 'NOT CONNECTED',
+        '| spotlight=', gmSpotlightCharId || '(none)', '| Joueurs pane open=', openPanes.includes('tab-players'));
+    console.log('[GM] player cards:', [...players].map(([id, p]) => {
+        const s = _playerCardState(p, id);
+        return { name: p.name, online: s.online, streamId: p.streamId || '(none)',
+                 tile: s.camSrc ? s.camSrc.replace(/([?&]password=)[^&]*/, '$1***')
+                     : !p.streamId ? '(placeholder — player advertises no stream)'
+                     : !s.online ? '(placeholder — player offline)' : '(placeholder — no room set)' };
+    }));
+    cam.pushStats();
+    return 'see console — cam.pushStats() reply arrives in a moment';
+};
+// ═══════════════════════════════════════════
+//  PRESENCE — "Lire la table" + Spotlight (design frame 26)
+// ═══════════════════════════════════════════
+let readTable = localStorage.getItem('aria-gm-read-table') === '1';
+let gmSpotlightCharId = null;
+
+// Toggle bigger player faces on the Joueurs cards (frame 26: "lire la table").
+function toggleReadTable() {
+    readTable = !readTable;
+    localStorage.setItem('aria-gm-read-table', readTable ? '1' : '0');
+    applyReadTable();
+}
+function applyReadTable() {
+    document.getElementById('players-grid')?.classList.toggle('read-table', readTable);
+    document.getElementById('tb-read-table')?.classList.toggle('on', readTable);
+}
+// Spotlight a player: their camera goes big on every player's Tablée/Bandeau view.
+// Clicking the same player again clears the spotlight.
+function toggleSpotlight(charId) {
+    gmSpotlightCharId = gmSpotlightCharId === charId ? null : charId;
+    publishGMPresence();   // the spotlight lives in our presence data
+    renderPlayerCards();
+}
+
+// The GM's camera UI: the topbar kill switch, the hidden push frame (both owned by
+// cam), and the "Votre caméra" preview in the Joueurs tab, which is ours.
+//
+// The push frame is deliberately NOT the preview: it used to be the visible iframe
+// inside #tab-players, and .tab-content goes display:none on every tab switch, which
+// can block camera capture. The preview is a muted viewer of our own stream instead.
 function updateGMPushIframe() {
+    cam.renderToggle('tb-cam-toggle');
+    cam.syncPushFrame();
+    // Before the early return below: the picker exists to fix a wrong camera, which
+    // is exactly the case where the preview is black or hidden. It hides itself when
+    // no room is set.
+    cam.renderDevicePick('gm-cam-device-pick');
     const wrap = document.getElementById('gm-self-view-wrap');
     const section = document.getElementById('gm-self-view-section');
     if (!wrap || !section) return;
-    if (!currentVdoRoom || !currentCampaignId) {
-        console.log('[GM] updateGMPushIframe: no vdoRoom, clearing push iframe');
-        const existing = wrap.querySelector('iframe');
-        if (existing) existing.src = '';
+    // Only worth showing while some tab is publishing — the same rule as the
+    // advertised ID, and cam.live() is that rule. Safe to hide with the tab, but not
+    // safe to *leave loaded* behind a display:none pane, which keeps its WebRTC
+    // connection up. Dropped with the pane; renderTabLayout() rebuilds it on reopen.
+    if (!cam.live() || !openPanes.includes('tab-players')) {
+        camLog('[GM] "Votre caméra" preview hidden —',
+            !cam.live() ? (cam.off ? 'camera cut locally' : !currentVdoRoom ? 'no vdoRoom set' : 'not live') : 'Joueurs pane is closed');
+        if (wrap.innerHTML) wrap.innerHTML = '';
+        section.style.display = 'none';   // nothing published ⇒ no empty preview box
         return;
     }
-    const gmStreamId = 'aria-gm-' + currentCampaignId.slice(0, 8);
-    let src = `https://vdo.ninja/?push=${gmStreamId}&room=${encodeURIComponent(currentVdoRoom)}&autostart&webcam&noaudio&cleanoutput`;
-    if (currentVdoRoomPassword) src += `&password=${encodeURIComponent(currentVdoRoomPassword)}`;
-    console.log('[GM] updateGMPushIframe:', src);
+    const viewSrc = cam.viewSrc(cam.streamId(), true);
     let iframe = wrap.querySelector('iframe');
     if (!iframe) {
-        iframe = document.createElement('iframe');
-        iframe.allow = 'camera; microphone; autoplay; fullscreen; display-capture; picture-in-picture; screen-wake-lock; encrypted-media';
-        iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;';
+        iframe = el('iframe', { allow: 'autoplay; fullscreen',   // viewer-only
+            style: { width: '100%', height: '100%', border: 'none', display: 'block' } });
         wrap.appendChild(iframe);
     }
-    if (iframe.src !== src) iframe.src = src;
+    setFrameSrc(iframe, viewSrc);
     section.style.display = '';
 }
-// Show GM self-view: visible push iframe if a VDO room is configured, else native camera.
-function startGMSelfView() {
-    const section = document.getElementById('gm-self-view-section');
-    const wrap = document.getElementById('gm-self-view-wrap');
-    if (!section || !wrap) return;
-    if (currentVdoRoom && currentCampaignId) {
-        updateGMPushIframe();
-        return;
-    }
-    if (gmSelfViewStream) return;
-    if (!navigator.mediaDevices?.getUserMedia) return;
-    navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-        .then(stream => {
-            gmSelfViewStream = stream;
-            const w = document.getElementById('gm-self-view-wrap');
-            const s = document.getElementById('gm-self-view-section');
-            if (!w || !s) return;
-            w.innerHTML = '';
-            const vid = document.createElement('video');
-            vid.autoplay = true; vid.muted = true; vid.playsInline = true;
-            vid.srcObject = stream;
-            vid.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
-            w.appendChild(vid);
-            s.style.display = '';
-        })
-        .catch(() => {});
-}
-// Stop the GM self-view stream and hide its container.
+// Tear down the GM camera: stops publishing and drops the preview. There is
+// deliberately no native getUserMedia path anywhere — without a room nothing is
+// streamed, so grabbing the webcam would light the camera LED for nothing.
 function stopGMSelfView() {
-    if (gmSelfViewStream) {
-        gmSelfViewStream.getTracks().forEach(t => t.stop());
-        gmSelfViewStream = null;
-    }
+    cam.blankPushFrame();
     const section = document.getElementById('gm-self-view-section');
     if (section) section.style.display = 'none';
     const wrap = document.getElementById('gm-self-view-wrap');
     if (wrap) wrap.innerHTML = '';
 }
+
 // Publish a damage event to a specific player via the aria-damage channel.
 function publishDamage(targetId, damage, hpBefore, hpAfter, maxHP, charName) {
     if (!ablyDamage) { console.warn('[GM] publishDamage: ablyDamage not ready'); return; }
@@ -993,209 +1119,194 @@ function publishMusicResume() {
 // ═══════════════════════════════════════════
 //  PLAYER PRESENCE
 // ═══════════════════════════════════════════
-// Process a player presence heartbeat: update the players Map and trigger card/music/file grants.
-function handlePresence(data) {
-    if (!data?.playerId || !data?.charId) { console.warn('[GM] handlePresence: missing playerId or charId', data); return; }
+// Project one presence member onto the players Map. The set decides who is here;
+// this only validates and shapes what they published about themselves.
+function handlePresence(charId, data) {
+    if (!charId || !_isIdToken(charId)) { console.warn('[GM] handlePresence: malformed charId', charId); return; }
     if (currentJoinCode && (data.campaignKey || '') !== currentJoinCode) { console.log('[GM] handlePresence: IGNORED (campaignKey mismatch:', data.campaignKey, 'vs', currentJoinCode, ') from', data.name); return; }
     if (currentCampaignType && (data.ariaType || 'ancient') !== currentCampaignType) { console.log('[GM] handlePresence: IGNORED (ariaType mismatch:', data.ariaType, 'vs', currentCampaignType, ') from', data.name); return; }
-    const isNew = !players.has(data.charId);
-    console.log('[GM] handlePresence:', isNew ? 'NEW' : 'update', '| player:', data.name, '| charId:', data.charId, '| hp:', data.hp, '/', data.maxHP, '| streamId:', data.streamId || 'none');
-    const playerData = { ...data, ts: Date.now(), online: true };
-    players.set(data.charId, playerData);
-    saveKnownPlayers();
-    syncKnownPlayer(data.charId, playerData);
-    clearTimeout(renderPlayerCardsTimer);
-    renderPlayerCardsTimer = setTimeout(renderPlayerCards, 150);
-    // Auto-send file grants, music state, and gm-presence to newly connected sessions
-    if (!filesGrantedSessions.has(data.playerId)) {
-        filesGrantedSessions.add(data.playerId);
-        sendFileGrantsToPlayer(data);
-        if (musicIsPlaying && _currentTrack()) {
-            publishMusicPlay(_currentTrack());
-        }
-        if (currentVdoRoom && ablyDamage) {
-            const gmStreamId = 'aria-gm-' + currentCampaignId.slice(0, 8);
-            console.log('[GM] new session detected — sending immediate gm-presence to', data.name);
-            ablyDamage.publish('gm-presence', { streamId: gmStreamId, vdoRoom: currentVdoRoom, vdoRoomPassword: currentVdoRoomPassword });
-        }
-    }
-}
-// Mark players as offline or remove them if they haven't sent a heartbeat recently.
-function sweepOfflinePlayers() {
-    const now = Date.now();
-    let changed = false;
-    players.forEach((p, id) => {
-        const age = now - (p.ts || 0);
-        if (age > PRESENCE_TIMEOUT * 4) {
-            console.log('[GM] sweep: REMOVED player', p.name, '(silent for', Math.round(age/1000), 's)');
-            players.delete(id);
-            changed = true;
-            return;
-        }
-        const wasOnline = p.online !== false;
-        const isOnline = age < PRESENCE_TIMEOUT;
-        if (wasOnline !== isOnline) {
-            console.log('[GM] sweep:', p.name, isOnline ? '→ ONLINE' : '→ OFFLINE', '(last seen', Math.round(age/1000), 's ago)');
-            p.online = isOnline; changed = true;
-        }
-        else if (p.online === undefined) { p.online = isOnline; changed = true; }
-    });
-    if (changed) { saveKnownPlayers(); renderPlayerCards(); }
+    // Presence data is still remote-controlled — anyone holding the Ably key can enter
+    // the set — so the coercion that keeps crafted values out of innerHTML stays.
+    const playerData = {
+        ...data,
+        charId,
+        hp:    _finiteNum(data.hp),
+        maxHP: _finiteNum(data.maxHP),
+        vials: _finiteNum(data.vials) ?? 0,
+        ts: Date.now(), online: true,
+    };
+    // Seed the karma map from the player's stored value on first sight (a GM page
+    // reload wipes the in-memory map; without this, the next ± click would send
+    // karma-set with ±1 and clobber the player's real karma). After seeding, the
+    // GM's local value stays authoritative — the GM is the only karma writer.
+    if (!(charId in gmKarma)) gmKarma[charId] = _finiteNum(data.karma) ?? 0;
+    players.set(charId, playerData);
+    syncKnownPlayer(charId, playerData);
 }
 // Render/update all player cards with in-place DOM updates to preserve camera iframes.
+// Cosmetic combat-feedback FX on a player/monster card (flash + shake + number pop).
+// HP numbers are updated synchronously by the render; this only adds the transient
+// visual layer, then removes it so a re-render can't leave it stuck.
+function triggerCardFx(node, type) {
+    if (!node) return;
+    node.classList.remove('fx-dmg', 'fx-crit', 'fx-heal');
+    void node.offsetWidth; // restart the animation
+    node.classList.add('fx-' + type);
+    setTimeout(() => node.classList.remove('fx-' + type), 650);
+}
+// Card lookups go through the reconciler's key map rather than a CSS selector, so
+// an id containing a quote is a miss instead of a thrown exception.
+function playerCardEl(id) { return keyedNode(document.getElementById('players-grid'), id); }
+function monsterCardEl(id) { return keyedNode(document.getElementById('monsters-grid'), String(id)); }
+
+// Derived display state for one player card, from the presence entry.
+// Coerced here because a known-players snapshot persisted before the presence
+// validation existed can still hold arbitrary values.
+function _playerCardState(p, charId) {
+    const online = p.online !== false;
+    const hp = _finiteNum(p.hp) ?? _finiteNum(p.maxHP) ?? '?';
+    const maxHP = _finiteNum(p.maxHP) ?? '?';
+    const pct = maxHP > 0 ? hp / maxHP : 0;
+    const dead = typeof hp === 'number' && hp <= 0;
+    return {
+        online, hp, maxHP, pct,
+        hpColor: pct > 0.5 ? 'var(--ok)' : pct > 0.25 ? 'var(--warn)' : 'var(--bad)',
+        hpClass: pct <= 0.25 ? 'critical' : pct <= 0.5 ? 'low' : '',
+        stateCls: dead ? ' is-dead' : (!dead && pct >= 0 && pct <= 0.25 ? ' hp-critical' : ''),
+        stats: p.stats || {},
+        karma: gmKarma[charId] ?? 0,
+        // A viewer URL without &room cannot decrypt a stream pushed into a
+        // password-protected room, and the known-players snapshot keeps the last
+        // streamId of players who have gone — so both gates, or the card shows a
+        // guaranteed-black rectangle.
+        camSrc: (p.streamId && online && currentVdoRoom) ? cam.viewSrc(p.streamId, false) : '',
+    };
+}
+
+// Render/update all player cards.
+//
+// One description of the card, not two. The previous version built it as a template
+// string on first sight and then maintained a second, parallel branch that reached
+// back in with querySelector to update each field — because innerHTML on the
+// container would have detached the camera iframes and killed their WebRTC
+// connections. reconcile() keeps the node identity instead, so `create` runs once and
+// `update` runs every pass over the same element, and the iframe is only ever
+// re-src'd when its URL actually changes.
 function renderPlayerCards() {
     const grid = document.getElementById('players-grid');
     const noP = document.getElementById('no-players');
-    if (players.size === 0) {
-        noP.style.display = '';
-        grid.innerHTML = '';
+    if (!grid || !noP) return;
+    // Joueurs pane closed. .tab-content{display:none} hides the camera iframes but
+    // leaves their WebRTC connections up, so every player's stream would keep being
+    // decoded for a tab nobody is looking at. Drop them; renderTabLayout() rebuilds
+    // the grid on reopen. (The player app does the same in renderPresenceUI.)
+    if (!openPanes.includes('tab-players') || players.size === 0) {
+        noP.style.display = players.size === 0 ? '' : 'none';
+        clearKeyed(grid);
         return;
     }
     noP.style.display = 'none';
     const focusedId = document.activeElement?.id;
-    // Remove cards for players no longer in the Map
-    [...grid.querySelectorAll('[data-char-id]')].forEach(el => {
-        if (!players.has(el.dataset.charId)) el.remove();
-    });
-    players.forEach((p, playerId) => {
-        const isOnline = p.online !== false && Date.now() - p.ts < PRESENCE_TIMEOUT;
-        const hp = p.hp ?? p.maxHP ?? '?', maxHP = p.maxHP ?? '?';
-        const pct = maxHP > 0 ? hp / maxHP : 0;
-        const hpColor = pct > 0.5 ? 'var(--success)' : pct > 0.25 ? '#e8a020' : 'var(--fail)';
-        const hpClass = pct <= 0.25 ? 'critical' : pct <= 0.5 ? 'low' : '';
-        const stats = p.stats || {};
-        const k = gmKarma[playerId] ?? 0;
-        let card = grid.querySelector(`[data-char-id="${playerId}"]`);
-        if (!card) {
-            // First render: build full card structure
-            card = document.createElement('div');
-            card.dataset.charId = playerId;
-            card.className = `player-card ${isOnline ? 'online' : 'offline'}`;
-            card.innerHTML = `
-              <div class="pc-header">
-                <div class="pc-online-dot ${isOnline ? 'online' : ''}"></div>
-                <div style="flex:1;min-width:0;">
-                  <div class="pc-name">${_escHtml(p.name || playerId)}</div>
-                  <div class="pc-class">${_escHtml(p.charClass || '')}</div>
-                </div>
-                <button class="pc-btn details" onclick="openPlayerDetails('${playerId}')" title="Voir la fiche">📋</button>
-              </div>
-              <div class="pc-body">
-                <div class="pc-hp-row">
-                  <div>
-                    <div class="pc-hp-num ${hpClass}">${hp}</div>
-                    <div style="font-family:'Cinzel',serif;font-size:9px;color:var(--parchment-dim);">/ ${maxHP} PV</div>
-                  </div>
-                  <div class="pc-hp-bar-wrap"><div class="pc-hp-bar" style="width:${Math.round(pct * 100)}%;background:${hpColor};"></div></div>
-                </div>
-                ${p.protection ? `<div class="pc-prot" title="Protection">🛡 <span style="color:var(--parchment-dim)">${_escHtml(p.protection.nom || '')}</span>${p.protection.valeur ? ` <span style="color:var(--gold);font-weight:600;">${_escHtml(p.protection.valeur)}</span>` : ''}</div>` : ''}
-                <div class="pc-stats">
-                  ${Object.entries(stats).filter(([k]) => k !== 'PV').map(([k, v]) => `<span class="pc-stat">${_escHtml(k)} <span>${_escHtml(v)}</span></span>`).join('')}
-                </div>
-                <div class="pc-actions">
-                  <input class="pc-dmg-input" id="dmg-${playerId}" type="text" inputmode="numeric"
-                    placeholder="Dégâts" oninput="this.value=this.value.replace(/[^0-9]/g,'')"
-                    onkeydown="if(event.key==='Enter')applyPlayerDamage('${playerId}')" />
-                  <button class="pc-btn dmg" onclick="applyPlayerDamage('${playerId}')">⚔</button>
-                  <input class="pc-heal-input" id="heal-${playerId}" type="text" inputmode="numeric"
-                    placeholder="Soins" oninput="this.value=this.value.replace(/[^0-9]/g,'')"
-                    onkeydown="if(event.key==='Enter')applyPlayerHeal('${playerId}')" />
-                  <button class="pc-btn heal" onclick="applyPlayerHeal('${playerId}')">♥</button>
-                </div>
-                <div class="pc-karma-row">
-                  <span class="pc-karma-label">Karma</span>
-                  <button class="pc-karma-btn minus" onclick="setPlayerKarma('${playerId}',-1)">−</button>
-                  <span class="pc-karma-val ${k>0?'positive':k<0?'negative':''}">${k>0?'+':''}${k}</span>
-                  <button class="pc-karma-btn plus" onclick="setPlayerKarma('${playerId}',1)">+</button>
-                </div>
-              </div>`;
-            grid.appendChild(card);
-            // Camera iframe for new card (wrapped for resize)
-            if (p.streamId) {
-                const wrap = document.createElement('div');
-                wrap.className = 'pc-camera-wrap';
-                const iframe = document.createElement('iframe');
-                let newCardSrc = `https://vdo.ninja/?view=${encodeURIComponent(p.streamId)}&room=${encodeURIComponent(currentVdoRoom)}&autoplay&cleanoutput`;
-                if (currentVdoRoomPassword) newCardSrc += `&password=${encodeURIComponent(currentVdoRoomPassword)}`;
-                iframe.src = newCardSrc;
-                iframe.allow = 'autoplay; fullscreen; display-capture; picture-in-picture; screen-wake-lock';
-                iframe.allowFullscreen = true;
-                iframe.className = 'pc-camera-frame';
-                wrap.appendChild(iframe);
-                const pcBody = card.querySelector('.pc-body');
-                pcBody.insertBefore(wrap, pcBody.firstElementChild);
-            }
-        } else {
-            // In-place update: only touch what changed, never rebuild the whole card
-            card.className = `player-card ${isOnline ? 'online' : 'offline'}`;
-            const dot = card.querySelector('.pc-online-dot');
-            if (dot) dot.className = `pc-online-dot${isOnline ? ' online' : ''}`;
-            const nameEl = card.querySelector('.pc-name');
-            if (nameEl) nameEl.textContent = p.name || playerId;
-            const classEl = card.querySelector('.pc-class');
-            if (classEl) classEl.textContent = p.charClass || '';
-            const hpNum = card.querySelector('.pc-hp-num');
-            if (hpNum) { hpNum.textContent = hp; hpNum.className = `pc-hp-num${hpClass ? ' ' + hpClass : ''}`; }
-            const hpRowFirstDiv = card.querySelector('.pc-hp-row > div');
-            if (hpRowFirstDiv?.lastElementChild) hpRowFirstDiv.lastElementChild.textContent = `/ ${maxHP} PV`;
-            const hpBar = card.querySelector('.pc-hp-bar');
-            if (hpBar) { hpBar.style.width = `${Math.round(pct * 100)}%`; hpBar.style.background = hpColor; }
-            const statsEl = card.querySelector('.pc-stats');
-            if (statsEl) statsEl.innerHTML = Object.entries(stats).filter(([sk]) => sk !== 'PV').map(([sk, v]) => `<span class="pc-stat">${_escHtml(sk)} <span>${_escHtml(v)}</span></span>`).join('');
-            let protEl = card.querySelector('.pc-prot');
-            if (p.protection) {
-                const protHtml = `🛡 <span style="color:var(--parchment-dim)">${_escHtml(p.protection.nom || '')}</span>${p.protection.valeur ? ` <span style="color:var(--gold);font-weight:600;">${_escHtml(p.protection.valeur)}</span>` : ''}`;
-                if (!protEl) {
-                    protEl = document.createElement('div');
-                    protEl.className = 'pc-prot';
-                    protEl.title = 'Protection';
-                    card.querySelector('.pc-hp-row')?.insertAdjacentElement('afterend', protEl);
-                }
-                protEl.innerHTML = protHtml;
-            } else if (protEl) {
-                protEl.remove();
-            }
-            const karmaVal = card.querySelector('.pc-karma-val');
-            if (karmaVal) {
-                karmaVal.textContent = `${k > 0 ? '+' : ''}${k}`;
-                karmaVal.className = `pc-karma-val${k > 0 ? ' positive' : k < 0 ? ' negative' : ''}`;
-            }
-            // Camera: only create/update when streamId changes, never destroy existing iframe
-            const existingWrap = card.querySelector('.pc-camera-wrap');
-            const existingIframe = existingWrap?.querySelector('.pc-camera-frame');
-            if (p.streamId) {
-                let expectedSrc = `https://vdo.ninja/?view=${encodeURIComponent(p.streamId)}&room=${encodeURIComponent(currentVdoRoom)}&autoplay&cleanoutput`;
-                if (currentVdoRoomPassword) expectedSrc += `&password=${encodeURIComponent(currentVdoRoomPassword)}`;
-                if (!existingWrap) {
-                    const wrap = document.createElement('div');
-                    wrap.className = 'pc-camera-wrap';
-                    const iframe = document.createElement('iframe');
-                    iframe.src = expectedSrc;
-                    iframe.allow = 'autoplay; fullscreen; display-capture; picture-in-picture; screen-wake-lock';
-                    iframe.allowFullscreen = true;
-                    iframe.className = 'pc-camera-frame';
-                    wrap.appendChild(iframe);
-                    const pcBody = card.querySelector('.pc-body');
-                    pcBody.insertBefore(wrap, pcBody.firstElementChild);
-                } else if (existingIframe && existingIframe.src !== expectedSrc) {
-                    existingIframe.src = expectedSrc;
-                }
-                // src unchanged → iframe stays alive, no reload
-            } else if (existingWrap) {
-                existingWrap.remove();
-            }
+
+    reconcile(grid, players, (charId, p) => {
+        const numeric = { type: 'text', inputMode: 'numeric', oninput: e => { e.target.value = e.target.value.replace(/[^0-9]/g, ''); } };
+        const dmgInput = el('input', { ...numeric, className: 'pc-dmg-input', id: `dmg-${charId}`, placeholder: 'Dégâts',
+            onkeydown: e => { if (e.key === 'Enter') applyPlayerDamage(charId); } });
+        const healInput = el('input', { ...numeric, className: 'pc-heal-input', id: `heal-${charId}`, placeholder: 'Soins',
+            onkeydown: e => { if (e.key === 'Enter') applyPlayerHeal(charId); } });
+
+        const refs = {
+            dot:   el('div', { className: 'pc-online-dot' }),
+            name:  el('div', { className: 'pc-name' }),
+            cls:   el('div', { className: 'pc-class' }),
+            spot:  el('button', { className: 'pc-btn spot', textContent: '☀', onclick: () => toggleSpotlight(charId),
+                       title: 'Spotlight — la caméra de ce joueur passe en grand chez tous' }),
+            hpNum: el('div', { className: 'pc-hp-num' }),
+            hpMax: el('div', { className: 'pc-hp-max' }),
+            hpBar: el('div', { className: 'pc-hp-bar' }),
+            prot:  el('div', { className: 'pc-prot', title: 'Protection' }),
+            stats: el('div', { className: 'pc-stats' }),
+            karma: el('span', { className: 'pc-karma-val' }),
+            // Viewer-only permissions. Only the push iframes need camera/microphone/
+            // display-capture; granting them here would widen what a third-party frame
+            // can ask for, for no benefit.
+            cam:   el('iframe', { className: 'pc-camera-frame', allow: 'autoplay; fullscreen', allowFullscreen: true }),
+        };
+        refs.camWrap = el('div', { className: 'pc-camera-wrap' }, refs.cam);
+
+        const card = el('div', { className: 'player-card', dataset: { charId } },
+            refs.camWrap,
+            el('div', { className: 'pc-header' },
+                refs.dot,
+                el('div', { style: { flex: '1', minWidth: '0' } }, refs.name, refs.cls),
+                refs.spot,
+                el('button', { className: 'pc-btn details', textContent: '≡', title: 'Voir la fiche', onclick: () => openPlayerDetails(charId) })),
+            el('div', { className: 'pc-body' },
+                el('div', { className: 'pc-hp-row' },
+                    el('div', null, refs.hpNum, refs.hpMax),
+                    el('div', { className: 'pc-hp-bar-wrap' }, refs.hpBar)),
+                refs.prot,
+                refs.stats,
+                el('div', { className: 'pc-actions' },
+                    dmgInput,
+                    el('button', { className: 'pc-btn dmg', textContent: '−', onclick: () => applyPlayerDamage(charId) }),
+                    healInput,
+                    el('button', { className: 'pc-btn heal', textContent: '+', onclick: () => applyPlayerHeal(charId) })),
+                el('div', { className: 'pc-karma-row' },
+                    el('span', { className: 'pc-karma-label', textContent: 'Karma' }),
+                    el('button', { className: 'pc-karma-btn minus', textContent: '−', onclick: () => setPlayerKarma(charId, -1) }),
+                    refs.karma,
+                    el('button', { className: 'pc-karma-btn plus', textContent: '+', onclick: () => setPlayerKarma(charId, 1) }))));
+        card._refs = refs;
+        return card;
+    }, (card, p, charId) => {
+        const s = _playerCardState(p, charId);
+        const r = card._refs;
+        // `no-cam` moves the death plate to the name row — see the MORT rule.
+        card.className = `player-card ${s.online ? 'online' : 'offline'}${s.stateCls}${currentVdoRoom ? '' : ' no-cam'}`;
+        r.dot.className = `pc-online-dot${s.online ? ' online' : ''}`;
+        r.name.textContent = p.name || charId;
+        r.cls.textContent = p.charClass || '';
+        r.spot.classList.toggle('active', gmSpotlightCharId === charId);
+        r.hpNum.textContent = s.hp;
+        r.hpNum.className = `pc-hp-num${s.hpClass ? ' ' + s.hpClass : ''}`;
+        r.hpMax.textContent = `/ ${s.maxHP} PV`;
+        r.hpBar.style.width = `${Math.round(s.pct * 100)}%`;
+        r.hpBar.style.background = s.hpColor;
+        fill(r.stats, Object.entries(s.stats).filter(([k]) => k !== 'PV').map(([k, v]) =>
+            el('span', { className: 'pc-stat', textContent: k + ' ' }, el('span', { textContent: String(v) }))));
+        r.prot.style.display = p.protection ? '' : 'none';
+        if (p.protection) {
+            fill(r.prot,
+                el('span', { className: 'pc-prot-label', textContent: 'Prot.' }),
+                ' ',
+                el('span', { style: { color: 'var(--parchment-dim)' }, textContent: p.protection.nom || '' }),
+                p.protection.valeur && el('span', { style: { color: 'var(--gold)', fontWeight: '600' }, textContent: ' ' + p.protection.valeur }));
         }
+        r.karma.textContent = `${s.karma > 0 ? '+' : ''}${s.karma}`;
+        r.karma.className = `pc-karma-val${s.karma > 0 ? ' positive' : s.karma < 0 ? ' negative' : ''}`;
+        // Hide rather than detach: removing the wrapper would kill the WebRTC
+        // connection, and blanking the src reloads the frame on the way back.
+        // No room at all: no face area. Room but no stream from this player: the
+        // design's hatched placeholder, which also keeps every card the same height.
+        r.camWrap.style.display = currentVdoRoom ? '' : 'none';
+        r.camWrap.classList.toggle('no-stream', !s.camSrc);
+        r.cam.style.display = s.camSrc ? '' : 'none';
+        if (s.camSrc) setFrameSrc(r.cam, s.camSrc);
+        else if (r.cam.src && r.cam.src !== 'about:blank') r.cam.src = 'about:blank';
     });
+
     if (focusedId) document.getElementById(focusedId)?.focus();
 }
 // Open the player details modal with character info, tab toggles, and file/potion grants.
-function openPlayerDetails(playerId) {
-    const p = players.get(playerId);
+function openPlayerDetails(charId) {
+    const p = players.get(charId);
     if (!p) return;
-    document.getElementById('pdm-name').textContent = p.name || playerId;
+    document.getElementById('pdm-name').textContent = p.name || charId;
     document.getElementById('pdm-class').textContent = p.charClass || '';
 
-    const hp = p.hp ?? p.maxHP ?? '?', maxHP = p.maxHP ?? '?';
+    // Coerced — these are interpolated into innerHTML and come from remote presence.
+    const hp = _finiteNum(p.hp) ?? _finiteNum(p.maxHP) ?? '?', maxHP = _finiteNum(p.maxHP) ?? '?';
     const pct = maxHP > 0 ? hp / maxHP : 0;
     const hpColor = pct > 0.5 ? 'var(--success)' : pct > 0.25 ? '#e8a020' : 'var(--fail)';
     const stats = p.stats || {};
@@ -1207,123 +1318,101 @@ function openPlayerDetails(playerId) {
     const tabs = p.tabs || { cards: false, alchemy: false };
     const grantedRecipeIds = new Set(p.potionRecipeIds || []);
 
-    let html = '';
+    // Every field below comes from a remote presence payload. Built as elements, so
+    // the values are text by construction rather than by remembering to escape.
+    const section = (title, body) => body && el('div', { className: 'pdm-section' },
+        el('div', { className: 'pdm-section-title', textContent: title }), body);
+    const toggles = (...kids) => el('div', { className: 'pdm-tab-toggles' }, ...kids);
+    const listRow = (name, val, nameStyle) => el('div', { className: 'pdm-list-row' },
+        el('span', { className: 'pdm-list-name', style: nameStyle, textContent: name }),
+        el('span', { className: 'pdm-list-val', textContent: val }));
+    const statBlock = (key, val) => el('div', { className: 'pdm-stat-block' },
+        el('span', { className: 'pdm-stat-key', textContent: key }),
+        el('span', { className: 'pdm-stat-val', textContent: val }));
 
-    // Tab access toggles
-    html += `<div class="pdm-section">`;
-    html += `<div class="pdm-section-title">Accès aux onglets</div>`;
-    html += `<div class="pdm-tab-toggles">`;
-    html += `<button class="pdm-tab-toggle${tabs.cards ? ' active' : ''}" onclick="sendTabConfig('${playerId}','cards',${!tabs.cards})">🂠 Cartes</button>`;
-    html += `<button class="pdm-tab-toggle${tabs.alchemy ? ' active' : ''}" onclick="sendTabConfig('${playerId}','alchemy',${!tabs.alchemy})">⚗ Alchimie</button>`;
-    html += `</div></div>`;
-
-    // Files
-    if (gmFiles.length) {
-        html += `<div class="pdm-section"><div class="pdm-section-title">Documents</div><div class="pdm-tab-toggles">`;
-        for (const f of gmFiles) {
-            const isAll = f.grantedTo === 'all';
-            const hasAccess = isAll || (Array.isArray(f.grantedTo) && f.grantedTo.includes(playerId));
-            const icon = _fileIcon(f.type);
-            const disabledAttr = isAll ? ' disabled title="Accès accordé à tous"' : '';
-            const clickAttr = isAll ? '' : ` onclick="grantFileToPlayer('${f.id}','${playerId}')"`;
-            html += `<button class="pdm-tab-toggle${hasAccess ? ' active' : ''}"${disabledAttr}${clickAttr}>${icon} ${_escHtml(f.name)}</button>`;
-        }
-        html += `</div></div>`;
-    }
-
-    // Alchemy — only show recipe grants if alchemy tab is enabled for this player
-    if (tabs.alchemy && gmPotions.length) {
-        html += `<div class="pdm-section"><div class="pdm-section-title">Recettes alchimiques</div><div class="pdm-tab-toggles">`;
-        for (const pot of gmPotions) {
-            const granted = grantedRecipeIds.has(pot.id);
-            const safeTitle = (pot.desc || '').replace(/"/g, '&quot;');
-            html += `<button class="pdm-tab-toggle${granted ? ' active' : ''}" onclick="sendPotionGrant('${playerId}','${pot.id}')" title="${safeTitle}">⚗ ${pot.name}</button>`;
-        }
-        html += `</div></div>`;
-    }
-
-    // Stats + HP row
-    html += `<div class="pdm-section">`;
-    html += `<div class="pdm-section-title">Attributs</div>`;
-    html += `<div class="pdm-stats-row">`;
-    html += `<div class="pdm-hp-block"><span class="pdm-hp-num" style="color:${hpColor}">${hp}</span><span class="pdm-hp-sep">/</span><span class="pdm-hp-max">${maxHP} PV</span></div>`;
-    const statOrder = ['FOR','DEX','END','INT','CHA'];
-    for (const k of statOrder) {
-        if (stats[k] !== undefined) html += `<div class="pdm-stat-block"><span class="pdm-stat-key">${k}</span><span class="pdm-stat-val">${_escHtml(stats[k])}</span></div>`;
-    }
-    if (p.protection?.nom) html += `<div class="pdm-stat-block"><span class="pdm-stat-key">Armure</span><span class="pdm-stat-val">${_escHtml(p.protection.nom)}${p.protection.valeur ? ' '+_escHtml(p.protection.valeur) : ''}</span></div>`;
-    html += `</div></div>`;
-
-    // Weapons
     const realWeapons = weapons.filter(w => w.nom);
-    if (realWeapons.length) {
-        html += `<div class="pdm-section"><div class="pdm-section-title">Armes</div><div class="pdm-list">`;
-        for (const w of realWeapons) {
-            html += `<div class="pdm-list-row"><span class="pdm-list-name">${_escHtml(w.nom)}</span><span class="pdm-list-val">${w.degats ? _escHtml(w.degats) : '—'}</span></div>`;
-        }
-        html += `</div></div>`;
-    }
-
-    // Skills
-    if (skills.length) {
-        html += `<div class="pdm-section"><div class="pdm-section-title">Compétences</div><div class="pdm-skills-grid">`;
-        for (const s of skills) {
-            html += `<div class="pdm-skill-row"><span class="pdm-skill-name">${_escHtml(s.name)}</span><span class="pdm-skill-pct">${_pdmSkillPct(s)}</span></div>`;
-        }
-        html += `</div></div>`;
-    }
-
-    // Specials
-    if (specials.length) {
-        html += `<div class="pdm-section"><div class="pdm-section-title">Compétences spéciales</div><div class="pdm-list">`;
-        for (const s of specials) {
-            html += `<div class="pdm-special-row"><div class="pdm-special-header"><span class="pdm-skill-name">${_escHtml(s.name)}</span><span class="pdm-skill-pct">${_pdmSkillPct(s)}</span></div>${s.desc ? `<div class="pdm-special-desc">${_escHtml(s.desc)}</div>` : ''}</div>`;
-        }
-        html += `</div></div>`;
-    }
-
-    // Money
-    const money = p.money || {};
-    html += `<div class="pdm-section"><div class="pdm-section-title">Monnaie</div><div class="pdm-money-row">`;
-    if ((p.ariaType || 'ancient') === 'contemporary') {
-        html += `<div class="pdm-coin-block"><span class="pdm-coin-label">Francs</span><span class="pdm-coin-val">${_escHtml(money.francs ?? 0)}</span></div>`;
-    } else {
-        const MONEY_COINS = [
-            { key: 'couronne', label: 'Couronne', color: '#c9a84c' },
-            { key: 'orbe',     label: 'Orbe',     color: '#b8c4cc' },
-            { key: 'sceptre',  label: 'Sceptre',  color: '#c87533' },
-            { key: 'sou',      label: 'Sou',      color: '#8a8a94' },
-        ];
-        for (const c of MONEY_COINS) {
-            html += `<div class="pdm-coin-block"><span class="pdm-coin-dot" style="color:${c.color}">●</span><span class="pdm-coin-label">${c.label}</span><span class="pdm-coin-val">${_escHtml(money[c.key] ?? 0)}</span></div>`;
-        }
-    }
-    html += `</div></div>`;
-
-    // Inventory
-    const vials = p.vials ?? 0;
-    const showVials = tabs.alchemy && vials > 0;
     const realInv = inventory.filter(i => i.name);
-    if (showVials || realInv.length) {
-        html += `<div class="pdm-section"><div class="pdm-section-title">Inventaire</div><div class="pdm-list">`;
-        if (showVials) html += `<div class="pdm-list-row"><span class="pdm-list-name" style="font-style:italic;">Fioles vides</span><span class="pdm-list-val">×${vials}</span></div>`;
-        for (const i of realInv) {
-            html += `<div class="pdm-list-row"><span class="pdm-list-name">${_escHtml(i.name)}</span><span class="pdm-list-val">×${_escHtml(i.qty ?? 1)}</span></div>`;
-        }
-        html += `</div></div>`;
-    }
+    const realPotions = potions.filter(x => x.name);
+    const money = p.money || {};
+    const vials = _finiteNum(p.vials) ?? 0;
+    const showVials = tabs.alchemy && vials > 0;
+    const MONEY_COINS = [
+        { key: 'couronne', label: 'Couronne', color: '#eca456' },
+        { key: 'orbe',     label: 'Orbe',     color: '#b8c4cc' },
+        { key: 'sceptre',  label: 'Sceptre',  color: '#c87533' },
+        { key: 'sou',      label: 'Sou',      color: '#8a8a94' },
+    ];
 
-    // Potions
-    const realPotions = potions.filter(p => p.name);
-    if (realPotions.length) {
-        html += `<div class="pdm-section"><div class="pdm-section-title">Potions</div><div class="pdm-list">`;
-        for (const p of realPotions) {
-            html += `<div class="pdm-list-row"><span class="pdm-list-name">${_escHtml(p.name)}${p.desc ? ` <span class="pdm-list-desc">— ${_escHtml(p.desc)}</span>` : ''}${p.ingredients ? ` <span class="pdm-list-desc pdm-list-ing">⚗ ${_escHtml(p.ingredients)}</span>` : ''}</span><span class="pdm-list-val">×${_escHtml(p.qty ?? 1)}</span></div>`;
-        }
-        html += `</div></div>`;
-    }
+    fill(document.getElementById('pdm-body'),
+        section('Accès aux onglets', toggles(
+            el('button', { className: 'pdm-tab-toggle' + (tabs.cards ? ' active' : ''), textContent: '🂠 Cartes',
+                onclick: () => sendTabConfig(charId, 'cards', !tabs.cards) }),
+            el('button', { className: 'pdm-tab-toggle' + (tabs.alchemy ? ' active' : ''), textContent: 'Alchimie',
+                onclick: () => sendTabConfig(charId, 'alchemy', !tabs.alchemy) }))),
 
-    document.getElementById('pdm-body').innerHTML = html;
+        gmFiles.length && section('Documents', toggles(gmFiles.map(f => {
+            const isAll = f.grantedTo === 'all';
+            const hasAccess = isAll || (Array.isArray(f.grantedTo) && f.grantedTo.includes(charId));
+            return el('button', {
+                className: 'pdm-tab-toggle' + (hasAccess ? ' active' : ''),
+                textContent: `${fileIcon(f.type)} ${f.name}`,
+                disabled: isAll,
+                title: isAll ? 'Accès accordé à tous' : null,
+                onclick: isAll ? null : () => grantFileToPlayer(f.id, charId),
+            });
+        }))),
+
+        // Recipe grants only make sense once the Alchimie tab is enabled.
+        tabs.alchemy && gmPotions.length && section('Recettes alchimiques', toggles(gmPotions.map(pot =>
+            el('button', { className: 'pdm-tab-toggle' + (grantedRecipeIds.has(pot.id) ? ' active' : ''),
+                textContent: pot.name, title: pot.desc || '',
+                onclick: () => sendPotionGrant(charId, pot.id) })))),
+
+        section('Attributs', el('div', { className: 'pdm-attrs-row' },
+            el('div', { className: 'pdm-hp-panel' },
+                el('div', { className: 'pdm-hp-label', textContent: 'Points de vie' }),
+                el('div', { className: 'pdm-hp-num', style: { color: hpColor } }, String(hp),
+                    el('span', { className: 'pdm-hp-max', textContent: ` / ${maxHP}` }))),
+            el('div', { className: 'pdm-stats-grid' },
+                ['FOR', 'DEX', 'END', 'INT', 'CHA'].filter(k => stats[k] !== undefined).map(k => statBlock(k, stats[k])),
+                p.protection?.nom && statBlock('Armure', p.protection.nom + (p.protection.valeur ? ' ' + p.protection.valeur : ''))))),
+
+        realWeapons.length && section('Armes', el('div', { className: 'pdm-list' },
+            realWeapons.map(w => listRow(w.nom, w.degats || '—')))),
+
+        skills.length && section('Compétences', el('div', { className: 'pdm-skills-grid' },
+            skills.map(s => el('div', { className: 'pdm-skill-row' },
+                el('span', { className: 'pdm-skill-name', textContent: s.name }),
+                el('span', { className: 'pdm-skill-pct' }, _pdmSkillPct(s)))))),
+
+        specials.length && section('Compétences spéciales', el('div', { className: 'pdm-list' },
+            specials.map(s => el('div', { className: 'pdm-special-row' },
+                el('div', { className: 'pdm-special-header' },
+                    el('span', { className: 'pdm-skill-name', textContent: s.name }),
+                    el('span', { className: 'pdm-skill-pct' }, _pdmSkillPct(s))),
+                s.desc && el('div', { className: 'pdm-special-desc', textContent: s.desc }))))),
+
+        section('Monnaie', el('div', { className: 'pdm-money-row' },
+            (p.ariaType || 'ancient') === 'contemporary'
+                ? el('div', { className: 'pdm-coin-block' },
+                    el('span', { className: 'pdm-coin-label', textContent: 'Francs' }),
+                    el('span', { className: 'pdm-coin-val', textContent: money.francs ?? 0 }))
+                : MONEY_COINS.map(c => el('div', { className: 'pdm-coin-block' },
+                    el('span', { className: 'pdm-coin-dot', style: { color: c.color }, textContent: '●' }),
+                    el('span', { className: 'pdm-coin-label', textContent: c.label }),
+                    el('span', { className: 'pdm-coin-val', textContent: money[c.key] ?? 0 }))))),
+
+        (showVials || realInv.length) && section('Inventaire', el('div', { className: 'pdm-list' },
+            showVials && listRow('Fioles vides', `×${vials}`, { fontStyle: 'italic' }),
+            realInv.map(i => listRow(i.name, `×${i.qty ?? 1}`)))),
+
+        realPotions.length && section('Potions', el('div', { className: 'pdm-list' },
+            realPotions.map(pot => el('div', { className: 'pdm-list-row' },
+                el('span', { className: 'pdm-list-name', textContent: pot.name },
+                    pot.desc && el('span', { className: 'pdm-list-desc', textContent: ` — ${pot.desc}` }),
+                    pot.ingredients && el('span', { className: 'pdm-list-desc pdm-list-ing', textContent: ` ${pot.ingredients}` })),
+                el('span', { className: 'pdm-list-val', textContent: `×${pot.qty ?? 1}` }))))));
+
     document.getElementById('details-scrim').classList.add('show');
     document.getElementById('player-details-modal').classList.add('show');
 }
@@ -1333,23 +1422,25 @@ function closePlayerDetails() {
     document.getElementById('player-details-modal').classList.remove('show');
 }
 // Send a tab-config message to toggle a player's Cartes or Alchimie tab access.
-function sendTabConfig(playerId, tab, enabled) {
+// `charId` is the stable character UUID (the players Map key); the published
+// payload targets the character, so every tab of it applies the change.
+function sendTabConfig(charId, tab, enabled) {
     if (!ablyDamage) { console.warn('[GM] sendTabConfig: ablyDamage not ready'); return; }
-    const p = players.get(playerId);
+    const p = players.get(charId);
     if (!p) return;
     if (!p.tabs) p.tabs = { cards: false, alchemy: false };
     p.tabs[tab] = enabled;
     console.log('[GM] sendTabConfig → ', p.name, '| tab:', tab, '=', enabled, '| full tabs:', JSON.stringify(p.tabs));
-    ablyDamage.publish('tab-config', { playerId: p.playerId, tabs: p.tabs });
-    openPlayerDetails(playerId); // refresh modal to reflect new state
+    ablyDamage.publish('tab-config', { charId: p.charId, tabs: p.tabs });
+    openPlayerDetails(charId); // refresh modal to reflect new state
 }
 
 // Read the damage input for a player, apply armor reduction, and publish the damage.
-function applyPlayerDamage(playerId) {
-    const inp = document.getElementById(`dmg-${playerId}`);
+function applyPlayerDamage(charId) {
+    const inp = document.getElementById(`dmg-${charId}`);
     const rawDmg = parseInt(inp.value);
     if (!rawDmg || rawDmg <= 0) return;
-    const p = players.get(playerId);
+    const p = players.get(charId);
     if (!p) return;
     const prot = p.protection?.valeur || 0;
     const dmg = Math.max(0, rawDmg - prot);
@@ -1358,23 +1449,25 @@ function applyPlayerDamage(playerId) {
     console.log('[GM] applyPlayerDamage:', p.name, '| raw:', rawDmg, '| armor:', prot, '| net dmg:', dmg, '| HP:', hpBefore, '→', hpAfter);
     p.hp = hpAfter;
     inp.value = '';
-    publishDamage(p.playerId, dmg, hpBefore, hpAfter, p.maxHP || hpBefore, p.name);
+    publishDamage(p.charId, dmg, hpBefore, hpAfter, p.maxHP || hpBefore, p.name);
     renderPlayerCards();
+    triggerCardFx(playerCardEl(charId), 'dmg');
 }
 // Read the heal input for a player, clamp to max HP, and publish the heal.
-function applyPlayerHeal(playerId) {
-    const inp = document.getElementById(`heal-${playerId}`);
+function applyPlayerHeal(charId) {
+    const inp = document.getElementById(`heal-${charId}`);
     const amt = parseInt(inp.value);
     if (!amt || amt <= 0) return;
-    const p = players.get(playerId);
+    const p = players.get(charId);
     if (!p) return;
     const hpBefore = p.hp ?? 0;
     const hpAfter = Math.min(p.maxHP || hpBefore, hpBefore + amt);
     console.log('[GM] applyPlayerHeal:', p.name, '| heal:', amt, '| HP:', hpBefore, '→', hpAfter);
     p.hp = hpAfter;
     inp.value = '';
-    publishHeal(p.playerId, amt, hpBefore, hpAfter, p.maxHP || hpBefore, p.name);
+    publishHeal(p.charId, amt, hpBefore, hpAfter, p.maxHP || hpBefore, p.name);
     renderPlayerCards();
+    triggerCardFx(playerCardEl(charId), 'heal');
 }
 
 // ═══════════════════════════════════════════
@@ -1382,6 +1475,16 @@ function applyPlayerHeal(playerId) {
 // ═══════════════════════════════════════════
 // Persist monsters to localStorage, debounce Supabase sync, and push state to overlay.
 function saveMonsters() { localStorage.setItem(monstersKey(), JSON.stringify(monsters)); debouncedSyncMonsters(); publishMonsterStateToOverlay(); }
+
+// Persist maps and push them to Supabase. Every map mutation goes through here, so the
+// broadcast added in Task 7 has exactly one place to hang off.
+function saveMaps() {
+    localStorage.setItem(mapsKey(), JSON.stringify(gmMaps));
+    localStorage.setItem(activeMapKey(), activeMapId || '');
+    debouncedSyncMaps();
+    publishMapState();
+}
+
 // Add one or more monsters from the add-monster form (supports a count field).
 function addMonster() {
     const name = document.getElementById('amf-name').value.trim();
@@ -1399,7 +1502,7 @@ function addMonster() {
     const added = [];
     for (let n = 0; n < count; n++) {
         const label = count > 1 ? ` ${n + 1}` : '';
-        const monster = { id: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2), name: name + label, pv, maxPV: pv, armor, stats, attacks: [...newMonsterAttacks.map(a => ({ ...a }))] };
+        const monster = { id: uid(), name: name + label, pv, maxPV: pv, armor, stats, attacks: [...newMonsterAttacks.map(a => ({ ...a }))] };
         monsters.push(monster);
         added.push(monster.id);
     }
@@ -1423,26 +1526,30 @@ function removeMonster(id) {
     renderMonsters();
     refreshMonsterSelect();
 }
+// One attack row of the add-monster form, bound to newMonsterAttacks[i].
+function _amfAttackRow(a, i) {
+    return el('div', { className: 'atk-row' },
+        el('input', { placeholder: 'Nom', value: a.name || '',
+            oninput: e => { newMonsterAttacks[i].name = e.target.value; } }),
+        el('input', { type: 'text', inputMode: 'numeric', placeholder: '%', value: a.pct ?? '',
+            oninput: e => { e.target.value = e.target.value.replace(/[^0-9]/g, ''); newMonsterAttacks[i].pct = +e.target.value || 0; } }),
+        el('input', { placeholder: '1d6', value: a.dmg || '',
+            oninput: e => { newMonsterAttacks[i].dmg = e.target.value; } }),
+        el('button', { className: 'del-btn', textContent: '✕', onclick: () => removeAmfAttack(i) }));
+}
 // Add an attack row to the add-monster form.
 function addAmfAttack() {
-    const idx = newMonsterAttacks.length;
     newMonsterAttacks.push({ name: '', pct: 50, dmg: '' });
-    const list = document.getElementById('amf-attacks-list');
-    const row = document.createElement('div'); row.className = 'atk-row'; row.id = `amf-atk-${idx}`;
-    row.innerHTML = `<input placeholder="Nom" oninput="newMonsterAttacks[${idx}].name=this.value" /><input type="text" inputmode="numeric" placeholder="%" oninput="this.value=this.value.replace(/[^0-9]/g,'');newMonsterAttacks[${idx}].pct=+this.value||0" /><input placeholder="1d6" oninput="newMonsterAttacks[${idx}].dmg=this.value" /><button class="del-btn" onclick="removeAmfAttack(${idx})">✕</button>`;
-    list.appendChild(row);
+    _renderAmfAttacks();
 }
 // Remove an attack by index from the add-monster form and re-render the rows.
+// Every row is rebuilt because the closures capture the index, which shifts.
 function removeAmfAttack(idx) {
     newMonsterAttacks.splice(idx, 1);
-    // re-render amf attacks
-    const list = document.getElementById('amf-attacks-list');
-    list.innerHTML = '';
-    newMonsterAttacks.forEach((a, i) => {
-        const row = document.createElement('div'); row.className = 'atk-row';
-        row.innerHTML = `<input value="${a.name}" placeholder="Nom" oninput="newMonsterAttacks[${i}].name=this.value" /><input type="text" inputmode="numeric" value="${a.pct}" placeholder="%" oninput="this.value=this.value.replace(/[^0-9]/g,'');newMonsterAttacks[${i}].pct=+this.value||0" /><input value="${a.dmg}" placeholder="1d6" oninput="newMonsterAttacks[${i}].dmg=this.value" /><button class="del-btn" onclick="removeAmfAttack(${i})">✕</button>`;
-        list.appendChild(row);
-    });
+    _renderAmfAttacks();
+}
+function _renderAmfAttacks() {
+    fill(document.getElementById('amf-attacks-list'), newMonsterAttacks.map(_amfAttackRow));
 }
 // Apply damage to the selected monster in the GM roll panel.
 function doGMMonsterDamage() {
@@ -1454,6 +1561,7 @@ function doGMMonsterDamage() {
     document.getElementById('gm-monster-dmg-input').value = '';
     saveMonsters();
     clearTimeout(renderMonstersTimer); renderMonstersTimer = setTimeout(renderMonsters, 50);
+    setTimeout(() => triggerCardFx(monsterCardEl(m.id), 'dmg'), 70);
 }
 // Apply heal to the selected monster in the GM roll panel.
 function doGMMonsterHeal() {
@@ -1464,31 +1572,7 @@ function doGMMonsterHeal() {
     document.getElementById('gm-monster-heal-input').value = '';
     saveMonsters();
     clearTimeout(renderMonstersTimer); renderMonstersTimer = setTimeout(renderMonsters, 50);
-}
-// Evaluate a dice formula string (e.g. "2d6+2") and return total and breakdown.
-function rollDiceFormula(formula) {
-    const expr = (formula || '').replace(/\s+/g, '').toLowerCase();
-    if (!expr) return { total: 0, breakdown: '' };
-    const tokens = expr.split(/(?=[+-])/);
-    let total = 0;
-    const parts = [];
-    for (const token of tokens) {
-        if (!token) continue;
-        const sign = token[0] === '-' ? -1 : 1;
-        const raw = token.replace(/^[+-]/, '');
-        const m = raw.match(/^(\d+)d(\d+)$/);
-        if (m) {
-            const rolls = [];
-            for (let i = 0; i < parseInt(m[1]); i++) rolls.push(Math.floor(Math.random() * parseInt(m[2])) + 1);
-            const sub = rolls.reduce((a, b) => a + b, 0);
-            total += sign * sub;
-            parts.push(`${sign < 0 ? '−' : parts.length ? '+' : ''}[${rolls.join('+')}]`);
-        } else {
-            const num = parseInt(raw);
-            if (!isNaN(num)) { total += sign * num; parts.push(`${sign < 0 ? '−' : parts.length ? '+' : ''}${num}`); }
-        }
-    }
-    return { total, breakdown: parts.join(' ') };
+    setTimeout(() => triggerCardFx(monsterCardEl(m.id), 'heal'), 70);
 }
 // Rebuild the attack select dropdown when the monster selection changes.
 function onMonsterSelectChange() {
@@ -1523,8 +1607,6 @@ function onAttackSelectChange() {
 // flat membership map are persisted in a dedicated localStorage key per campaign,
 // separate from the synced monsters / campaign_files tables (no schema change).
 // See the comment on the state declarations near the top of this file.
-
-function _uid() { return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2); }
 
 // Load monster groups + membership from localStorage into module state.
 function loadMonsterGroups() {
@@ -1603,22 +1685,30 @@ function _groupChip(o) {
     return chip;
 }
 
-// Render a chip bar (monster or file). "Tous" first, then groups, then ＋.
+// Render a chip bar (monster, file, or map). "Tous" first (unless noTous), then groups, then ＋.
 function _renderGroupBar(type) {
-    const cfg = type === 'monster'
-        ? { barId: 'monster-group-bar', groups: monsterGroups, activeId: activeMonsterGroupId, total: monsters.length,
+    const cfgs = {
+        monster: { barId: 'monster-group-bar', groups: monsterGroups, activeId: activeMonsterGroupId, total: monsters.length,
             countOf: id => monsters.reduce((n, m) => n + (monsterGroupAssign[m.id] === id ? 1 : 0), 0),
-            select: selectMonsterGroup, add: addMonsterGroup, rename: renameMonsterGroup, del: deleteMonsterGroup }
-        : { barId: 'file-group-bar', groups: fileGroups, activeId: activeFileGroupId, total: gmFiles.length,
+            select: selectMonsterGroup, add: addMonsterGroup, rename: renameMonsterGroup, del: deleteMonsterGroup },
+        file: { barId: 'file-group-bar', groups: fileGroups, activeId: activeFileGroupId, total: gmFiles.length,
             countOf: id => gmFiles.reduce((n, f) => n + (fileGroupAssign[f.id] === id ? 1 : 0), 0),
-            select: selectFileGroup, add: addFileGroup, rename: renameFileGroup, del: deleteFileGroup };
+            select: selectFileGroup, add: addFileGroup, rename: renameFileGroup, del: deleteFileGroup },
+        // A map is always active: there is no "all maps" state, so no Tous chip, and the
+        // count is the map's POIs rather than a membership tally.
+        map: { barId: 'map-group-bar', groups: gmMaps, activeId: activeMapId, noTous: true, total: 0,
+            countOf: id => (gmMaps.find(m => m.id === id)?.pois || []).length,
+            select: selectMap, add: addMap, rename: renameMap, del: deleteMap },
+    };
+    const cfg = cfgs[type];
     const bar = document.getElementById(cfg.barId);
     if (!bar) return;
     bar.innerHTML = '';
-    bar.appendChild(_groupChip({ id: '', name: 'Tous', count: cfg.total, isTous: true, active: cfg.activeId === null, type, cfg }));
+    if (!cfg.noTous)
+        bar.appendChild(_groupChip({ id: '', name: 'Tous', count: cfg.total, isTous: true, active: cfg.activeId === null, type, cfg }));
     cfg.groups.forEach(g => bar.appendChild(_groupChip({ id: g.id, name: g.name, count: cfg.countOf(g.id), isTous: false, active: cfg.activeId === g.id, type, cfg })));
     const add = document.createElement('button');
-    add.className = 'group-chip-add'; add.title = 'Nouveau groupe'; add.textContent = '＋';
+    add.className = 'group-chip-add'; add.title = type === 'map' ? 'Nouvelle carte' : 'Nouveau groupe'; add.textContent = '＋';
     add.addEventListener('click', cfg.add);
     bar.appendChild(add);
 }
@@ -1627,7 +1717,7 @@ function _renderGroupBar(type) {
 function addMonsterGroup() {
     const name = prompt('Nom du nouveau groupe :', 'Groupe ' + (monsterGroups.length + 1));
     if (name === null) return;
-    const g = { id: _uid(), name: name.trim() || ('Groupe ' + (monsterGroups.length + 1)) };
+    const g = { id: uid(), name: name.trim() || ('Groupe ' + (monsterGroups.length + 1)) };
     monsterGroups.push(g);
     activeMonsterGroupId = g.id;
     saveMonsterGroups();
@@ -1659,7 +1749,7 @@ function assignMonsterToGroup(mId, groupId) {
 function addFileGroup() {
     const name = prompt('Nom du nouveau groupe :', 'Groupe ' + (fileGroups.length + 1));
     if (name === null) return;
-    const g = { id: _uid(), name: name.trim() || ('Groupe ' + (fileGroups.length + 1)) };
+    const g = { id: uid(), name: name.trim() || ('Groupe ' + (fileGroups.length + 1)) };
     fileGroups.push(g);
     activeFileGroupId = g.id;
     saveFileGroups();
@@ -1691,7 +1781,6 @@ function assignFileToGroup(fId, groupId) {
 function renderMonsters() {
     const grid = document.getElementById('monsters-grid');
     const noM = document.getElementById('no-monsters');
-    grid.innerHTML = '';
     // Drop a stale active filter (e.g. group deleted elsewhere), then render chips.
     if (activeMonsterGroupId && !monsterGroups.some(g => g.id === activeMonsterGroupId)) activeMonsterGroupId = null;
     _renderGroupBar('monster');
@@ -1699,6 +1788,7 @@ function renderMonsters() {
         ? monsters.filter(m => monsterGroupAssign[m.id] === activeMonsterGroupId)
         : monsters;
     if (!list.length) {
+        clearKeyed(grid);
         if (noM) {
             noM.textContent = monsters.length ? 'Aucun monstre dans ce groupe' : 'Aucun monstre actif';
             noM.style.display = ''; grid.appendChild(noM);
@@ -1706,53 +1796,92 @@ function renderMonsters() {
         return;
     }
     if (noM) noM.style.display = 'none';
-    list.forEach(m => {
-        const pct = m.maxPV > 0 ? m.pv / m.maxPV : 0;
-        const hpColor = pct > 0.5 ? 'var(--fail)' : pct > 0.25 ? '#e85020' : '#ff4444';
-        const safeId = String(m.id).replace(/[^a-zA-Z0-9_-]/g, '-');
-        const card = document.createElement('div'); card.className = 'monster-card';
-        const gName = monsterGroupAssign[m.id] ? (monsterGroups.find(g => g.id === monsterGroupAssign[m.id]) || {}).name : '';
-        card.innerHTML = `
-          <div class="mc-header">
-            <span class="group-grip" draggable="true" title="Glisser vers un groupe" ondragstart="_groupDragStart(event,'${m.id}','monster')" ondragend="_groupDragEnd(event)">⠿</span>
-            <div class="mc-name">${m.name}</div>
-            ${gName ? `<span class="group-badge">${_escHtml(gName)}</span>` : ''}
-            <button class="mc-del" onclick="removeMonster('${m.id}')">✕</button>
-          </div>
-          <div class="mc-body">
-            <div class="mc-hp-row">
-              <div><div class="mc-hp-num" style="color:${hpColor}">${m.pv}</div><div style="font-family:'Cinzel',serif;font-size:9px;color:rgba(255,150,150,.5);">/ ${m.maxPV} PV</div></div>
-              <div class="mc-hp-bar-wrap"><div class="mc-hp-bar" style="width:${Math.round(pct * 100)}%;background:${hpColor};"></div></div>
-              <div style="font-family:'Cinzel',serif;font-size:10px;color:rgba(255,150,150,.5);">🛡 ${m.armor}</div>
-            </div>
-            <div class="mc-inline-actions">
-              <input class="mc-inline-input" id="mc-dmg-${safeId}" type="text" inputmode="numeric" placeholder="Dégâts" oninput="this.value=this.value.replace(/[^0-9]/g,'')" onkeydown="if(event.key==='Enter')monsterInlineDamage('${m.id}')" />
-              <button class="mc-inline-btn dmg" onclick="monsterInlineDamage('${m.id}')">⚔</button>
-              <input class="mc-inline-input" id="mc-heal-${safeId}" type="text" inputmode="numeric" placeholder="Soins" oninput="this.value=this.value.replace(/[^0-9]/g,'')" onkeydown="if(event.key==='Enter')monsterInlineHeal('${m.id}')" />
-              <button class="mc-inline-btn heal" onclick="monsterInlineHeal('${m.id}')">♥</button>
-            </div>
-            <div class="mc-stats">
-              ${Object.entries(m.stats).map(([k, v]) => `<span class="mc-stat">${k} <span>${v}</span></span>`).join('')}
-            </div>
-            <div class="mc-atk-section">
-              <div class="mc-atk-hdr">
-                <span class="mc-atk-col-label">Nom</span>
-                <span class="mc-atk-col-label center">%</span>
-                <span class="mc-atk-col-label center">Dégâts</span>
-                <span></span>
-              </div>
-              ${m.attacks.map((a, i) => `
-              <div class="mc-atk-edit-row">
-                <input class="mc-atk-input" value="${a.name}" placeholder="Nom" oninput="updateMonsterAttack('${m.id}',${i},'name',this.value)" />
-                <input class="mc-atk-input center" type="text" inputmode="numeric" value="${a.pct}" placeholder="%" oninput="this.value=this.value.replace(/[^0-9]/g,'');updateMonsterAttack('${m.id}',${i},'pct',+this.value||0)" />
-                <input class="mc-atk-input center" value="${a.dmg || ''}" placeholder="1d6" oninput="updateMonsterAttack('${m.id}',${i},'dmg',this.value)" />
-                <button class="del-btn" onclick="removeMonsterAttack('${m.id}',${i})">✕</button>
-              </div>`).join('')}
-              <button class="add-atk-btn mc-add-atk" onclick="addMonsterAttack('${m.id}')">+ Attaque</button>
-            </div>
-          </div>`;
-        grid.appendChild(card);
-    });
+    reconcile(grid, list.map(m => [String(m.id), m]), (id, m) => _monsterCard(id, m), (card, m) => _updateMonsterCard(card, m));
+}
+
+// Build one monster card. Handlers are closures over the monster id, so the id never
+// has to survive a trip through the HTML parser and then the JS parser — hence no
+// escaping here, and no `safeId` scrubbing to make it selector-safe.
+function _monsterCard(id, m) {
+    const numeric = { type: 'text', inputMode: 'numeric', oninput: e => { e.target.value = e.target.value.replace(/[^0-9]/g, ''); } };
+    const dmgInput = el('input', { ...numeric, className: 'mc-inline-input', placeholder: 'Dégâts',
+        onkeydown: e => { if (e.key === 'Enter') monsterInlineDamage(id); } });
+    const healInput = el('input', { ...numeric, className: 'mc-inline-input', placeholder: 'Soins',
+        onkeydown: e => { if (e.key === 'Enter') monsterInlineHeal(id); } });
+
+    const refs = {
+        name:   el('div', { className: 'mc-name' }),
+        badge:  el('span', { className: 'group-badge' }),
+        hpNum:  el('div', { className: 'mc-hp-num' }),
+        hpMax:  el('div', { className: 'mc-hp-max' }),
+        hpBar:  el('div', { className: 'mc-hp-bar' }),
+        armor:  el('div', { style: { fontFamily: 'ui-monospace,Menlo,monospace', fontSize: '9px', letterSpacing: '.1em', textTransform: 'uppercase', color: 'rgba(255,150,150,.5)' } }),
+        stats:  el('div', { className: 'mc-stats' }),
+        atks:   el('div', { className: 'mc-atk-section' }),
+        dmgInput, healInput,
+    };
+    const card = el('div', { className: 'monster-card', dataset: { monsterId: id } },
+        el('div', { className: 'mc-header' },
+            el('span', { className: 'group-grip', draggable: true, title: 'Glisser vers un groupe', textContent: '⠿',
+                ondragstart: e => _groupDragStart(e, id, 'monster'), ondragend: e => _groupDragEnd(e) }),
+            refs.name, refs.badge,
+            el('button', { className: 'mc-del', textContent: '✕', onclick: () => removeMonster(id) })),
+        el('div', { className: 'mc-body' },
+            el('div', { className: 'mc-hp-row' },
+                el('div', null, refs.hpNum, refs.hpMax),
+                el('div', { className: 'mc-hp-bar-wrap' }, refs.hpBar),
+                refs.armor),
+            el('div', { className: 'mc-inline-actions' },
+                dmgInput,
+                el('button', { className: 'mc-inline-btn dmg', textContent: '−', onclick: () => monsterInlineDamage(id) }),
+                healInput,
+                el('button', { className: 'mc-inline-btn heal', textContent: '♥', onclick: () => monsterInlineHeal(id) })),
+            refs.stats,
+            refs.atks));
+    card._refs = refs;
+    return card;
+}
+
+// Refresh a monster card in place. Attack rows are rebuilt only when their count
+// changes or nothing inside them has focus — the node identity is preserved, so
+// typing in an attack field is no longer interrupted by a re-render.
+function _updateMonsterCard(card, m) {
+    const r = card._refs;
+    const id = String(m.id);
+    const pct = m.maxPV > 0 ? m.pv / m.maxPV : 0;
+    const hpColor = pct > 0.5 ? 'var(--ok)' : pct > 0.25 ? 'var(--warn)' : 'var(--bad)';
+    const dead = m.pv <= 0;
+    card.className = 'monster-card' + (dead ? ' is-dead' : (!dead && pct >= 0 && pct <= 0.25 ? ' hp-critical' : ''));
+    r.name.textContent = m.name;
+    const gName = monsterGroupAssign[m.id] ? (monsterGroups.find(g => g.id === monsterGroupAssign[m.id]) || {}).name : '';
+    r.badge.textContent = gName || '';
+    r.badge.style.display = gName ? '' : 'none';
+    r.hpNum.textContent = m.pv;
+    r.hpNum.style.color = hpColor;
+    r.hpMax.textContent = `/ ${m.maxPV} PV`;
+    r.hpBar.style.width = `${Math.round(pct * 100)}%`;
+    r.hpBar.style.background = hpColor;
+    r.armor.textContent = `Arm. ${m.armor}`;
+    fill(r.stats, Object.entries(m.stats).map(([k, v]) =>
+        el('span', { className: 'mc-stat', textContent: k + ' ' }, el('span', { textContent: String(v) }))));
+
+    const rows = r.atks.querySelectorAll('.mc-atk-edit-row');
+    if (rows.length === m.attacks.length && r.atks.contains(document.activeElement)) return;
+    fill(r.atks,
+        el('div', { className: 'mc-atk-hdr' },
+            el('span', { className: 'mc-atk-col-label', textContent: 'Nom' }),
+            el('span', { className: 'mc-atk-col-label center', textContent: '%' }),
+            el('span', { className: 'mc-atk-col-label center', textContent: 'Dégâts' }),
+            el('span')),
+        m.attacks.map((a, i) => el('div', { className: 'mc-atk-edit-row' },
+            el('input', { className: 'mc-atk-input', value: a.name || '', placeholder: 'Nom',
+                oninput: e => updateMonsterAttack(id, i, 'name', e.target.value) }),
+            el('input', { className: 'mc-atk-input center', type: 'text', inputMode: 'numeric', value: a.pct, placeholder: '%',
+                oninput: e => { e.target.value = e.target.value.replace(/[^0-9]/g, ''); updateMonsterAttack(id, i, 'pct', +e.target.value || 0); } }),
+            el('input', { className: 'mc-atk-input center', value: a.dmg || '', placeholder: '1d6',
+                oninput: e => updateMonsterAttack(id, i, 'dmg', e.target.value) }),
+            el('button', { className: 'del-btn', textContent: '✕', onclick: () => removeMonsterAttack(id, i) }))),
+        el('button', { className: 'add-atk-btn mc-add-atk', textContent: '+ Attaque', onclick: () => addMonsterAttack(id) }));
 }
 // Add a new empty attack to an existing monster and re-render.
 function addMonsterAttack(mId) {
@@ -1799,52 +1928,48 @@ function refreshMonsterSelect() {
 // Add an incoming roll to the feed, persist it, and re-render the roll list.
 function handleIncomingRoll(data) {
     if (!data) return;
+    // Normalize numeric fields at the boundary — roll payloads are remote-controlled
+    // and several of these are interpolated into innerHTML by renderRollFeed.
+    data = {
+        ...data,
+        roll: _finiteNum(data.roll) ?? 0,
+        threshold: data.threshold === null || data.threshold === undefined ? null : (_finiteNum(data.threshold) ?? 0),
+        bonusMalus: _finiteNum(data.bonusMalus) ?? 0,
+        success: data.success === null || data.success === undefined ? data.success : !!data.success,
+        hidden: !!data.hidden,
+    };
     rollFeed.unshift({ ...data, receivedAt: Date.now() });
     if (rollFeed.length > 50) rollFeed.pop();
     localStorage.setItem(rollsKey(), JSON.stringify(rollFeed));
     insertRoll(data);
     renderRollFeed();
 }
-// Classify a d100 roll as success, fail, crit-success, or crit-fail.
-function classify(roll, threshold, success) {
-    if (roll <= 10 && success) return 'crit-success';
-    if (roll >= 91 && !success) return 'crit-fail';
-    return success ? 'success' : 'fail';
-}
 // Render the GM roll feed with player pills, filters, and day-grouped entries.
 function renderRollFeed() {
     const feed = document.getElementById('rolls-feed');
 
-    // Rebuild player name pills
+    // Rebuild player name pills. Names come from remote roll payloads (d.char is
+    // player-controlled) — build with textContent, never innerHTML interpolation.
     const pillGroup = document.getElementById('gm-player-pills');
     if (pillGroup) {
         const names = [...new Set(rollFeed.map(d => d.char || d.playerId || '?'))].filter(Boolean);
         playerFilter = new Set([...playerFilter].filter(n => names.includes(n)));
-        pillGroup.innerHTML = names.map(name => {
-            const safe = name.replace(/'/g, "\\'");
-            const active = playerFilter.has(name) ? ' active' : '';
-            return `<button class="rf-pill rf-player${active}" onclick="togglePlayerFilter('${safe}')">${name}</button>`;
-        }).join('');
-    }
-
-    // Apply filters
-    let filtered = rollFeed;
-    if (rollFilter.size > 0 || playerFilter.size > 0) {
-        filtered = rollFeed.filter(d => {
-            if (playerFilter.size > 0) {
-                const name = d.char || d.playerId || '?';
-                if (!playerFilter.has(name)) return false;
-            }
-            if (rollFilter.size > 0) {
-                const isDie = d.threshold === null;
-                if (isDie) return rollFilter.has('die');
-                const type = classify(d.roll, d.threshold, d.success);
-                if (rollFilter.has('crit') && (type === 'crit-success' || type === 'crit-fail')) return true;
-                return rollFilter.has(type);
-            }
-            return true;
+        pillGroup.innerHTML = '';
+        names.forEach(name => {
+            const btn = document.createElement('button');
+            btn.className = 'rf-pill rf-player' + (playerFilter.has(name) ? ' active' : '');
+            btn.textContent = name;
+            btn.addEventListener('click', () => togglePlayerFilter(name));
+            pillGroup.appendChild(btn);
         });
     }
+
+    // Apply filters. The roll pills go through the shared predicate — this copy used
+    // to end in `rollFilter.has(type)`, which hid a critical success while "Succès"
+    // was lit, so the same pills meant different things on the two panels.
+    const filtered = rollFeed.filter(d =>
+        (!playerFilter.size || playerFilter.has(d.char || d.playerId || '?'))
+        && rollPassesFilter(d, rollFilter));
 
     if (!filtered.length) { feed.innerHTML = '<div class="rolls-empty">En attente de jets…</div>'; return; }
 
@@ -1873,18 +1998,26 @@ function renderRollFeed() {
         entries.forEach(d => {
             const isDie = d.threshold === null;
             const type = isDie ? 'die' : classify(d.roll, d.threshold, d.success);
-            const row = document.createElement('div'); row.className = `roll-entry ${type}${d.hidden ? ' hidden-roll' : ''}`;
-            row.innerHTML = `
-              <div class="re-char">${d.hidden ? '<span class="re-hidden-badge" title="Jet caché — visible uniquement par le MJ">🔒</span> ' : ''}${_escHtml(d.char || d.playerId || '?')}</div>
-              <div class="re-context">
-                <div class="re-skill">${_escHtml(d.skillName)}</div>
-                ${isDie ? '' : `<div class="re-threshold">Seuil : ${d.threshold}%${d.bonusMalus ? ` · BM : ${d.bonusMalus > 0 ? '+' : ''}${d.bonusMalus}` : ''}</div>`}
-              </div>
-              <div class="re-result">
-                <div class="re-roll">${d.roll}</div>
-                ${isDie ? '' : `<div class="re-verdict ${vcls[type]}">${verdicts[type]}</div>`}
-              </div>`;
-            feed.appendChild(row);
+            // Coerce here too — entries persisted in localStorage before the ingest
+            // normalization existed can still hold arbitrary values.
+            const roll = _finiteNum(d.roll) ?? 0;
+            const threshold = _finiteNum(d.threshold) ?? 0;
+            const bm = _finiteNum(d.bonusMalus) ?? 0;
+            // char / skillName arrive over Ably from any holder of the key.
+            const at = d.ts ?? d.receivedAt;
+            feed.append(el('div', { className: `roll-entry ${type}${d.hidden ? ' hidden-roll' : ''}` },
+                el('div', { className: 're-context' },
+                    el('div', { className: 're-char' },
+                        d.hidden && el('span', { className: 're-hidden-badge', textContent: 'MJ',
+                            title: 'Jet caché — visible uniquement par le MJ' }),
+                        d.char || d.playerId || '?'),
+                    el('div', { className: 're-skill',
+                        textContent: (d.skillName || '') + (isDie ? '' : ` · seuil ${threshold}%${bm ? ` · BM ${bm > 0 ? '+' : ''}${bm}` : ''}`) })),
+                el('div', { className: 're-result' },
+                    !isDie && el('div', { className: `re-verdict ${vcls[type]}`, textContent: verdicts[type] }),
+                    at && el('div', { className: 're-time',
+                        textContent: new Date(at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) })),
+                el('div', { className: 're-roll', textContent: roll })));
         });
     });
 }
@@ -1913,7 +2046,7 @@ function toggleGMRollFilter(key) {
         const allBtn = document.getElementById('gm-rfp-all');
         if (allBtn) allBtn.classList.add('active');
     } else {
-        rollFilter.forEach(k => { const el = document.getElementById('gm-rfp-' + k); if (el) el.classList.add('active'); });
+        rollFilter.forEach(k => { const node = document.getElementById('gm-rfp-' + k); if (node) node.classList.add('active'); });
     }
     renderRollFeed();
 }
@@ -1928,15 +2061,32 @@ function togglePlayerFilter(name) {
 // ═══════════════════════════════════════════
 //  GM ROLLS
 // ═══════════════════════════════════════════
+// Safety fallback for GM dddice rolls: if RollFinished never fires (e.g. network
+// drop after the roll was created), resolve the pending roll locally after 12s so
+// the result panel never hangs. Cleared by the RollFinished handler on success.
+function armGMRollSafetyTimer() {
+    clearTimeout(gmRollSafetyTimer);
+    gmRollSafetyTimer = setTimeout(() => {
+        if (!pendingGMRoll) return;
+        const { name, threshold, atk } = pendingGMRoll;
+        pendingGMRoll = null;
+        const roll = Math.floor(Math.random() * 100) + 1;
+        const success = roll <= threshold;
+        const dmgResult = (success && atk?.dmg?.trim()) ? rollDiceFormula(atk.dmg) : null;
+        showGMRollResult(name, threshold, roll, success, dmgResult);
+    }, 12000);
+}
 // Execute a free-threshold GM roll from the Jet MJ form.
 function doGMFreeRoll() {
     const name = document.getElementById('gm-free-name').value.trim() || 'Jet MJ';
     const t = parseInt(document.getElementById('gm-free-threshold').value);
     if (isNaN(t) || t < 1 || t > 100) { alert('Seuil invalide.'); return; }
     if (dddiceSDK && dddiceAPI) {
-        pendingGMRoll = { name, threshold: t, atk: null };
+        pendingGMRoll = { name, threshold: t, atk: null, uuid: null };
+        armGMRollSafetyTimer();
         dddiceSDK.roll([{ type: 'd10x', theme: dddiceAPI.theme }, { type: 'd10', theme: dddiceAPI.theme }])
-            .catch(e => { console.error('dddice GM roll:', e); pendingGMRoll = null; const r = Math.floor(Math.random() * 100) + 1; showGMRollResult(name, t, r, r <= t); });
+            .then(res => { if (pendingGMRoll) pendingGMRoll.uuid = _ddRollUuid(res); })
+            .catch(e => { console.error('dddice GM roll:', e); clearTimeout(gmRollSafetyTimer); pendingGMRoll = null; const r = Math.floor(Math.random() * 100) + 1; showGMRollResult(name, t, r, r <= t); });
     } else {
         const roll = Math.floor(Math.random() * 100) + 1;
         showGMRollResult(name, t, roll, roll <= t);
@@ -1952,10 +2102,13 @@ function doGMMonsterRoll() {
     const atk = (m && atkIdx !== '') ? m.attacks[parseInt(atkIdx)] : null;
     const name = atk ? `${m.name} — ${atk.name}` : m ? `${m.name} (${t}%)` : `Jet MJ (${t}%)`;
     if (dddiceSDK && dddiceAPI) {
-        pendingGMRoll = { name, threshold: t, atk };
+        pendingGMRoll = { name, threshold: t, atk, uuid: null };
+        armGMRollSafetyTimer();
         dddiceSDK.roll([{ type: 'd10x', theme: dddiceAPI.theme }, { type: 'd10', theme: dddiceAPI.theme }])
+            .then(res => { if (pendingGMRoll) pendingGMRoll.uuid = _ddRollUuid(res); })
             .catch(e => {
                 console.error('dddice GM roll:', e);
+                clearTimeout(gmRollSafetyTimer);
                 pendingGMRoll = null;
                 const roll = Math.floor(Math.random() * 100) + 1;
                 const success = roll <= t;
@@ -1977,46 +2130,43 @@ function showGMRollResult(name, threshold, roll, success, dmgResult) {
     const type = classify(roll, threshold, success);
     const verdicts = { success: 'SUCCÈS', fail: 'ÉCHEC', 'crit-success': 'SUCCÈS CRITIQUE', 'crit-fail': 'ÉCHEC CRITIQUE' };
     const colors = { success: 'var(--success)', fail: 'var(--fail)', 'crit-success': '#a8ff78', 'crit-fail': '#ff4444' };
-    const dmgHtml = dmgResult
-        ? `<div class="gm-rr-dmg">⚔ Dégâts : <strong>${dmgResult.total}</strong>${dmgResult.breakdown && dmgResult.breakdown !== String(dmgResult.total) ? ` <span class="gm-rr-breakdown">${dmgResult.breakdown}</span>` : ''}</div>`
-        : '';
-    let targetHtml = '';
-    if (dmgResult) {
-        const online = [...players.entries()].filter(([, p]) => p.online !== false && Date.now() - p.ts < PRESENCE_TIMEOUT);
-        if (online.length) {
-            const btns = online.map(([id, p]) => `<button class="gm-target-btn" data-pid="${id}" onclick="applyDamageToPlayer('${id}',${dmgResult.total})">${_escHtml(p.name || id.slice(-4))}</button>`).join('');
-            targetHtml = `<div class="gm-target-section"><div class="gm-target-label">Appliquer à :</div><div class="gm-target-btns">${btns}</div></div>`;
-        }
-    }
-    const el = document.getElementById('gm-roll-result');
-    el.innerHTML = `
-        <div class="gm-rr-name">${name}</div>
-        <div class="gm-rr-roll">${roll}</div>
-        <div class="gm-rr-detail">Seuil : ${threshold}%</div>
-        <div class="gm-rr-verdict" style="color:${colors[type]};">${verdicts[type]}</div>
-        ${dmgHtml}${targetHtml}`;
+    const online = dmgResult ? [...players.entries()].filter(([, p]) => p.online !== false) : [];
+    fill(document.getElementById('gm-roll-result'),
+        el('div', { className: 'gm-rr-name', textContent: name }),
+        el('div', { className: 'gm-rr-roll', textContent: roll }),
+        el('div', { className: 'gm-rr-detail', textContent: `Seuil : ${threshold}%` }),
+        el('div', { className: 'gm-rr-verdict', style: { color: colors[type] }, textContent: verdicts[type] }),
+        dmgResult && el('div', { className: 'gm-rr-dmg', textContent: 'Dégâts : ' },
+            el('strong', { textContent: dmgResult.total }),
+            dmgResult.breakdown && dmgResult.breakdown !== String(dmgResult.total)
+                && el('span', { className: 'gm-rr-breakdown', textContent: ' ' + dmgResult.breakdown })),
+        online.length && el('div', { className: 'gm-target-section' },
+            el('div', { className: 'gm-target-label', textContent: 'Appliquer à :' }),
+            el('div', { className: 'gm-target-btns' }, online.map(([id, p]) =>
+                el('button', { className: 'gm-target-btn', dataset: { pid: id }, textContent: p.name || id.slice(-4),
+                    onclick: () => applyDamageToPlayer(id, dmgResult.total) })))));
 }
 // Apply a damage amount to a player from the GM roll result panel, with armor reduction.
-function applyDamageToPlayer(playerId, amount) {
-    const p = players.get(playerId);
+function applyDamageToPlayer(charId, amount) {
+    const p = players.get(charId);
     if (!p) return;
     const prot = p.protection?.valeur || 0;
     const dmg = Math.max(0, amount - prot);
     const hpBefore = p.hp ?? p.maxHP ?? 0;
     const hpAfter = Math.max(0, hpBefore - dmg);
     p.hp = hpAfter;
-    publishDamage(p.playerId, dmg, hpBefore, hpAfter, p.maxHP || hpBefore, p.name);
+    publishDamage(p.charId, dmg, hpBefore, hpAfter, p.maxHP || hpBefore, p.name);
     renderPlayerCards();
-    const btn = document.querySelector(`.gm-target-btn[data-pid="${playerId}"]`);
-    if (btn) { btn.disabled = true; btn.classList.add('applied'); btn.textContent = `✓ ${p.name || playerId}`; }
+    const btn = document.querySelector(`.gm-target-btn[data-pid="${charId}"]`);
+    if (btn) { btn.disabled = true; btn.classList.add('applied'); btn.textContent = `✓ ${p.name || charId}`; }
 }
 
 // ── GM DICE TRAY ─────────────────────────────
 // Roll a standard GM die (shown in the die tray) and add it to the roll feed.
 function gmRollDie(sides) {
     const result = Math.floor(Math.random() * sides) + 1;
-    const el = document.getElementById('gm-die-result');
-    if (el) { el.textContent = `d${sides} → ${result}`; el.style.animation = 'none'; void el.offsetWidth; el.style.animation = 'fadeIn .3s ease'; }
+    const out = document.getElementById('gm-die-result');
+    if (out) { out.textContent = `d${sides} → ${result}`; out.style.animation = 'none'; void out.offsetWidth; out.style.animation = 'fadeIn .3s ease'; }
     handleIncomingRoll({ skillName: `d${sides}`, threshold: null, roll: result, success: null, char: 'MJ', bonusMalus: 0, playerId: 'gm' });
 }
 
@@ -2026,32 +2176,34 @@ function bulkDamageAll() {
     const inp = document.getElementById('bulk-dmg-input');
     const rawDmg = parseInt(inp?.value);
     if (!rawDmg || rawDmg <= 0) return;
-    const online = [...players.entries()].filter(([, p]) => p.online !== false && Date.now() - p.ts < PRESENCE_TIMEOUT);
+    const online = [...players.entries()].filter(([, p]) => p.online !== false);
     online.forEach(([id, p]) => {
         const prot = p.protection?.valeur || 0;
         const dmg = Math.max(0, rawDmg - prot);
         const hpBefore = p.hp ?? p.maxHP ?? 0;
         const hpAfter = Math.max(0, hpBefore - dmg);
         p.hp = hpAfter;
-        publishDamage(p.playerId, dmg, hpBefore, hpAfter, p.maxHP || hpBefore, p.name);
+        publishDamage(p.charId, dmg, hpBefore, hpAfter, p.maxHP || hpBefore, p.name);
     });
     if (inp) inp.value = '';
     renderPlayerCards();
+    online.forEach(([id]) => triggerCardFx(playerCardEl(id), 'dmg'));
 }
 // Apply a heal amount to all online players simultaneously.
 function bulkHealAll() {
     const inp = document.getElementById('bulk-heal-input');
     const amt = parseInt(inp?.value);
     if (!amt || amt <= 0) return;
-    const online = [...players.entries()].filter(([, p]) => p.online !== false && Date.now() - p.ts < PRESENCE_TIMEOUT);
+    const online = [...players.entries()].filter(([, p]) => p.online !== false);
     online.forEach(([id, p]) => {
         const hpBefore = p.hp ?? 0;
         const hpAfter = Math.min(p.maxHP || hpBefore, hpBefore + amt);
         p.hp = hpAfter;
-        publishHeal(p.playerId, amt, hpBefore, hpAfter, p.maxHP || hpBefore, p.name);
+        publishHeal(p.charId, amt, hpBefore, hpAfter, p.maxHP || hpBefore, p.name);
     });
     if (inp) inp.value = '';
     renderPlayerCards();
+    online.forEach(([id]) => triggerCardFx(playerCardEl(id), 'heal'));
 }
 
 // ── KARMA ─────────────────────────────────────
@@ -2061,7 +2213,7 @@ function setPlayerKarma(charId, delta) {
     gmKarma[charId] = (gmKarma[charId] ?? 0) + delta;
     const p = players.get(charId);
     if (p && ablyDamage) {
-        ablyDamage.publish('karma-set', { playerId: p.playerId, karma: gmKarma[charId] });
+        ablyDamage.publish('karma-set', { charId: p.charId, karma: gmKarma[charId] });
     }
     renderPlayerCards();
 }
@@ -2070,39 +2222,39 @@ function setPlayerKarma(charId, delta) {
 // Apply damage (with armor reduction) from the monster card inline input.
 function monsterInlineDamage(id) {
     const m = monsters.find(m => String(m.id) === String(id)); if (!m) return;
-    const safeId = String(id).replace(/[^a-zA-Z0-9_-]/g, '-');
-    const inp = document.getElementById(`mc-dmg-${safeId}`);
+    const inp = monsterCardEl(id)?._refs.dmgInput;
     const dmg = parseInt(inp?.value); if (!dmg || dmg <= 0) return;
     const effective = Math.max(0, dmg - (m.armor || 0));
     m.pv = Math.max(0, m.pv - effective);
     if (inp) inp.value = '';
     saveMonsters();
     clearTimeout(renderMonstersTimer); renderMonstersTimer = setTimeout(renderMonsters, 50);
+    setTimeout(() => triggerCardFx(monsterCardEl(m.id), 'dmg'), 70);
 }
 // Apply heal from the monster card inline input, capping at maxPV.
 function monsterInlineHeal(id) {
     const m = monsters.find(m => String(m.id) === String(id)); if (!m) return;
-    const safeId = String(id).replace(/[^a-zA-Z0-9_-]/g, '-');
-    const inp = document.getElementById(`mc-heal-${safeId}`);
+    const inp = monsterCardEl(id)?._refs.healInput;
     const amt = parseInt(inp?.value); if (!amt || amt <= 0) return;
     m.pv = Math.min(m.maxPV, m.pv + amt);
     if (inp) inp.value = '';
     saveMonsters();
     clearTimeout(renderMonstersTimer); renderMonstersTimer = setTimeout(renderMonsters, 50);
+    setTimeout(() => triggerCardFx(monsterCardEl(m.id), 'heal'), 70);
 }
 
-// ═══════════════════════════════════════════
-//  CONFIG
-// ═══════════════════════════════════════════
-// Toggle light mode on the document body.
-function applyTheme(light) {
-    document.body.classList.toggle('light-mode', !!light);
-}
 window.addEventListener('storage', e => {
-    if (e.key !== 'aria-config') return;
-    const newCfg = JSON.parse(e.newValue || '{}');
-    config = { ...config, ...newCfg };
-    applyTheme(!!config.lightMode);
+    if (e.key === 'aria-config') {
+        const newCfg = JSON.parse(e.newValue || '{}');
+        config = { ...config, ...newCfg };
+        applyTheme(!!config.lightMode);
+        return;
+    }
+    // Keep every GM tab agreeing on the kill switch: cam.live() reads it, so two
+    // tabs that disagreed would advertise different stream IDs under one clientId and
+    // the MJ tile would flip between them on every player's rail (and on the OBS
+    // overlay). See cam.syncFromStorage(), which re-renders and republishes presence.
+    cam.syncFromStorage(e);
 });
 // Populate the config modal inputs from the current config and campaign.
 function loadConfigInputs() {
@@ -2110,7 +2262,8 @@ function loadConfigInputs() {
     document.getElementById('cfg-vdo-room').value = currentVdoRoom;
     document.getElementById('cfg-vdo-room-password').value = currentVdoRoomPassword;
 }
-// Save config modal changes: VDO room, theme, and reinitialize Ably/dddice/presence.
+// Save config modal changes: VDO room, theme, dddice. Republishes presence; it does
+// not reconnect Ably unless the connection is actually gone — see below.
 function saveConfig() {
     const newVdoRoom = document.getElementById('cfg-vdo-room').value.trim();
     const newVdoRoomPassword = document.getElementById('cfg-vdo-room-password').value.trim();
@@ -2127,38 +2280,34 @@ function saveConfig() {
         const camp = campaigns.find(c => c.id === currentCampaignId);
         if (camp) { camp.vdoRoom = newVdoRoom; camp.vdoRoomPassword = newVdoRoomPassword; saveCampaigns(campaigns); }
     }
-    if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch (_) {} dddiceSDK = null; }
-    if (dddiceResizeHandler) { window.removeEventListener('resize', dddiceResizeHandler); dddiceResizeHandler = null; }
-    pendingGMRoll = null; dddiceAPI = null;
-    ablyInstance = null; ablyRolls = null; ablyRollsHidden = null; ablyCards = null; ablyDamage = null; ablyMusic = null;
+    teardownDddice();
+    clearTimeout(gmRollSafetyTimer);
+    pendingGMRoll = null;
     if (config.dddiceKey && config.dddiceRoom) initDddice();
-    if (config.ablyKey) initAbly();
-    startGMPresenceBroadcast();
+    // The Ably connection is NOT torn down here. Nothing in this modal can change it:
+    // the key comes from index.html and the channel suffix from the join code, which
+    // this modal only displays. Closing it left the presence set, and the GM leaving
+    // the set is the session-over signal — every player dropped the room, blanked
+    // their push iframe and rebuilt every tile, so one "Reconnecter" restarted the
+    // whole table's cameras. The room/password live in our presence member data, so
+    // an update() is all they need. Reconnecting is still the fallback when the
+    // connection is actually gone.
+    if (ablyInstance) publishGMPresence();
+    else if (config.ablyKey) initAbly();
+    // No cam.acquireLock() here. The lock is named after currentCampaignId, which
+    // this modal cannot change, so we already hold it — and acquireLock() *releases*
+    // first, which dropped lockHeld to false for the round-trip of the re-grant. The
+    // updateGMPushIframe() below then ran with lockHeld false, blanked the push frame
+    // and logged "another tab holds the push lock" at the exact moment the GM had
+    // just set the room. Worse, a second GM tab sitting in the queue could take it.
     updateGMPushIframe();
+    // Setting or clearing the room changes whether player cards may carry a camera at
+    // all. Without this the grid waited for the next presence heartbeat (up to 5s) —
+    // 5s of black boxes after a clear, 5s of nothing after a set.
+    renderPlayerCards();
     toggleConfig();
 }
-// Toggle the config modal and scrim visibility.
-function toggleConfig() {
-    document.getElementById('config-modal').classList.toggle('show');
-    document.getElementById('config-scrim').classList.toggle('show');
-}
 
-// ═══════════════════════════════════════════
-//  CARD DISPLAY (player draws only)
-// ═══════════════════════════════════════════
-// Return a Promise that resolves after ms milliseconds.
-function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
-// Render the face of a playing card into the player-view drawn-card element.
-function renderCardContent(card) {
-    const el = document.getElementById('drawn-card');
-    if (card.isJoker) {
-        el.className = `flip-face ${card.jokerColor === 'red' ? 'c-red' : 'c-black'}`;
-        el.innerHTML = `<div class="card-corner tl"><span class="rank" style="font-size:14px;color:var(--card-purple)">JKR</span></div><div class="card-center" style="flex-direction:column;gap:6px;"><span style="font-size:50px;line-height:1;color:var(--card-purple)">★</span><span style="font-family:'Playfair Display',serif;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--card-purple)">${card.label.toUpperCase()}</span></div><div class="card-corner br"><span class="rank" style="font-size:14px;color:var(--card-purple)">JKR</span></div>`;
-    } else {
-        el.className = `flip-face ${card.suit.cls}`;
-        el.innerHTML = `<div class="card-corner tl"><span class="rank">${card.rank}</span><span class="suit-small">${card.suit.sym}</span></div><div class="card-center">${card.suit.sym}</div><div class="card-corner br"><span class="rank">${card.rank}</span><span class="suit-small">${card.suit.sym}</span></div>`;
-    }
-}
 // Render the card draw history feed.
 function renderCardHistory() {
     const feed = document.getElementById('card-history-feed');
@@ -2169,13 +2318,11 @@ function renderCardHistory() {
         const label = card ? (card.isJoker ? card.label : `${card.rank} de ${SUIT_FR[card.suit.name] || card.suit.name}`) : entry.cardId;
         const colorCls = card ? (card.isJoker ? 'c-purple' : card.suit.cls) : '';
         const sym = card ? (card.isJoker ? '★' : card.suit.sym) : '?';
-        const row = document.createElement('div');
-        row.className = 'card-history-row';
-        row.innerHTML = `
-          <div class="chr-player">${_escHtml(entry.playerName || '?')}</div>
-          <div class="chr-card ${colorCls}">${sym} ${label}</div>
-          <div class="chr-time">${new Date(entry.ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</div>`;
-        feed.appendChild(row);
+        feed.append(el('div', { className: 'card-history-row' },
+            el('div', { className: 'chr-player', textContent: entry.playerName || '?' }),
+            el('div', { className: `chr-card ${colorCls}`, textContent: `${sym} ${label}` }),
+            el('div', { className: 'chr-time',
+                textContent: new Date(entry.ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) })));
     });
 }
 // Clear the card draw history from memory and localStorage.
@@ -2196,22 +2343,19 @@ async function handlePlayerCard(data) {
     localStorage.setItem(cardHistKey(), JSON.stringify(cardHistory));
     insertCardHistory(data.cardId);
     renderCardHistory();
+    // `.flipped` = face showing, same as the player panel (see aria-gm.css): show
+    // the back, then flip. This used to be written inverted to match a stylesheet
+    // whose rotation sat on the other face.
     const flipWrap = document.getElementById('flip-wrap');
-    const flipInner = flipWrap.querySelector('.flip-inner');
-    // Reset state
     flipWrap.classList.add('hidden');
     flipWrap.classList.remove('flipped');
     document.getElementById('drawn-card').classList.remove('ready');
     renderCardContent(card);
     document.getElementById('drawn-card').classList.add('ready');
-    // Show back face instantly (no animation), then flip to reveal front
-    flipInner.style.transition = 'none';
-    flipWrap.classList.add('flipped');
     flipWrap.classList.remove('hidden');
     flipWrap.getBoundingClientRect();
-    flipInner.style.transition = '';
-    await delay(400);
-    flipWrap.classList.remove('flipped');
+    await delay(30);
+    flipWrap.classList.add('flipped');
 }
 // Handle a player deck reshuffle: hide the card display and update the info label.
 function handlePlayerReshuffle() {
@@ -2224,258 +2368,22 @@ function handlePlayerReshuffle() {
 // ═══════════════════════════════════════════
 //  GM PRIVATE DECK
 // ═══════════════════════════════════════════
-let gmCardDeck = [];
-let gmCardDrawn = new Set();
-let gmCardExcluded = new Set();
-let gmLastCardId = null;
-let gmCardDrawing = false;
-let gmCardStatusTimer = null;
+// The engine is makeDeck() in aria-shared.js. The GM's deck is private: nothing is
+// persisted and nothing is published, so it takes none of the hooks.
+const gmDeck = makeDeck({ prefix: 'gm-' });
 
-// Initialize the GM private deck to a fresh shuffled state.
+// Reset the GM private deck to a fresh shuffled state and rebuild its tracker.
 function initGmDeck() {
-    gmCardDeck = buildDeck();
-    gmCardDrawn = new Set();
-    gmCardExcluded = new Set();
-    gmLastCardId = null;
-    gmCardDrawing = false;
-    gmBuildTracker();
-    gmUpdateDeckCount();
-}
-
-// Build the GM card tracker grid of suit rows and rank pills.
-function gmBuildTracker() {
-    const container = document.getElementById('gm-tracker-suits');
-    if (!container) return;
-    container.innerHTML = '';
-    for (const suit of SUITS) {
-        const row = document.createElement('div'); row.className = 'suit-row-t';
-        const sym = document.createElement('span'); sym.className = `suit-sym ${suit.cls}`; sym.textContent = suit.sym;
-        row.appendChild(sym);
-        const pills = document.createElement('div'); pills.className = 'rank-pills';
-        for (const rank of RANKS) { pills.appendChild(gmMakePill(`${rank}-${suit.name}`, rank, suit.pillCls)); }
-        row.appendChild(pills); container.appendChild(row);
-    }
-    const jRow = document.createElement('div'); jRow.className = 'suit-row-t';
-    const jSym = document.createElement('span'); jSym.className = 'suit-sym c-purple'; jSym.textContent = '★';
-    jRow.appendChild(jSym);
-    const jPills = document.createElement('div'); jPills.className = 'rank-pills';
-    jPills.appendChild(gmMakePill('joker-red', 'R★', 'is-joker'));
-    jPills.appendChild(gmMakePill('joker-black', 'N★', 'is-joker'));
-    jRow.appendChild(jPills); container.appendChild(jRow);
-}
-
-// Create a rank pill element for the GM card tracker.
-function gmMakePill(id, label, extraCls) {
-    const p = document.createElement('span');
-    p.className = `rank-pill${extraCls ? ' ' + extraCls : ''}`;
-    p.id = `gm-pill-${id}`;
-    p.textContent = label;
-    p.onclick = () => gmTogglePill(id);
-    return p;
-}
-
-// Update a GM tracker pill's drawn/excluded visual state.
-function gmRefreshPill(p, id) {
-    p.classList.toggle('drawn', gmCardDrawn.has(id));
-    p.classList.toggle('excluded', gmCardExcluded.has(id));
-}
-
-// Refresh all GM tracker pills to match the current deck state.
-function gmRefreshAllPills() {
-    ALL_CARDS.forEach(c => { const p = document.getElementById(`gm-pill-${c.id}`); if (p) gmRefreshPill(p, c.id); });
-}
-
-// Cycle a GM tracker card's state: normal → excluded → returned to deck.
-function gmTogglePill(id) {
-    const card = cardById(id);
-    if (!card) return;
-    if (gmCardExcluded.has(id)) { gmCardExcluded.delete(id); gmCardDeck.splice(Math.floor(Math.random() * (gmCardDeck.length + 1)), 0, card); gmUpdateDeckCount(); }
-    else if (gmCardDrawn.has(id)) { gmCardDrawn.delete(id); gmCardDeck.splice(Math.floor(Math.random() * (gmCardDeck.length + 1)), 0, card); gmUpdateDeckCount(); }
-    else { gmCardExcluded.add(id); const idx = gmCardDeck.findIndex(c => c.id === id); if (idx !== -1) { gmCardDeck.splice(idx, 1); gmUpdateDeckCount(); } }
-    const p = document.getElementById(`gm-pill-${id}`); if (p) gmRefreshPill(p, id);
-    gmUpdateClearBtn();
-}
-
-// Remove all GM deck exclusions and put excluded cards back.
-function gmClearExclusions() { if (gmCardDrawing) return; gmCardExcluded.forEach(id => { const c = cardById(id); if (c) gmCardDeck.splice(Math.floor(Math.random() * (gmCardDeck.length + 1)), 0, c); }); gmCardExcluded.clear(); gmUpdateDeckCount(); gmRefreshAllPills(); gmUpdateClearBtn(); gmShowCardStatus('Exclusions effacées'); }
-
-// Update the GM deck count label and toggle reshuffle/clear button visibility.
-function gmUpdateDeckCount() {
-    const n = gmCardDeck.length;
-    const countEl = document.getElementById('gm-deck-count');
-    if (countEl) countEl.textContent = n === 0 ? 'Vide' : `${n} carte${n !== 1 ? 's' : ''}`;
-    const wrap = document.getElementById('gm-deck-wrap');
-    if (wrap) wrap.classList.toggle('empty', n === 0);
-    const rBtn = document.getElementById('gm-reshuffle-btn');
-    if (rBtn) rBtn.classList.toggle('visible', n === 0);
-    const rrBtn = document.getElementById('gm-reshuffle-remaining-btn');
-    if (rrBtn) rrBtn.classList.toggle('visible', n > 1 && n < ALL_CARDS.length - gmCardExcluded.size);
-    gmUpdateClearBtn();
-}
-
-// Show or hide the GM clear-exclusions button based on whether any cards are excluded.
-function gmUpdateClearBtn() { const btn = document.getElementById('gm-clear-exclusions-btn'); if (btn) btn.classList.toggle('visible', gmCardExcluded.size > 0); }
-
-// Show a temporary card status message in the GM card tab.
-function gmShowCardStatus(msg) {
-    const el = document.getElementById('gm-card-status');
-    if (!el) return;
-    el.textContent = msg;
-    clearTimeout(gmCardStatusTimer);
-    gmCardStatusTimer = setTimeout(() => el.textContent = '', 2200);
-}
-
-// Render the face of a playing card into the GM private deck drawn-card element.
-function gmRenderCardContent(card) {
-    const el = document.getElementById('gm-drawn-card');
-    if (!el) return;
-    if (card.isJoker) {
-        el.className = `flip-face ${card.jokerColor === 'red' ? 'c-red' : 'c-black'}`;
-        el.innerHTML = `<div class="card-corner tl"><span class="rank" style="font-size:14px;color:var(--card-purple)">JKR</span></div><div class="card-center" style="flex-direction:column;gap:6px;"><span style="font-size:50px;line-height:1;color:var(--card-purple)">★</span><span style="font-family:'Playfair Display',serif;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--card-purple)">${card.label.toUpperCase()}</span></div><div class="card-corner br"><span class="rank" style="font-size:14px;color:var(--card-purple)">JKR</span></div>`;
-    } else {
-        el.className = `flip-face ${card.suit.cls}`;
-        el.innerHTML = `<div class="card-corner tl"><span class="rank">${card.rank}</span><span class="suit-small">${card.suit.sym}</span></div><div class="card-center">${card.suit.sym}</div><div class="card-corner br"><span class="rank">${card.rank}</span><span class="suit-small">${card.suit.sym}</span></div>`;
-    }
-}
-
-// Render and flip a card into view on the GM deck stage.
-async function gmRevealCard(card) {
-    const flipWrap = document.getElementById('gm-flip-wrap');
-    const drawnEl = document.getElementById('gm-drawn-card');
-    gmRenderCardContent(card);
-    drawnEl.classList.add('ready');
-    const flipInner = flipWrap.querySelector('.flip-inner');
-    flipInner.style.transition = 'none';
-    flipWrap.classList.add('flipped');
-    flipWrap.classList.remove('hidden');
-    flipWrap.getBoundingClientRect();
-    flipInner.style.transition = '';
-    await delay(30);
-    flipWrap.classList.remove('flipped');
-}
-
-// Draw the top card from the GM private deck and reveal it with a flip animation.
-async function gmDrawCard() {
-    if (gmCardDrawing || gmCardDeck.length === 0) return;
-    gmCardDrawing = true;
-    const flipWrap = document.getElementById('gm-flip-wrap');
-    if (flipWrap) { flipWrap.classList.remove('flipped'); flipWrap.classList.add('hidden'); }
-    const drawnEl = document.getElementById('gm-drawn-card');
-    if (drawnEl) drawnEl.classList.remove('ready');
-    const drawn = gmCardDeck.pop();
-    gmCardDrawn.add(drawn.id);
-    gmLastCardId = drawn.id;
-    const pill = document.getElementById(`gm-pill-${drawn.id}`); if (pill) gmRefreshPill(pill, drawn.id);
-    gmUpdateDeckCount();
-    await gmRevealCard(drawn);
-    gmShowCardStatus(drawn.isJoker ? drawn.label : `${drawn.rank} de ${SUIT_FR[drawn.suit.name] || drawn.suit.name}`);
-    gmCardDrawing = false;
-}
-
-// Play the GM deck shuffle animation using ghost card elements.
-async function gmAnimateShuffle() {
-    const overlay = document.getElementById('gm-shuffle-overlay');
-    const wrap = document.getElementById('gm-deck-wrap');
-    if (!overlay || !wrap) { await delay(300); return; }
-    const rect = wrap.getBoundingClientRect();
-    const ghosts = [];
-    for (let i = 0; i < 4; i++) {
-        const g = document.createElement('div'); g.className = 'shuffle-ghost';
-        g.appendChild(Object.assign(document.createElement('div'), { className: 'deck-pattern' }));
-        g.style.cssText = `width:${rect.width}px;height:${rect.height}px;left:${rect.left}px;top:${rect.top}px;`;
-        overlay.appendChild(g); ghosts.push(g);
-    }
-    const dirs = ['left', 'right', 'left', 'right'];
-    ghosts.forEach((g, i) => { g.style.animation = `shuffle-${dirs[i]} 0.52s ${i * 0.08}s ease-in-out forwards`; });
-    wrap.classList.remove('shuffling'); wrap.getBoundingClientRect(); wrap.classList.add('shuffling');
-    await delay(680); ghosts.forEach(g => g.remove()); wrap.classList.remove('shuffling');
-}
-
-// Reshuffle all or remaining GM deck cards with animation.
-async function gmManualReshuffle(remainingOnly) {
-    if (gmCardDrawing) return;
-    gmCardDrawing = true;
-    const flipWrap = document.getElementById('gm-flip-wrap');
-    if (flipWrap) { flipWrap.classList.remove('flipped'); flipWrap.classList.add('hidden'); }
-    const drawnEl = document.getElementById('gm-drawn-card');
-    if (drawnEl) drawnEl.classList.remove('ready');
-    await gmAnimateShuffle();
-    if (remainingOnly) { gmCardDeck = shuffle(gmCardDeck); }
-    else { gmCardDrawn.clear(); gmCardDeck = shuffle([...ALL_CARDS].filter(c => !gmCardExcluded.has(c.id))); gmLastCardId = null; gmRefreshAllPills(); }
-    gmUpdateDeckCount();
-    gmShowCardStatus(remainingOnly ? '↺ Restant mélangé' : '↺ Mélangé');
-    gmCardDrawing = false;
+    gmDeck.reset();
+    gmDeck.mount();
 }
 
 // ═══════════════════════════════════════════
 //  GM FILE VIEWER
 // ═══════════════════════════════════════════
-// Open the GM file viewer modal for a file, rendering image/PDF/text inline.
-function openGmFileViewer(fileId) {
-    const f = gmFiles.find(f => f.id === fileId);
-    if (!f) return;
-    document.getElementById('gm-fv-title').textContent = f.name;
-    const body = document.getElementById('gm-fv-body');
-    body.innerHTML = '';
-    if (f.type && f.type.startsWith('image/')) {
-        const img = document.createElement('img');
-        img.src = f.url; img.className = 'fv-image';
-        body.appendChild(img);
-        wireImageZoom(img);
-    } else if (f.type === 'application/pdf') {
-        const iframe = document.createElement('iframe');
-        iframe.src = f.url; iframe.className = 'fv-iframe';
-        body.appendChild(iframe);
-    } else if (f.type && f.type.startsWith('text/')) {
-        const pre = document.createElement('pre');
-        pre.className = 'fv-text'; pre.textContent = 'Chargement…';
-        body.appendChild(pre);
-        fetch(f.url).then(r => r.text()).then(t => { pre.textContent = t; }).catch(() => { pre.textContent = 'Erreur de chargement.'; });
-    } else {
-        const wrap = document.createElement('div');
-        wrap.className = 'fv-unsupported';
-        wrap.innerHTML = `<div class="fv-unsupported-icon">${_fileIcon(f.type)}</div><div class="fv-unsupported-name">${_escHtml(f.name)}</div><a class="fv-download-link" href="${f.url}" target="_blank" rel="noopener">Ouvrir dans un nouvel onglet</a>`;
-        body.appendChild(wrap);
-    }
-    document.getElementById('gm-file-viewer-scrim').classList.add('show');
-    document.getElementById('gm-file-viewer-modal').classList.add('show');
-}
-
-// Close the GM file viewer modal and clear its body.
-function closeGmFileViewer() {
-    document.getElementById('gm-file-viewer-scrim').classList.remove('show');
-    document.getElementById('gm-file-viewer-modal').classList.remove('show');
-    document.getElementById('gm-fv-body').innerHTML = '';
-}
-
-// Wire wheel-zoom (toward cursor), drag-to-pan and double-click reset onto a file-viewer image.
-// The img is recreated on every open (body.innerHTML = ''), so no explicit teardown is needed.
-function wireImageZoom(img) {
-    let scale = 1, tx = 0, ty = 0;
-    const apply = () => { img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`; };
-    img.addEventListener('wheel', e => {
-        e.preventDefault();
-        const ns = Math.min(6, Math.max(1, scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
-        const rect = img.getBoundingClientRect();
-        const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
-        tx -= cx * (ns / scale - 1);
-        ty -= cy * (ns / scale - 1);
-        scale = ns;
-        if (scale === 1) { tx = 0; ty = 0; }
-        apply();
-    }, { passive: false });
-    img.addEventListener('mousedown', e => {
-        if (scale === 1) return;
-        e.preventDefault();
-        const sx = e.clientX - tx, sy = e.clientY - ty;
-        img.classList.add('panning');
-        const move = ev => { tx = ev.clientX - sx; ty = ev.clientY - sy; apply(); };
-        const up = () => { img.classList.remove('panning'); document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
-        document.addEventListener('mousemove', move);
-        document.addEventListener('mouseup', up);
-    });
-    img.addEventListener('dblclick', e => { e.preventDefault(); scale = 1; tx = 0; ty = 0; apply(); });
-}
+// Same engine as the player's; the 'gm-' prefix reaches this page's copy of the
+// identical markup.
+const fileViewer = makeFileViewer({ prefix: 'gm-', files: () => gmFiles });
 
 // ═══════════════════════════════════════════
 //  GM ALCHEMY
@@ -2490,10 +2398,10 @@ function addGMPotion() {
     const desc = document.getElementById('apf-desc').value.trim();
     const ingredients = document.getElementById('apf-ingredients').value.trim();
     const successChance = parseInt(document.getElementById('apf-chance').value) || 0;
-    const id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+    const id = uid();
     gmPotions.push({ id, name, desc, ingredients, successChance });
     saveGMPotions();
-    ['apf-name', 'apf-desc', 'apf-ingredients', 'apf-chance'].forEach(eid => { const el = document.getElementById(eid); if (el) el.value = ''; });
+    ['apf-name', 'apf-desc', 'apf-ingredients', 'apf-chance'].forEach(eid => { const node = document.getElementById(eid); if (node) node.value = ''; });
     renderGMPotions();
 }
 
@@ -2524,27 +2432,25 @@ function renderGMPotions() {
         return;
     }
     if (empty) empty.style.display = 'none';
+    const field = (icon, value, placeholder, key) => el('div', { className: 'gm-pot-field-row' },
+        el('span', { className: 'gm-pot-field-icon', textContent: icon }),
+        el('input', { className: 'gm-pot-text-input', value, placeholder,
+            oninput: e => updateGMPotion(key.id, key.field, e.target.value) }));
     gmPotions.forEach(p => {
-        const card = document.createElement('div');
-        card.className = 'gm-pot-card';
-        card.innerHTML = `
-            <div class="gm-pot-card-header">
-                <span class="gm-pot-card-icon">⚗</span>
-                <input class="gm-pot-name-input" value="${p.name.replace(/"/g,'&quot;')}" placeholder="Nom" oninput="updateGMPotion('${p.id}','name',this.value)" />
-                <div class="gm-pot-chance-wrap"><input class="gm-pot-chance-badge" type="text" inputmode="numeric" value="${p.successChance || ''}" placeholder="—" oninput="this.value=this.value.replace(/[^0-9]/g,'');updateGMPotion('${p.id}','successChance',+this.value||0)" /><span class="gm-pot-chance-suffix">%</span></div>
-            </div>
-            <div class="gm-pot-card-body">
-                <div class="gm-pot-field-row">
-                    <span class="gm-pot-field-icon">✦</span>
-                    <input class="gm-pot-text-input" value="${(p.desc||'').replace(/"/g,'&quot;')}" placeholder="Description / Effet" oninput="updateGMPotion('${p.id}','desc',this.value)" />
-                </div>
-                <div class="gm-pot-field-row">
-                    <span class="gm-pot-field-icon">◈</span>
-                    <input class="gm-pot-text-input" value="${(p.ingredients||'').replace(/"/g,'&quot;')}" placeholder="Ingrédients" oninput="updateGMPotion('${p.id}','ingredients',this.value)" />
-                </div>
-            </div>
-            <button class="gm-pot-del-btn" onclick="removeGMPotion('${p.id}')">✕</button>`;
-        list.appendChild(card);
+        list.append(el('div', { className: 'gm-pot-card' },
+            el('div', { className: 'gm-pot-card-header' },
+                el('span', { className: 'gm-pot-card-icon', textContent: '◆' }),
+                el('input', { className: 'gm-pot-name-input', value: p.name, placeholder: 'Nom',
+                    oninput: e => updateGMPotion(p.id, 'name', e.target.value) }),
+                el('div', { className: 'gm-pot-chance-wrap' },
+                    el('input', { className: 'gm-pot-chance-badge', type: 'text', inputMode: 'numeric',
+                        value: p.successChance || '', placeholder: '—',
+                        oninput: e => { e.target.value = e.target.value.replace(/[^0-9]/g, ''); updateGMPotion(p.id, 'successChance', +e.target.value || 0); } }),
+                    el('span', { className: 'gm-pot-chance-suffix', textContent: '%' }))),
+            el('div', { className: 'gm-pot-card-body' },
+                field('✦', p.desc || '', 'Description / Effet', { id: p.id, field: 'desc' }),
+                field('◈', p.ingredients || '', 'Ingrédients', { id: p.id, field: 'ingredients' })),
+            el('button', { className: 'gm-pot-del-btn', textContent: '✕', onclick: () => removeGMPotion(p.id) })));
     });
 }
 
@@ -2556,10 +2462,14 @@ function toggleAlchemyImportPicker(btn) {
     if (!campaigns.length) {
         picker.innerHTML = '<div class="alchemy-import-empty">Aucune autre campagne disponible.</div>';
     } else {
-        picker.innerHTML = campaigns.map(c => {
-            const safeName = c.name.replace(/'/g, '\\\'').replace(/"/g, '&quot;');
-            return `<button class="alchemy-import-option" onclick="importAlchemyFrom('${c.id}','${safeName}')">${c.name}</button>`;
-        }).join('');
+        picker.innerHTML = '';
+        campaigns.forEach(c => {
+            const b = document.createElement('button');
+            b.className = 'alchemy-import-option';
+            b.textContent = c.name;
+            b.addEventListener('click', () => importAlchemyFrom(c.id, c.name));
+            picker.appendChild(b);
+        });
     }
     picker.style.display = '';
 }
@@ -2567,69 +2477,56 @@ function toggleAlchemyImportPicker(btn) {
 // Replace the current alchemy grimoire with recipes from another campaign.
 function importAlchemyFrom(sourceId, sourceName) {
     document.getElementById('alchemy-import-picker').style.display = 'none';
-    const sourcePotions = JSON.parse(localStorage.getItem('aria-gm-potions-' + sourceId) || '[]');
+    const sourcePotions = JSON.parse(localStorage.getItem(campKey('potions', sourceId)) || '[]');
     if (!sourcePotions.length) { alert(`Aucune recette dans la campagne "${sourceName}".`); return; }
     if (!confirm(`Remplacer le grimoire actuel par les ${sourcePotions.length} recette(s) de "${sourceName}" ?`)) return;
     gmPotions.forEach(p => sbDelete('campaign_potions', 'id=eq.' + encodeURIComponent(p.id)));
     gmPotions = sourcePotions.map(p => ({
         ...p,
-        id: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)
+        id: uid()
     }));
     saveGMPotions();
     renderGMPotions();
 }
 
 // Grant or revoke a potion recipe for a player via Ably, toggling state.
-function sendPotionGrant(playerId, potionId) {
+function sendPotionGrant(charId, potionId) {
     if (!ablyDamage) return;
-    const player = players.get(playerId);
+    const player = players.get(charId);
     if (!player) return;
     if (!player.potionRecipeIds) player.potionRecipeIds = [];
     const alreadyGranted = player.potionRecipeIds.includes(potionId);
     if (alreadyGranted) {
         console.log('[GM] sendPotionGrant: REVOKING potion', potionId, 'from', player.name);
-        ablyDamage.publish('potion-revoke', { playerId: player.playerId, potionId });
+        ablyDamage.publish('potion-revoke', { charId: player.charId, potionId });
         player.potionRecipeIds = player.potionRecipeIds.filter(id => id !== potionId);
     } else {
         const pot = gmPotions.find(p => p.id === potionId);
         if (!pot) return;
         console.log('[GM] sendPotionGrant: GRANTING potion', pot.name, 'to', player.name);
-        ablyDamage.publish('potion-grant', { playerId: player.playerId, potion: { ...pot } });
+        ablyDamage.publish('potion-grant', { charId: player.charId, potion: { ...pot } });
         player.potionRecipeIds.push(potionId);
     }
-    openPlayerDetails(playerId);
+    openPlayerDetails(charId);
 }
 // Send a vial-grant message to give a player a quantity of empty vials.
-function sendVialGrant(playerId, qty) {
+function sendVialGrant(charId, qty) {
     if (!ablyDamage) return;
-    const p = players.get(playerId);
+    const p = players.get(charId);
     if (!p) return;
     console.log('[GM] sendVialGrant:', qty, 'vials to', p.name);
-    ablyDamage.publish('vial-grant', { playerId: p.playerId, qty });
+    ablyDamage.publish('vial-grant', { charId: p.charId, qty });
 }
 
-// ═══════════════════════════════════════════
-//  GM FILES
-// ═══════════════════════════════════════════
-// Escape HTML special characters for safe injection into innerHTML.
-function _escHtml(s) {
-    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
 // Render a skill/special percentage for the player-details modal, folding in the
 // player's per-skill permanent modifier (s.bonus) and annotating it when non-zero.
+// Returns nodes, not markup — the caller appends them, so the values stay text.
 function _pdmSkillPct(s) {
     const pct = +s.pct || 0;
     const b = +s.bonus || 0;
-    if (!b) return _escHtml(pct) + '%';
-    return `${_escHtml(pct + b)}% <span class="pdm-skill-mod" title="Modificateur permanent">${b > 0 ? '+' : ''}${b}</span>`;
-}
-// Return an emoji icon string for a file MIME type.
-function _fileIcon(type) {
-    if (!type) return '📄';
-    if (type.startsWith('image/')) return '🖼';
-    if (type === 'application/pdf') return '📕';
-    if (type.startsWith('text/')) return '📝';
-    return '📄';
+    if (!b) return `${pct}%`;
+    return [`${pct + b}% `, el('span', { className: 'pdm-skill-mod', title: 'Modificateur permanent',
+        textContent: `${b > 0 ? '+' : ''}${b}` })];
 }
 
 // Persist GM files to localStorage and debounce Supabase sync.
@@ -2642,16 +2539,7 @@ function saveGMMusic() {
     debouncedSyncMusic();
 }
 
-// ═══════════════════════════════════════════
-//  MUSIC AUDIO ENGINE
-// ═══════════════════════════════════════════
-let musicMasterVolume = parseInt(localStorage.getItem('aria-music-volume') || '80');
-let musicFadeDuration = 3000;
 let musicLoop         = false;
-let musicCurrentIndex = -1;
-let musicIsPlaying    = false;
-let _musicCurrentSlot = 'A'; // 'A' or 'B'
-let _musicFadeRaf     = null;
 let _musicProgressRaf = null;
 
 // ─── Playlist accessors ───
@@ -2659,7 +2547,7 @@ let _musicProgressRaf = null;
 // playback tracks its own playlist (musicPlayingPlaylistId) + index. These helpers
 // resolve the right track array for view vs. playback operations.
 function _newPlaylist(name) {
-    return { id: (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)),
+    return { id: uid(),
              name: name || 'Playlist', tracks: [] };
 }
 function _activePlaylist()  { return gmPlaylists.find(p => p.id === activePlaylistId) || gmPlaylists[0] || null; }
@@ -2704,144 +2592,6 @@ function _normalizeMusicData(raw) {
     return playlists;
 }
 
-// Slot descriptors
-const _musicSlots = {
-    A: { audio: null, ytEndedCb: null },
-    B: { audio: null, ytEndedCb: null },
-};
-
-// YouTube IFrame API state
-let _ytAPIReady       = false;
-let _ytPendingCbs     = [];
-let _ytSlotA          = null; // YT.Player instance
-let _ytSlotB          = null;
-
-// Lazily create and return the Audio element for a given slot (A or B).
-function _getAudio(slot) {
-    if (!_musicSlots[slot].audio) _musicSlots[slot].audio = new Audio();
-    return _musicSlots[slot].audio;
-}
-
-// Set the volume (0–100) on a music slot's Audio element and YouTube player.
-function _setSlotVol(slot, vol) {
-    const v = Math.max(0, Math.min(100, vol));
-    const audio = _musicSlots[slot].audio;
-    if (audio) audio.volume = v / 100;
-    const yt = slot === 'A' ? _ytSlotA : _ytSlotB;
-    if (yt) { try { yt.setVolume(v); } catch(_) {} }
-}
-
-// Stop and clear a music slot: pause audio, stop YouTube, clear ended callback.
-function _stopSlot(slot) {
-    const audio = _musicSlots[slot].audio;
-    if (audio) { audio.pause(); audio.onended = null; audio.src = ''; }
-    const yt = slot === 'A' ? _ytSlotA : _ytSlotB;
-    if (yt) { try { yt.stopVideo(); } catch(_) {} }
-    _musicSlots[slot].ytEndedCb = null;
-}
-
-// Lazily load the YouTube IFrame API script and call back when it is ready.
-function _ensureYTAPI(cb) {
-    if (_ytAPIReady) { cb(); return; }
-    _ytPendingCbs.push(cb);
-    if (document.getElementById('yt-iframe-api')) return;
-    window.onYouTubeIframeAPIReady = () => {
-        _ytAPIReady = true;
-        _ytPendingCbs.splice(0).forEach(fn => fn());
-    };
-    const s = document.createElement('script');
-    s.id = 'yt-iframe-api';
-    s.src = 'https://www.youtube.com/iframe_api';
-    document.head.appendChild(s);
-}
-
-// Ensure both YouTube player slots A and B are initialized, then call back.
-function _ensureYTSlots(cb) {
-    _ensureYTAPI(() => {
-        if (_ytSlotA && _ytSlotB) { cb(); return; }
-        let readyCount = 0;
-        const onSlotReady = () => { readyCount++; if (readyCount === 2) cb(); };
-        _ytSlotA = new YT.Player('yt-player-a', {
-            width: '1', height: '1',
-            playerVars: { autoplay: 0, controls: 0, disablekb: 1, fs: 0 },
-            events: {
-                onReady: onSlotReady,
-                onStateChange: e => { if (e.data === YT.PlayerState.ENDED && _musicSlots.A.ytEndedCb) _musicSlots.A.ytEndedCb(); },
-            },
-        });
-        _ytSlotB = new YT.Player('yt-player-b', {
-            width: '1', height: '1',
-            playerVars: { autoplay: 0, controls: 0, disablekb: 1, fs: 0 },
-            events: {
-                onReady: onSlotReady,
-                onStateChange: e => { if (e.data === YT.PlayerState.ENDED && _musicSlots.B.ytEndedCb) _musicSlots.B.ytEndedCb(); },
-            },
-        });
-    });
-}
-
-// Load a track into a slot at volume 0 and call onStarted once playback begins.
-function _loadSlotAtZeroVol(track, slot, onStarted) {
-    _setSlotVol(slot, 0);
-    if (track.type === 'file') {
-        const audio = _getAudio(slot);
-        audio.onended = null;
-        audio.src = track.url;
-        audio.volume = 0;
-        const p = audio.play();
-        if (p) p.then(onStarted).catch(() => _showMusicUnlockPrompt(() => audio.play().then(onStarted)));
-        else onStarted();
-    } else {
-        _ensureYTSlots(() => {
-            const yt = slot === 'A' ? _ytSlotA : _ytSlotB;
-            _musicSlots[slot].ytEndedCb = null;
-            yt.loadVideoById(track.youtubeId);
-            yt.setVolume(0);
-            setTimeout(() => { try { yt.playVideo(); } catch(_) {} onStarted(); }, 800);
-        });
-    }
-}
-
-// Cross-fade volume from one audio slot to another over musicFadeDuration ms.
-function _runCrossfade(fromSlot, toSlot, onDone) {
-    if (_musicFadeRaf) { cancelAnimationFrame(_musicFadeRaf); _musicFadeRaf = null; }
-    const start = performance.now();
-    const fromStart = musicMasterVolume;
-    function tick(now) {
-        const t = Math.min(1, (now - start) / musicFadeDuration);
-        _setSlotVol(fromSlot, (1 - t) * fromStart);
-        _setSlotVol(toSlot, t * musicMasterVolume);
-        if (t < 1) { _musicFadeRaf = requestAnimationFrame(tick); }
-        else { _musicFadeRaf = null; _stopSlot(fromSlot); onDone(); }
-    }
-    _musicFadeRaf = requestAnimationFrame(tick);
-}
-
-// Register the "track ended" callback for a slot (audio onended or YouTube state change).
-function _setSlotEndedCallback(slot, track, cb) {
-    if (track.type === 'file') {
-        const audio = _musicSlots[slot].audio;
-        if (audio) audio.onended = cb;
-    } else {
-        _musicSlots[slot].ytEndedCb = cb;
-    }
-}
-
-// Show a "click to enable audio" banner for browsers that block autoplay.
-function _showMusicUnlockPrompt(onUnlock) {
-    let el = document.getElementById('music-unlock-prompt');
-    if (!el) {
-        el = document.createElement('div');
-        el.id = 'music-unlock-prompt';
-        el.className = 'music-unlock-prompt';
-        el.textContent = '▶ Cliquer pour activer le son';
-        document.body.appendChild(el);
-    }
-    el.style.display = 'flex';
-    const handler = () => { el.style.display = 'none'; el.removeEventListener('click', handler); onUnlock(); };
-    el.addEventListener('click', handler);
-}
-
 // Advance to the next track when the current ends; loops or stops based on musicLoop flag.
 // Operates on the PLAYING playlist (not whichever the GM is currently viewing).
 function _musicAutoAdvance() {
@@ -2858,29 +2608,6 @@ function _musicAutoAdvance() {
     }
     _musicTriggerPlay(tracks[nextIdx], nextIdx);
     publishMusicPlay(tracks[nextIdx]);
-}
-
-// Start playing a track on the inactive slot and cross-fade in from the current slot.
-function _musicTriggerPlay(track, index) {
-    if (_musicFadeRaf) { cancelAnimationFrame(_musicFadeRaf); _musicFadeRaf = null; }
-    // Disable auto-advance on current slot before transition
-    const currentSlot = _musicCurrentSlot;
-    const nextSlot = currentSlot === 'A' ? 'B' : 'A';
-    _musicSlots[currentSlot].ytEndedCb = null;
-    if (_musicSlots[currentSlot].audio) _musicSlots[currentSlot].audio.onended = null;
-
-    musicCurrentIndex = index;
-    musicIsPlaying    = true;
-    renderMusicTab();
-
-    _loadSlotAtZeroVol(track, nextSlot, () => {
-        _runCrossfade(currentSlot, nextSlot, () => {
-            _musicCurrentSlot = nextSlot;
-            _setSlotEndedCallback(nextSlot, track, _musicAutoAdvance);
-            renderMusicTab();
-            _startMusicProgress();
-        });
-    });
 }
 
 // Start the rAF loop that updates the music progress bar for file-based tracks.
@@ -2909,6 +2636,14 @@ function renderMusicTab() {
 
     const titleEl = document.getElementById('music-np-title');
     if (titleEl) titleEl.textContent = track ? track.name : 'Aucune piste';
+
+    // Topbar music mini chip (design frame 12) — mirrors the now-playing track.
+    const tbChip = document.getElementById('tb-music-chip');
+    if (tbChip) {
+        tbChip.style.visibility = track ? 'visible' : 'hidden';
+        const tbTitle = document.getElementById('tb-music-title');
+        if (tbTitle) tbTitle.textContent = track ? track.name : '—';
+    }
 
     // Subtitle showing which playlist the now-playing track belongs to.
     const npPl = document.getElementById('music-np-playlist');
@@ -2941,21 +2676,16 @@ function renderMusicTab() {
         return;
     }
 
-    playlist.innerHTML = '';
-    tracks.forEach((t, i) => {
+    // Track names come from YouTube API responses and uploaded filenames.
+    fill(playlist, tracks.map((t, i) => {
         const isCurrent = viewingPlaying && i === musicCurrentIndex;
-        const row = document.createElement('div');
-        row.className = 'music-track-row' + (isCurrent ? ' active' : '');
-        const indicator = (isCurrent && musicIsPlaying) ? '▶' : '○';
-        const badge = t.type === 'youtube' ? 'youtube' : 'fichier';
-        row.innerHTML =
-            `<span class="music-track-indicator">${indicator}</span>` +
-            `<span class="music-track-name" onclick="musicSelectTrack(${i})">${_escHtml(t.name)}</span>` +
-            `<span class="music-track-badge">${badge}</span>` +
-            `<button class="music-track-rename" onclick="musicRenameTrack(${i})" title="Renommer">✎</button>` +
-            `<button class="music-track-delete" onclick="musicDeleteTrack(${i})">✕</button>`;
-        playlist.appendChild(row);
-    });
+        return el('div', { className: 'music-track-row' + (isCurrent ? ' active' : '') },
+            el('span', { className: 'music-track-indicator', textContent: (isCurrent && musicIsPlaying) ? '▶' : '○' }),
+            el('span', { className: 'music-track-name', textContent: t.name, onclick: () => musicSelectTrack(i) }),
+            el('span', { className: 'music-track-badge', textContent: t.type === 'youtube' ? 'youtube' : 'fichier' }),
+            el('button', { className: 'music-track-rename', title: 'Renommer', textContent: '✎', onclick: () => musicRenameTrack(i) }),
+            el('button', { className: 'music-track-delete', textContent: '✕', onclick: () => musicDeleteTrack(i) }));
+    }));
 }
 
 // ─── Playlist management ───
@@ -3025,30 +2755,21 @@ function musicLaunchPlaylist(id) {
 function renderPlaylistBar() {
     const bar = document.getElementById('music-playlist-bar');
     if (!bar) return;
-    bar.innerHTML = '';
-    gmPlaylists.forEach(pl => {
-        const isActive  = pl.id === activePlaylistId;
-        const isPlaying = pl.id === musicPlayingPlaylistId && musicIsPlaying;
-        const chip = document.createElement('div');
-        chip.className = 'music-pl-chip' + (isActive ? ' active' : '') + (isPlaying ? ' playing' : '');
-        let html =
-            `<span class="music-pl-launch" onclick="musicLaunchPlaylist('${pl.id}')" title="Lancer cette playlist">▶</span>` +
-            `<span class="music-pl-name" onclick="musicSelectPlaylist('${pl.id}')">${_escHtml(pl.name)}</span>` +
-            `<span class="music-pl-count">${pl.tracks.length}</span>`;
-        if (isActive) {
-            html +=
-                `<button class="music-pl-edit" onclick="musicRenamePlaylist('${pl.id}')" title="Renommer">✎</button>` +
-                `<button class="music-pl-del" onclick="musicDeletePlaylist('${pl.id}')" title="Supprimer"${gmPlaylists.length <= 1 ? ' disabled' : ''}>✕</button>`;
-        }
-        chip.innerHTML = html;
-        bar.appendChild(chip);
-    });
-    const add = document.createElement('button');
-    add.className = 'music-pl-add';
-    add.title = 'Nouvelle playlist';
-    add.textContent = '＋';
-    add.onclick = musicAddPlaylist;
-    bar.appendChild(add);
+    fill(bar,
+        gmPlaylists.map(pl => {
+            const isActive = pl.id === activePlaylistId;
+            const isPlaying = pl.id === musicPlayingPlaylistId && musicIsPlaying;
+            return el('div', { className: 'music-pl-chip' + (isActive ? ' active' : '') + (isPlaying ? ' playing' : '') },
+                el('span', { className: 'music-pl-launch', title: 'Lancer cette playlist', textContent: '▶',
+                    onclick: () => musicLaunchPlaylist(pl.id) }),
+                el('span', { className: 'music-pl-name', textContent: pl.name, onclick: () => musicSelectPlaylist(pl.id) }),
+                el('span', { className: 'music-pl-count', textContent: pl.tracks.length }),
+                isActive && el('button', { className: 'music-pl-edit', title: 'Renommer', textContent: '✎',
+                    onclick: () => musicRenamePlaylist(pl.id) }),
+                isActive && el('button', { className: 'music-pl-del', title: 'Supprimer', textContent: '✕',
+                    disabled: gmPlaylists.length <= 1, onclick: () => musicDeletePlaylist(pl.id) }));
+        }),
+        el('button', { className: 'music-pl-add', title: 'Nouvelle playlist', textContent: '＋', onclick: musicAddPlaylist }));
 }
 
 // Select and play a track (by index within the ACTIVE playlist) locally and
@@ -3236,7 +2957,7 @@ async function _fetchYTPlaylist(playlistId, apiKey) {
                 const videoId = item.snippet?.resourceId?.videoId;
                 const title   = item.snippet?.title;
                 if (videoId && title !== 'Private video' && title !== 'Deleted video') {
-                    tracks.push({ id: crypto.randomUUID(), name: title || videoId, type: 'youtube', url: null, youtubeId: videoId, path: null });
+                    tracks.push({ id: uid(), name: title || videoId, type: 'youtube', url: null, youtubeId: videoId, path: null });
                 }
             }
             pageToken = data.nextPageToken || '';
@@ -3260,7 +2981,7 @@ async function musicAddYoutube() {
         const videoId = _parseYTVideoId(raw);
         if (!videoId) { statusEl.textContent = '⚠ URL invalide.'; return; }
         const name = await _fetchYTTitle(videoId, config.youtubeApiKey);
-        dest.push({ id: crypto.randomUUID(), name, type: 'youtube', url: null, youtubeId: videoId, path: null });
+        dest.push({ id: uid(), name, type: 'youtube', url: null, youtubeId: videoId, path: null });
         statusEl.textContent = '✓ Piste ajoutée. (Les Mix YouTube ne peuvent pas être importés en entier — seule cette vidéo a été ajoutée.)';
     } else if (playlistId) {
         const apiKey = config.youtubeApiKey;
@@ -3276,7 +2997,7 @@ async function musicAddYoutube() {
         const videoId = _parseYTVideoId(raw);
         if (!videoId) { statusEl.textContent = '⚠ URL ou ID invalide.'; return; }
         const name = await _fetchYTTitle(videoId, config.youtubeApiKey);
-        dest.push({ id: crypto.randomUUID(), name, type: 'youtube', url: null, youtubeId: videoId, path: null });
+        dest.push({ id: uid(), name, type: 'youtube', url: null, youtubeId: videoId, path: null });
         statusEl.textContent = '✓ Piste ajoutée.';
     }
 
@@ -3298,7 +3019,7 @@ async function musicUploadFile(input) {
 
     try {
         const ext  = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : '';
-        const id   = crypto.randomUUID();
+        const id   = uid();
         const name = file.name.replace(/\.[^.]+$/, '');
         const path = `${currentCampaignId}/${id}${ext ? '.' + ext : ''}`;
         const res  = await fetch(`${SUPABASE_URL}/storage/v1/object/campaign-music/${path}`, {
@@ -3327,131 +3048,19 @@ async function musicUploadFile(input) {
 // ═══════════════════════════════════════════
 //  NOTES MJ
 // ═══════════════════════════════════════════
-let gmNotesList = [];
-let gmCurrentNoteId = null;
-
-// Generate a new UUID for a GM note.
-function _gmNoteId() {
-    return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
-}
-
-// Load GM notes from localStorage for the current campaign, migrating plain-string format if needed.
-function loadGMNotes() {
-    const raw = localStorage.getItem(gmNotesKey());
-    if (!raw) {
-        gmNotesList = [];
-    } else {
-        try {
-            const parsed = JSON.parse(raw);
-            gmNotesList = Array.isArray(parsed) ? parsed : [{ id: _gmNoteId(), name: 'Notes', content: raw }];
-        } catch(e) {
-            gmNotesList = [{ id: _gmNoteId(), name: 'Notes', content: raw }];
-        }
-    }
-    gmCurrentNoteId = gmNotesList.length > 0 ? gmNotesList[0].id : null;
-    renderGMNotesList();
-    loadGMNoteContent();
-}
-
-// Save the current GM notes list to localStorage.
-function persistGMNotes() {
-    localStorage.setItem(gmNotesKey(), JSON.stringify(gmNotesList));
-}
-
-// Render the GM notes sidebar list, highlighting the currently selected note.
-function renderGMNotesList() {
-    const list = document.getElementById('gm-notes-list');
-    if (!list) return;
-    list.innerHTML = '';
-    gmNotesList.forEach(note => {
-        const item = document.createElement('div');
-        item.className = 'notes-item' + (note.id === gmCurrentNoteId ? ' active' : '');
-        const nameSpan = document.createElement('span');
-        nameSpan.className = 'notes-item-name';
-        nameSpan.textContent = note.name || 'Sans titre';
-        nameSpan.addEventListener('click', () => selectGMNote(note.id));
-        const delBtn = document.createElement('button');
-        delBtn.className = 'notes-item-delete';
-        delBtn.title = 'Supprimer';
-        delBtn.textContent = '✕';
-        delBtn.addEventListener('click', (e) => { e.stopPropagation(); deleteGMNote(note.id); });
-        item.appendChild(nameSpan);
-        item.appendChild(delBtn);
-        list.appendChild(item);
-    });
-}
-
-// Load the selected GM note's name and body into the editor fields.
-function loadGMNoteContent() {
-    const nameInput = document.getElementById('gm-notes-name-input');
-    const area = document.getElementById('gm-notes-area');
-    if (!nameInput || !area) return;
-    const note = gmNotesList.find(n => n.id === gmCurrentNoteId);
-    if (note) {
-        nameInput.value = note.name;
-        area.value = note.content;
-        nameInput.disabled = false;
-        area.disabled = false;
-    } else {
-        nameInput.value = '';
-        area.value = '';
-        nameInput.disabled = true;
-        area.disabled = true;
-    }
-}
-
-// Select a GM note by ID and display it in the editor.
-function selectGMNote(id) {
-    gmCurrentNoteId = id;
-    renderGMNotesList();
-    loadGMNoteContent();
-    document.getElementById('gm-notes-area').focus();
-}
-
-// Add a new empty GM note, persist it, sync to Supabase, and select it.
-function addGMNote() {
-    const note = { id: _gmNoteId(), name: 'Nouvelle note', content: '' };
-    gmNotesList.push(note);
-    persistGMNotes();
-    syncGMNote(note);
-    selectGMNote(note.id);
-    const nameInput = document.getElementById('gm-notes-name-input');
-    if (nameInput) { nameInput.focus(); nameInput.select(); }
-}
-
-// Delete a GM note, remove it from Supabase, and select the adjacent note.
-function deleteGMNote(id) {
-    deleteGMNoteFromDB(id);
-    const idx = gmNotesList.findIndex(n => n.id === id);
-    gmNotesList = gmNotesList.filter(n => n.id !== id);
-    gmCurrentNoteId = gmNotesList[Math.min(idx, gmNotesList.length - 1)]?.id || null;
-    persistGMNotes();
-    renderGMNotesList();
-    loadGMNoteContent();
-}
-
-// Save the current GM note's content from the textarea and schedule Supabase sync.
-function saveCurrentGMNote() {
-    const note = gmNotesList.find(n => n.id === gmCurrentNoteId);
-    if (!note) return;
-    note.content = document.getElementById('gm-notes-area').value;
-    persistGMNotes();
-    debouncedSyncGMNote(note);
-}
-
-// Rename the current GM note from the name input and refresh the list.
-function renameCurrentGMNote() {
-    const note = gmNotesList.find(n => n.id === gmCurrentNoteId);
-    if (!note) return;
-    note.name = document.getElementById('gm-notes-name-input').value;
-    persistGMNotes();
-    renderGMNotesList();
-    debouncedSyncGMNote(note);
-}
+// The engine is makeNotes() in aria-shared.js; this is just the campaign-scoped
+// wiring. The HTML calls gmNotes.add() / gmNotes.save() / gmNotes.rename() directly.
+const gmNotes = makeNotes({
+    key: gmNotesKey,
+    ids: { list: 'gm-notes-list', name: 'gm-notes-name-input', area: 'gm-notes-area' },
+    sync:     (note, pos) => syncGMNote(note, pos),
+    syncSoon: (note, pos) => debouncedSyncGMNote(note, pos),
+    remove:   id => deleteGMNoteFromDB(id),
+});
 
 // Upload a file to Supabase Storage (campaign-files bucket) and return its URL and path.
 async function uploadFileToStorage(file) {
-    const fileId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+    const fileId = uid();
     const parts = file.name.split('.');
     const ext = parts.length > 1 ? parts.pop().toLowerCase() : '';
     const storageName = ext ? `${fileId}.${ext}` : fileId;
@@ -3513,7 +3122,7 @@ async function handleFileUpload(input) {
 async function removeGmFile(fileId) {
     const f = gmFiles.find(f => f.id === fileId);
     if (!f) return;
-    if (ablyDamage) ablyDamage.publish('file-revoke', { playerId: 'all', fileId });
+    if (ablyDamage) ablyDamage.publish('file-revoke', { charId: 'all', fileId });
     await deleteFileFromStorage(f.path);
     sbDelete('campaign_files', 'id=eq.' + encodeURIComponent(fileId));
     gmFiles = gmFiles.filter(f => f.id !== fileId);
@@ -3529,14 +3138,14 @@ function grantFileToAll(fileId) {
     if (f.grantedTo === 'all') {
         console.log('[GM] grantFileToAll: REVOKING', f.name, 'from all');
         f.grantedTo = [];
-        if (ablyDamage) ablyDamage.publish('file-revoke', { playerId: 'all', fileId });
+        if (ablyDamage) ablyDamage.publish('file-revoke', { charId: 'all', fileId });
     } else {
         console.log('[GM] grantFileToAll: GRANTING', f.name, 'to all online players');
         f.grantedTo = 'all';
         if (ablyDamage) {
             players.forEach(p => {
-                if (p.online !== false && Date.now() - p.ts < PRESENCE_TIMEOUT) {
-                    ablyDamage.publish('file-grant', { playerId: p.playerId, file: { id: f.id, name: f.name, type: f.type, url: f.url } });
+                if (p.online !== false) {
+                    ablyDamage.publish('file-grant', { charId: p.charId, file: { id: f.id, name: f.name, type: f.type, url: f.url } });
                 }
             });
         }
@@ -3555,11 +3164,11 @@ function grantFileToPlayer(fileId, charId) {
     if (f.grantedTo.includes(charId)) {
         console.log('[GM] grantFileToPlayer: REVOKING', f.name, 'from', p.name);
         f.grantedTo = f.grantedTo.filter(id => id !== charId);
-        if (ablyDamage) ablyDamage.publish('file-revoke', { playerId: p.playerId, fileId });
+        if (ablyDamage) ablyDamage.publish('file-revoke', { charId: p.charId, fileId });
     } else {
         console.log('[GM] grantFileToPlayer: GRANTING', f.name, 'to', p.name);
         f.grantedTo.push(charId);
-        if (ablyDamage) ablyDamage.publish('file-grant', { playerId: p.playerId, file: { id: f.id, name: f.name, type: f.type, url: f.url } });
+        if (ablyDamage) ablyDamage.publish('file-grant', { charId: p.charId, file: { id: f.id, name: f.name, type: f.type, url: f.url } });
     }
     saveGmFiles();
     openPlayerDetails(charId);
@@ -3573,7 +3182,7 @@ function sendFileGrantsToPlayer(playerData) {
         const shouldGrant = f.grantedTo === 'all' || (Array.isArray(f.grantedTo) && f.grantedTo.includes(playerData.charId));
         if (shouldGrant) {
             grants.push(f.name);
-            ablyDamage.publish('file-grant', { playerId: playerData.playerId, file: { id: f.id, name: f.name, type: f.type, url: f.url } });
+            ablyDamage.publish('file-grant', { charId: playerData.charId, file: { id: f.id, name: f.name, type: f.type, url: f.url } });
         }
     }
     if (grants.length) console.log('[GM] sendFileGrantsToPlayer:', playerData.name, '| files:', grants.join(', '));
@@ -3604,21 +3213,522 @@ function renderGmFiles() {
         const isAll = f.grantedTo === 'all';
         const count = isAll ? 'Tous' : (Array.isArray(f.grantedTo) ? f.grantedTo.length : 0);
         const grantLabel = isAll ? 'Tous les joueurs' : (count > 0 ? `${count} joueur(s)` : 'Aucun accès');
-        const card = document.createElement('div');
-        card.className = 'gm-file-card';
         const gName = fileGroupAssign[f.id] ? (fileGroups.find(g => g.id === fileGroupAssign[f.id]) || {}).name : '';
-        card.innerHTML = `
-            <span class="group-grip" draggable="true" title="Glisser vers un groupe" ondragstart="_groupDragStart(event,'${f.id}','file')" ondragend="_groupDragEnd(event)">⠿</span>
-            <div class="gm-file-icon">${_fileIcon(f.type)}</div>
-            <div class="gm-file-info">
-                <div class="gm-file-name">${_escHtml(f.name)}</div>
-                <div class="gm-file-grant-status">${grantLabel}${gName ? ` <span class="group-badge">${_escHtml(gName)}</span>` : ''}</div>
-            </div>
-            <div class="gm-file-actions">
-                <button class="gm-file-open-btn" onclick="openGmFileViewer('${f.id}')" title="Ouvrir">Ouvrir</button>
-                <button class="gm-file-btn${isAll ? ' active' : ''}" onclick="grantFileToAll('${f.id}')" title="${isAll ? 'Révoquer accès global' : 'Accorder à tous'}">🌍</button>
-                <button class="gm-file-del-btn" onclick="removeGmFile('${f.id}')" title="Supprimer">✕</button>
-            </div>`;
-        list.appendChild(card);
+        list.append(el('div', { className: 'gm-file-card' },
+            el('span', { className: 'group-grip', draggable: true, title: 'Glisser vers un groupe', textContent: '⠿',
+                ondragstart: e => _groupDragStart(e, f.id, 'file'), ondragend: e => _groupDragEnd(e) }),
+            el('div', { className: 'gm-file-icon', textContent: fileIcon(f.type) }),
+            el('div', { className: 'gm-file-info' },
+                el('div', { className: 'gm-file-name', textContent: f.name }),
+                el('div', { className: 'gm-file-grant-status', textContent: grantLabel },
+                    gName && el('span', { className: 'group-badge', textContent: ' ' + gName }))),
+            el('div', { className: 'gm-file-actions' },
+                el('button', { className: 'gm-file-open-btn', title: 'Ouvrir', textContent: 'Ouvrir', onclick: () => fileViewer.open(f.id) }),
+                el('button', { className: 'gm-file-btn' + (isAll ? ' active' : ''), textContent: 'Tous',
+                    title: isAll ? 'Révoquer accès global' : 'Accorder à tous', onclick: () => grantFileToAll(f.id) }),
+                el('button', { className: 'gm-file-del-btn', title: 'Supprimer', textContent: '✕', onclick: () => removeGmFile(f.id) }))));
     });
+}
+
+// ═══════════════════════════════════════════
+//  CARTE
+// ═══════════════════════════════════════════
+
+// Shortcuts to map GENERATORS — tools that take parameters and a seed in their URL, so
+// opening one pre-filled is worth code. Hand-driven editors (Inkarnate, Wonderdraft) have
+// nothing to pre-fill: for those the import button is already the whole integration.
+// Adding one is one line.
+const MAP_GENERATORS = [
+    { label: 'Ville médiévale', url: s => `https://watabou.github.io/city-generator/?size=15&seed=${s}` },
+    { label: 'Village',         url: s => `https://watabou.github.io/village-generator/?seed=${s}` },
+    { label: 'Royaume',         url: () => 'https://azgaar.github.io/Fantasy-Map-Generator/' },
+];
+
+// Open a generator with a fresh seed and remember the URL we opened as the map's source,
+// so `Rouvrir la source` comes back to the same town at the same settings. The seed lives
+// in the URL — storing it separately would be the same information twice.
+function openMapGenerator(gen) {
+    const m = _activeMap(); if (!m) return;
+    const url = gen.url(Math.floor(Math.random() * 1e9));
+    m.sourceUrl = url;
+    saveMaps();
+    renderMapTab();
+    window.open(url, '_blank', 'noopener');
+}
+
+// Upload a map background. It goes to the campaign-files bucket like any GM file but is
+// NOT added to gmFiles, so it never shows up in the Fichiers tab. Replacing an image
+// deletes the previous object rather than leaking it in storage.
+async function handleMapImageUpload(input) {
+    const file = input.files[0];
+    input.value = '';
+    const m = _activeMap();
+    if (!file || !m) return;
+    if (file.size > 20 * 1024 * 1024) { alert('Image trop volumineuse (max 20 Mo).'); return; }
+    const status = document.getElementById('map-upload-status');
+    if (status) status.textContent = 'Envoi en cours…';
+    try {
+        const old = m.imagePath;
+        const { path, url } = await uploadFileToStorage(file);
+        m.imagePath = path;
+        m.imageUrl  = url;
+        saveMaps();
+        renderMapTab();
+        if (old) deleteFileFromStorage(old);
+        if (status) { status.textContent = '✓ Image importée.'; setTimeout(() => { status.textContent = ''; }, 2500); }
+    } catch (e) {
+        if (status) status.textContent = `Erreur : ${e.message}`;
+        console.warn('[GM] map image upload failed:', e);
+    }
+}
+
+// The map frame: a shrink-wrapping container around the image, plus whatever layers the
+// caller passes. Frame and image both cap at 100% of the stage, so the frame is exactly the
+// rendered image — which is what makes the percentage coordinates land on the right pixel
+// whatever the pane's aspect ratio.
+function _mapFrame(m, ...layers) {
+    return el('div', { className: 'aria-frame', id: 'map-frame' },
+        el('img', { className: 'aria-map', src: m.imageUrl, alt: m.name, draggable: false }),
+        ...layers);
+}
+
+function addMap() {
+    const name = prompt('Nom de la nouvelle carte :', 'Carte ' + (gmMaps.length + 1));
+    if (name === null) return;
+    const m = { id: uid(), name: name.trim() || ('Carte ' + (gmMaps.length + 1)),
+                imageUrl: '', imagePath: '', sourceUrl: '', pois: [], positions: {} };
+    gmMaps.push(m);
+    activeMapId = m.id;
+    saveMaps();
+    renderMapTab();
+}
+
+function selectMap(id) { activeMapId = id; saveMaps(); renderMapTab(); }
+
+function renameMap(id) {
+    const m = gmMaps.find(x => x.id === id); if (!m) return;
+    const name = prompt('Nouveau nom de la carte :', m.name);
+    if (name === null) return;
+    const t = name.trim(); if (!t || t === m.name) return;
+    m.name = t; saveMaps(); renderMapTab();
+}
+
+// Delete a map, its Supabase row and its stored image. The image lives in the
+// campaign-files bucket but was never added to gmFiles, so nothing else references it.
+async function deleteMap(id) {
+    const m = gmMaps.find(x => x.id === id); if (!m) return;
+    if (!confirm(`Supprimer la carte « ${m.name} » et ses ${m.pois.length} point(s) d'intérêt ?`)) return;
+    if (m.imagePath) await deleteFileFromStorage(m.imagePath);
+    sbDelete(ENT.map.table, 'id=eq.' + encodeURIComponent(id));
+    gmMaps = gmMaps.filter(x => x.id !== id);
+    if (activeMapId === id) activeMapId = gmMaps[0] ? gmMaps[0].id : null;
+    saveMaps();
+    renderMapTab();
+}
+
+// Percentage coordinates of a pointer event inside the map frame. Percentages, not pixels:
+// the frame is exactly the rendered image, so these survive any pane size.
+function _mapPct(e, frame) {
+    const r = frame.getBoundingClientRect();
+    return {
+        x: Math.min(100, Math.max(0, ((e.clientX - r.left) / r.width)  * 100)),
+        y: Math.min(100, Math.max(0, ((e.clientY - r.top)  / r.height) * 100)),
+    };
+}
+
+function mapAddPoi(x, y) {
+    const m = _activeMap(); if (!m) return;
+    const name = prompt('Nom du point d’intérêt :', 'Nouveau lieu');
+    if (name === null) return;
+    const poi = { id: uid(), name: name.trim() || 'Nouveau lieu', x, y,
+                  publicDesc: '', gmNote: '', discoveredBy: [], zone: [] };
+    m.pois.push(poi);
+    mapSelectedPoiId = poi.id;
+    saveMaps();
+    renderMapTab();
+}
+
+function mapSelectPoi(id) { mapSelectedPoiId = mapSelectedPoiId === id ? null : id; renderMapTab(); }
+
+function mapDeletePoi(id) {
+    const m = _activeMap(); if (!m) return;
+    const poi = m.pois.find(p => p.id === id); if (!poi) return;
+    if (!confirm(`Supprimer « ${poi.name} » ?`)) return;
+    m.pois = m.pois.filter(p => p.id !== id);
+    // A token can't stand on a POI that no longer exists. Deleting the POI takes its zone
+    // with it too — a zone belongs to a POI, there is no independent zone object.
+    Object.keys(m.positions).forEach(k => { if (m.positions[k] === id) delete m.positions[k]; });
+    if (mapSelectedPoiId === id) mapSelectedPoiId = null;
+    saveMaps();
+    renderMapTab();
+}
+
+// Put a player's token on a POI. Moving a player there discovers it for them — the
+// checkboxes below are for revealing at a distance and for fixing a mistake.
+function mapBringHere(charId, poiId) {
+    const m = _activeMap(); if (!m) return;
+    const poi = m.pois.find(p => p.id === poiId); if (!poi) return;
+    m.positions[charId] = poiId;
+    if (!poi.discoveredBy.includes(charId)) poi.discoveredBy.push(charId);
+    saveMaps();
+    renderMapTab();
+}
+
+// Same (charId, poiId) argument order as mapBringHere() just above — they used to be
+// mirrored (poiId, charId) here, eight lines apart with both params opaque strings, which
+// is silent to swap by accident.
+function mapToggleDiscovered(charId, poiId) {
+    const m = _activeMap(); if (!m) return;
+    const poi = m.pois.find(p => p.id === poiId); if (!poi) return;
+    poi.discoveredBy = poi.discoveredBy.includes(charId)
+        ? poi.discoveredBy.filter(c => c !== charId)
+        : [...poi.discoveredBy, charId];
+    saveMaps();
+    renderMapTab();
+}
+
+// Zone tracing commands. A zone belongs to its POI (poi.zone) — there is no independent
+// zone object, so starting/closing/cancelling a trace only ever touches that one field.
+function startZoneEdit(poiId) {
+    const m = _activeMap(); if (!m) return;
+    zoneEditPoiId = poiId;
+    zoneDraft = [...(m.pois.find(p => p.id === poiId)?.zone || [])];
+    renderMapTab();
+}
+
+// Close the polygon: three vertices is the minimum that encloses anything.
+function closeZone() {
+    const m = _activeMap();
+    const poi = m?.pois.find(p => p.id === zoneEditPoiId);
+    if (!poi) return;
+    if (zoneDraft.length < 3) { alert('Une zone demande au moins trois sommets.'); return; }
+    poi.zone = zoneDraft;
+    zoneEditPoiId = null; zoneDraft = [];
+    saveMaps();
+    renderMapTab();
+}
+
+function cancelZoneEdit() { zoneEditPoiId = null; zoneDraft = []; renderMapTab(); }
+
+function clearZone(poiId) {
+    const m = _activeMap();
+    const poi = m?.pois.find(p => p.id === poiId); if (!poi) return;
+    poi.zone = [];
+    saveMaps();
+    renderMapTab();
+}
+
+// Accept/refuse a pending move request. There is no acceptance message: mapBringHere()
+// saves and republishes state, and the moved token is the answer. A refusal is the only
+// outcome that needs to be said, since nothing else would show it to the player.
+function acceptMove(i) {
+    const r = moveRequests[i]; if (!r) return;
+    moveRequests.splice(i, 1);
+    mapBringHere(r.charId, r.poiId);   // saveMaps → publishMapState: the moved token IS the answer
+    _renderMapTabBadge();
+}
+
+function denyMove(i) {
+    const r = moveRequests[i]; if (!r) return;
+    moveRequests.splice(i, 1);
+    if (ablyMap) ablyMap.publish('move-denied', { charId: r.charId, poiId: r.poiId });
+    renderMapTab();
+    _renderMapTabBadge();
+}
+
+// The pin layer: one element per POI, positioned in percentages. Names arrive from the GM
+// but tokens carry player names taken from presence, so everything is built with el() and
+// textContent — never a string template.
+function _mapPinLayer(m) {
+    const layer = el('div', { className: 'map-pins' });
+    // Table view goes through the very same filter the overlay uses, so the preview
+    // cannot lie about what the table sees.
+    const list = mapTableView ? visiblePois(buildMapState(), null) : m.pois;
+    list.forEach(p => {
+        const discovered = (p.discoveredBy || []).length > 0;
+        const pin = el('div', {
+            className: 'map-pin' + (discovered ? ' discovered' : '') + (p.id === mapSelectedPoiId ? ' selected' : ''),
+            style: { left: p.x + '%', top: p.y + '%' },
+            onpointerdown: e => _mapDragPin(e, p),
+        },
+            el('span', { className: 'map-pin-dot' }),
+            el('span', { className: 'map-pin-label', textContent: p.name }),
+            el('div', { className: 'map-tokens' },
+                Object.keys(m.positions)
+                    // A charId left in positions after the character left the campaign is not
+                    // in `players`, so no token is drawn for it — nothing to clean up.
+                    .filter(cid => m.positions[cid] === p.id && players.has(cid))
+                    .map(cid => el('span', { className: 'map-token', textContent: players.get(cid).name || '?' }))));
+        layer.append(pin);
+    });
+    return layer;
+}
+
+// Drag a pin, or select it when the pointer never really moved. One handler for both, so a
+// click cannot be swallowed by a drag that travelled two pixels. `moved` compares against the
+// gesture's origin (x0/y0), captured once — comparing against poi.x/poi.y as they get reassigned
+// on every move would measure one frame's delta instead of the total displacement, and a slow
+// drag (well under 0.5% per coalesced pointermove) would never trip it, silently discarding the
+// move on release. pointercancel runs the same teardown as pointerup: a gesture that ends
+// abnormally (touch-scroll takeover, an OS gesture, alt-tab mid-drag) fires neither pointerup nor
+// click, and the pin commonly outlives that (typing in the card's textareas calls saveMaps()
+// without a re-render), so a leaked listener pair would double up on the next real drag.
+function _mapDragPin(e, poi) {
+    e.preventDefault();
+    const frame = document.getElementById('map-frame');
+    const pin = e.currentTarget;
+    const x0 = poi.x, y0 = poi.y;
+    let moved = false;
+    pin.setPointerCapture(e.pointerId);
+    const onMove = ev => {
+        // Guards a re-render mid-drag detaching the frame/pin — not reachable yet, but Task 7's
+        // Ably state receive path will make it so. A detached frame's rect is zero-sized, and
+        // dividing by that writes NaN into poi.x/poi.y.
+        if (!pin.isConnected) return;
+        const { x, y } = _mapPct(ev, frame);
+        if (Math.abs(x - x0) > .5 || Math.abs(y - y0) > .5) moved = true;
+        poi.x = x; poi.y = y;
+        pin.style.left = x + '%'; pin.style.top = y + '%';
+    };
+    const end = () => {
+        pin.removeEventListener('pointermove', onMove);
+        pin.removeEventListener('pointerup', end);
+        pin.removeEventListener('pointercancel', end);
+        if (moved) { saveMaps(); renderMapTab(); }
+        else mapSelectPoi(poi.id);
+    };
+    pin.addEventListener('pointermove', onMove);
+    pin.addEventListener('pointerup', end);
+    pin.addEventListener('pointercancel', end);
+}
+
+// The tracing layer: click to place a vertex, click the first vertex to close, drag a
+// vertex to correct it, Suppr to remove the last one.
+function _zoneEditLayer() {
+    const layer = el('div', { className: 'map-zone-edit' });
+    zoneDraft.forEach(([x, y], i) => {
+        layer.append(el('div', {
+            className: 'zone-vertex' + (i === 0 ? ' first' : ''),
+            style: { left: x + '%', top: y + '%' },
+            onpointerdown: e => {
+                e.stopPropagation();
+                if (i === 0 && zoneDraft.length >= 3) { closeZone(); return; }
+                _zoneDragVertex(e, i);
+            },
+        }));
+    });
+    return layer;
+}
+
+// Same pointer pattern as _mapDragPin: one shared teardown for pointerup AND pointercancel
+// (a drag that ends abnormally — touch-scroll takeover, alt-tab — fires neither pointerup nor
+// click, and would otherwise leak a listener pair), plus an isConnected bail-out in onMove for
+// a re-render that detaches this node mid-drag (Suppr / closeZone / a player's move-request
+// arriving mid-drag — that handler calls renderMapTab() unconditionally).
+function _zoneDragVertex(e, i) {
+    e.preventDefault();
+    const frame = document.getElementById('map-frame');
+    const node = e.currentTarget;
+    node.setPointerCapture(e.pointerId);
+    const onMove = ev => {
+        if (!node.isConnected) return;
+        const { x, y } = _mapPct(ev, frame);
+        zoneDraft[i] = [x, y];
+        node.style.left = x + '%'; node.style.top = y + '%';
+    };
+    const end = () => {
+        node.removeEventListener('pointermove', onMove);
+        node.removeEventListener('pointerup', end);
+        node.removeEventListener('pointercancel', end);
+        renderMapTab();
+    };
+    node.addEventListener('pointermove', onMove);
+    node.addEventListener('pointerup', end);
+    node.addEventListener('pointercancel', end);
+}
+
+// The floating POI card. It anchors beside the selected pin and never on top of it: past
+// 55% of the width it flips to the left side. The three text layers are the whole point —
+// gmNote is the one that must never leave this panel.
+function _poiCard(m, poi) {
+    const side = poi.x > 55 ? ' left' : '';
+    return el('div', { className: 'map-poi-card' + side, style: { left: poi.x + '%', top: poi.y + '%' } },
+        el('div', { className: 'map-poi-head' },
+            el('input', { className: 'map-poi-name', value: poi.name,
+                oninput: e => { poi.name = e.target.value; saveMaps(); } }),
+            el('button', { className: 'map-poi-del', title: 'Supprimer', textContent: '✕',
+                onclick: () => mapDeletePoi(poi.id) })),
+        el('label', { className: 'map-poi-label', textContent: 'Description publique' }),
+        el('textarea', { className: 'map-poi-text', value: poi.publicDesc || '',
+            placeholder: 'Ce que lisent les joueurs qui ont découvert le lieu',
+            oninput: e => { poi.publicDesc = e.target.value; saveMaps(); } }),
+        el('label', { className: 'map-poi-label', textContent: 'Note MJ (privée)' }),
+        el('textarea', { className: 'map-poi-text gm', value: poi.gmNote || '',
+            placeholder: 'Ne quitte jamais ce panneau',
+            oninput: e => { poi.gmNote = e.target.value; saveMaps(); } }),
+        el('label', { className: 'map-poi-label', textContent: 'Découvert par' }),
+        el('div', { className: 'map-poi-disc' },
+            [...players.values()].map(pl => el('label', { className: 'map-poi-check' },
+                el('input', { type: 'checkbox', checked: poi.discoveredBy.includes(pl.charId),
+                    onchange: () => mapToggleDiscovered(pl.charId, poi.id) }),
+                el('span', { textContent: pl.name || pl.charId })))),
+        el('label', { className: 'map-poi-label', textContent: 'Amener ici' }),
+        el('div', { className: 'map-poi-bring' },
+            [...players.values()].map(pl => el('button', { className: 'gm-btn ghost',
+                textContent: pl.name || pl.charId,
+                // One button per player, no drag and drop: this is the most frequent action
+                // in play, it has to be one click and no aiming.
+                onclick: () => mapBringHere(pl.charId, poi.id) }))),
+        el('div', { className: 'map-poi-zone' },
+            el('button', { className: 'gm-btn ghost',
+                textContent: (poi.zone || []).length ? 'Modifier la zone' : 'Tracer une zone',
+                onclick: () => startZoneEdit(poi.id) }),
+            (poi.zone || []).length > 0 && el('button', { className: 'gm-btn ghost', textContent: 'Effacer la zone',
+                onclick: () => clearZone(poi.id) })));
+}
+
+// Render the whole Carte tab. Every map mutation calls this; there is no partial render,
+// the tab holds at most one image and a handful of pins.
+function renderMapTab() {
+    // Drop a stale active id (map deleted on another device), then render the chips.
+    if (activeMapId && !_activeMap()) activeMapId = gmMaps[0] ? gmMaps[0].id : null;
+    // A trace can be stranded two ways: the GM switches map mid-trace (the POI is not on the
+    // new map) or deletes the POI being traced from its own open card (mapDeletePoi() resets
+    // mapSelectedPoiId but has no reason to know about zoneEditPoiId). Either leaves the
+    // tracing UI up over geometry that can never be committed. One guard here catches both,
+    // and any future path that could make zoneEditPoiId dangle.
+    if (zoneEditPoiId && !_activeMap()?.pois.some(p => p.id === zoneEditPoiId)) { zoneEditPoiId = null; zoneDraft = []; }
+    _renderGroupBar('map');
+    const stage = document.getElementById('map-stage');
+    const bar   = document.getElementById('map-toolbar');
+    if (!stage || !bar) return;
+    const m = _activeMap();
+    if (!m) {
+        fill(bar);
+        fill(stage, el('div', { className: 'map-empty', textContent: 'Aucune carte. Créez-en une avec ＋.' }));
+        return;
+    }
+    fill(bar,
+        el('button', { className: 'gm-btn', textContent: m.imageUrl ? 'Remplacer l’image' : 'Importer une image',
+            onclick: () => document.getElementById('map-image-input').click() }),
+        el('span', { className: 'map-gen-label', textContent: 'Générer :' }),
+        MAP_GENERATORS.map(g => el('button', { className: 'gm-btn ghost', textContent: g.label,
+            onclick: () => openMapGenerator(g) })),
+        el('input', { className: 'map-source-input', value: m.sourceUrl || '', placeholder: 'URL source (optionnel)',
+            // Editable on purpose: options changed inside the generator land on a URL Aria
+            // never saw, and pasting the address bar back is the only way to fix that.
+            oninput: e => { m.sourceUrl = e.target.value; saveMaps(); } }),
+        m.sourceUrl && el('button', { className: 'gm-btn ghost', textContent: 'Rouvrir la source',
+            onclick: () => window.open(m.sourceUrl, '_blank', 'noopener') }),
+        el('button', { className: 'gm-btn ghost' + (mapTableView ? ' active' : ''), textContent: 'Vue table',
+            onclick: () => { mapTableView = !mapTableView; renderMapTab(); } }),
+        zoneEditPoiId && el('span', { className: 'map-zone-hint',
+            textContent: `Tracé en cours (${zoneDraft.length} sommets) — cliquez le premier sommet pour fermer, Suppr pour annuler le dernier` }),
+        zoneEditPoiId && el('button', { className: 'gm-btn', textContent: 'Fermer la zone', onclick: closeZone }),
+        zoneEditPoiId && el('button', { className: 'gm-btn ghost', textContent: 'Annuler', onclick: cancelZoneEdit }),
+        moveRequests.length > 0 && el('details', { className: 'map-queue' },
+            el('summary', { textContent: `⚑ ${moveRequests.length}` }),
+            el('div', { className: 'map-queue-list' },
+                moveRequests.map((r, i) => el('div', { className: 'map-queue-row' },
+                    el('span', { textContent: `${r.charName || r.charId} → ${(_activeMap()?.pois.find(p => p.id === r.poiId)?.name) || '?'}` }),
+                    el('button', { className: 'gm-btn', textContent: '✓', onclick: () => acceptMove(i) }),
+                    el('button', { className: 'gm-btn ghost', textContent: '✕', onclick: () => denyMove(i) }))))));
+
+    if (!m.imageUrl) {
+        fill(stage, el('div', { className: 'map-empty', textContent: 'Aucune image. Importez-en une ou générez-en une.' }));
+        return;
+    }
+    // Table view previews exactly what the table sees — fogZones()/visiblePois() through the
+    // null charId, same filter the overlay uses. Edit view shows every POI with a drawn zone,
+    // since the MJ is editing geometry rather than checking what's revealed.
+    const st = buildMapState();
+    const clear = mapTableView ? visiblePois(st, null) : m.pois.filter(p => (p.zone || []).length);
+    const fog   = mapTableView ? fogZones(st, null) : [];
+    // The floating card must not lie either: in table view it only opens for a POI the
+    // table can actually see — same visiblePois() ids as `clear` above, matched against the
+    // real m.pois object (not buildMapState()'s stripped clone) so the card can still edit
+    // gmNote and the rest.
+    const visibleIds = mapTableView ? new Set(visiblePois(st, null).map(p => p.id)) : null;
+    const sel = m.pois.find(p => p.id === mapSelectedPoiId && (!visibleIds || visibleIds.has(p.id))) || null;
+    const frame = _mapFrame(m,
+        _mapZoneLayer(clear, fog),
+        zoneEditPoiId && _mapZoneLayer([{ id: 'draft', zone: zoneDraft }], []),
+        _mapPinLayer(m),
+        zoneEditPoiId && _zoneEditLayer(),
+        sel && _poiCard(m, sel));
+    // A click on the background places a POI; a click on a pin or the card must not.
+    frame.addEventListener('click', e => {
+        // Third connectivity guard in this file (see _mapDragPin/_zoneDragVertex above): a
+        // click that starts a trace (or any other card action) re-renders synchronously via
+        // renderMapTab() -> fill(stage, frame), detaching THIS frame — but the event path was
+        // fixed at dispatch, so this same click still bubbles to the now-detached listener.
+        // A detached frame's getBoundingClientRect() is zero-sized, so _mapPct() below would
+        // divide by zero and the clamp would turn the result into a bogus [100, 100] vertex.
+        if (!frame.isConnected) return;
+        // The card must stay usable while tracing — its name input and textareas are inside
+        // it, and without this a click there falls through to the vertex-placing branch below.
+        if (e.target.closest('.map-poi-card')) return;
+        // While tracing a zone, a background click places a vertex instead — and never a POI.
+        if (zoneEditPoiId) {
+            if (e.target.closest('.zone-vertex')) return;   // handled by the vertex itself
+            const { x, y } = _mapPct(e, frame);
+            zoneDraft.push([x, y]);
+            renderMapTab();
+            return;
+        }
+        if (e.target.closest('.map-pin') || e.target.closest('.map-poi-card')) return;
+        if (mapSelectedPoiId) { mapSelectedPoiId = null; renderMapTab(); return; }
+        const { x, y } = _mapPct(e, frame);
+        mapAddPoi(x, y);
+    });
+    fill(stage, frame);
+}
+
+// Mirror the queue count onto the Carte tab button — the tab may not even be open.
+function _renderMapTabBadge() {
+    const btn = document.querySelector('.tab-btn[data-tab="tab-map"]');
+    if (!btn) return;
+    btn.textContent = moveRequests.length ? `Carte ⚑${moveRequests.length}` : 'Carte';
+}
+
+// The public projection of the active map. This is the ONLY place the broadcast payload is
+// built, which is what makes "gmNote is never published" a property of the code rather than
+// a convention — there is nowhere else it could slip in. `state` replaces on the receiving
+// side, it is never patched, so no client can drift.
+function buildMapState() {
+    const m = _activeMap();
+    if (!m) return null;
+    const names = {};
+    players.forEach((p, charId) => { names[charId] = p.name || ''; });
+    return {
+        mapId: m.id, name: m.name, imageUrl: m.imageUrl || '',
+        pois: (m.pois || [])
+            .filter(p => (p.discoveredBy || []).length > 0)
+            .map(p => ({ id: p.id, name: p.name, x: p.x, y: p.y,
+                         publicDesc: p.publicDesc || '', discoveredBy: p.discoveredBy || [],
+                         zone: p.zone || [] })),
+        // Geometry only: no name, no description, no pin coordinates. This is what lets a
+        // player draw a black district without learning anything about what is in it. A POI
+        // with no zone and no discovery appears nowhere at all.
+        fog: (m.pois || [])
+            .filter(p => (p.discoveredBy || []).length === 0 && (p.zone || []).length)
+            .map(p => ({ id: p.id, zone: p.zone })),
+        positions: m.positions || {},
+        players: names,
+    };
+}
+
+let _mapPubTimer = null;
+// Broadcast the map, debounced: a drag fires a mutation per pointer move. `state` replaces
+// wholesale on both receivers (mapState = msg.data || null, in both aria-player.js and
+// aria-overlay.js) — so publishing null when there is no active map (deleting the last one)
+// is how a map gets taken OFF the table, not a special case: withholding the publish here
+// left players/overlay holding the last map forever, including across a reload via the
+// aria-map-{charId} cache.
+function publishMapState() {
+    clearTimeout(_mapPubTimer);
+    _mapPubTimer = setTimeout(() => {
+        if (!ablyMap) return;
+        ablyMap.publish('state', buildMapState());
+    }, 150);
 }

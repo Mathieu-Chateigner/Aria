@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <title>ARIA – Éditeur d'overlay</title>
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=EB+Garamond:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Archivo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
     <link rel="stylesheet" href="../css/aria-overlay-editor.css">
 </head>
@@ -63,11 +65,39 @@
                 </div>
 
                 <div id="prop-stream-id-wrap" style="display:none">
-                    <label class="props-label">Stream ID</label>
-                    <input type="text" id="prop-stream-id" class="props-input" placeholder="ex: monStream123">
+                    <label class="props-label">Caméra</label>
+                    <!-- Stream IDs are auto-derived from the character/campaign UUID and
+                         shown nowhere else in the app — this list is the only practical
+                         way to fill the field. Free text stays allowed. -->
+                    <select id="prop-stream-pick" class="props-input">
+                        <option value="">— choisir —</option>
+                    </select>
+                    <input type="text" id="prop-stream-id" class="props-input" placeholder="Stream ID" style="margin-top:6px;">
+                    <div id="prop-stream-hint" class="props-hint"></div>
                 </div>
 
-                <button id="btn-delete-widget" class="btn-danger">🗑 Supprimer</button>
+                <div id="prop-charid-wrap" style="display:none">
+                    <label class="props-label">Joueur lié</label>
+                    <select id="prop-charid-pick" class="props-input">
+                        <option value="">— auto (1er joueur connu) —</option>
+                    </select>
+                    <div class="props-hint">Fige ce widget sur un joueur précis plutôt que le premier connecté.</div>
+                </div>
+
+                <button id="btn-delete-widget" class="btn-danger">Supprimer</button>
+            </div>
+        </div>
+
+        <div id="editor-preview">
+            <div id="preview-canvas-wrap">
+                <div class="palette-section-label">Aperçu (ce que l'overlay affiche)</div>
+                <div id="preview-frame-wrap">
+                    <iframe id="preview-frame" title="Aperçu overlay"></iframe>
+                </div>
+            </div>
+            <div id="preview-tests-wrap">
+                <div class="palette-section-label">Événements test</div>
+                <div id="preview-tests"></div>
             </div>
         </div>
     </div>
