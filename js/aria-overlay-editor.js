@@ -59,11 +59,11 @@ const WIDGET_DEFS = {
         { type: 'camera',            label: 'Caméra joueur',         defaultW: 25, defaultH: 20, gmOnly: true },
     ],
     event: [
-        { type: 'roll_card',         label: 'Carte de jet',         defaultW: 35, defaultH: 40 },
-        { type: 'card_draw',         label: 'Carte tirée',          defaultW: 15, defaultH: 25 },
+        { type: 'roll_card',         label: 'Carte de jet',         defaultW: 16.5, defaultH: 24 },
+        { type: 'card_draw',         label: 'Carte tirée',          defaultW: 10.5, defaultH: 29 },
         { type: 'damage_number',     label: 'Nombre de dégâts',     defaultW: 15, defaultH: 12 },
         { type: 'heal_number',       label: 'Nombre de soin',       defaultW: 15, defaultH: 12 },
-        { type: 'hp_bar_animation',  label: 'Barre PV (animation)', defaultW: 35, defaultH: 12 },
+        { type: 'hp_bar_animation',  label: 'Barre PV (animation)', defaultW: 22, defaultH: 9.3 },
         { type: 'mort_screen',       label: 'Écran MORT',           defaultW: 100, defaultH: 100 },
     ],
 };

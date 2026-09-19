@@ -784,21 +784,30 @@ function showHeal(data) {
 function getEventWidgetStyle(type) {
     const widget = overlayConfig.widgets.find(w => w.type === type && w.category === 'event');
     if (!widget) return null;
-    return { left: widget.x + '%', top: widget.y + '%', width: widget.w + '%', height: widget.h + '%' };
+    // flex-start anchors the wrapped element at the box's top-left, which is what
+    // the scale below grows from (transform-origin: 0 0).
+    return { left: widget.x + '%', top: widget.y + '%', width: widget.w + '%', height: widget.h + '%',
+             alignItems: 'flex-start', justifyContent: 'flex-start' };
 }
 
-// The editor's WIDGET_DEFS default w/h for each event type — the size the fixed
-// px font-sizes/paddings in aria-overlay.css were designed to look right at.
-// Resizing the widget away from this scales the whole card/number as one image
-// (see .ow-event-box in aria-overlay.css). Keep in sync with WIDGET_DEFS.event
-// in aria-overlay-editor.js if those defaults ever change.
+// The natural size of each event element — what the fixed px sizes in
+// aria-overlay.css render at, as a % of the 1920x1080 canvas. The widget box is
+// scaled by widget.w / base.w, so a box drawn at the base size renders 1:1 and a
+// wider box makes the whole card/number bigger as one image. Height is not in the
+// ratio: the box is anchored top-left and the element keeps its own aspect, so
+// the box outline in the editor lines up with what goes on stream.
+// Keep in sync with WIDGET_DEFS.event in aria-overlay-editor.js.
 const EVENT_BASE_SIZE = {
-    roll_card:        { w: 35, h: 40 },
-    card_draw:        { w: 15, h: 25 },
+    roll_card:        { w: 16.5, h: 24 },
+    card_draw:        { w: 10.5, h: 29 },
     damage_number:    { w: 15, h: 12 },
     heal_number:      { w: 15, h: 12 },
-    hp_bar_animation: { w: 35, h: 12 },
+    hp_bar_animation: { w: 22, h: 9.3 },
 };
+// #dmg-hpbar-wrap is 420x40px and sits `bottom: 60px` inside its box, so a 100px
+// (9.3%) tall box puts its top edge exactly on the box's top edge. The damage/heal
+// numbers keep an arbitrary base: their width is the text's, so it changes with the
+// value and there is no natural size to match a box to.
 
 // Apply an event widget's position/size (and derived scale) from the overlay
 // config to its .ow-event-box wrapper. Unconfigured (no matching widget) clears
@@ -809,10 +818,14 @@ function applyEventWidgetPosition(elId, widgetType) {
     if (!el) return;
     const style = getEventWidgetStyle(widgetType);
     if (!style) { el.style.cssText = ''; return; }
+    // #dmg-mort is the element itself, not an .ow-event-box wrapper — it centres its
+    // own contents, so it must not inherit the box's top-left anchoring.
+    if (!el.classList.contains('ow-event-box')) { delete style.alignItems; delete style.justifyContent; }
     Object.assign(el.style, style);
     const base = EVENT_BASE_SIZE[widgetType];
     const widget = overlayConfig.widgets.find(w => w.type === widgetType && w.category === 'event');
-    const scale = base && widget ? Math.max(0.3, Math.min(3, Math.min(widget.w / base.w, widget.h / base.h))) : 1;
+    const scale = base && widget ? Math.max(0.3, Math.min(3, widget.w / base.w)) : 1;
+    el.style.transformOrigin = '0 0';
     el.style.transform = `translate(0) scale(${scale})`;
 }
 
