@@ -25,16 +25,33 @@ function ariaDungeonBg(container) {
 
     let stoneW = 0, stoneH = 0;
     let raf = null, iv = null, onResize = null, brzWatch = null, active = true;
+    // Where the two bowls ended up, in CSS px — the fire reads them instead of
+    // re-deriving the masonry constants at its own (unscaled) size.
+    let bowlPts = [], syncEmitters = null, paintT = null;
+    const schedulePaint = () => {
+        clearTimeout(paintT);
+        paintT = setTimeout(() => {
+            if (stoneCv.clientWidth !== stoneW || stoneCv.clientHeight !== stoneH) paintStone();
+        }, 160);
+    };
 
     // ---- procedural masonry: big shapes -> edges (bevel/chip) -> surface noise -> wear
     function paintStone(tries) {
         tries = tries || 0;
         if (!stoneCv.clientWidth) { if (tries < 40) setTimeout(() => paintStone(tries + 1), 100); return; }
-        const w = stoneCv.clientWidth, h = stoneCv.clientHeight, dpr = Math.min(window.devicePixelRatio || 1, 2);
-        stoneCv.width = Math.round(w * dpr); stoneCv.height = Math.round(h * dpr);
+        const cssW = stoneCv.clientWidth, cssH = stoneCv.clientHeight, dpr = Math.min(window.devicePixelRatio || 1, 2);
+        stoneCv.width = Math.round(cssW * dpr); stoneCv.height = Math.round(cssH * dpr);
         const c = stoneCv.getContext('2d');
-        c.setTransform(dpr, 0, 0, dpr, 0, 0);
-        stoneW = w; stoneH = h;
+        stoneW = cssW; stoneH = cssH;
+        // The masonry below is laid out in fixed px around a 1180-wide design. Narrower
+        // than that, draw the whole scene at scale S in logical units instead of cropping
+        // it — the arch is 988 wide and the braziers sit at +/-511, so at 820px both
+        // pillars fell off-screen entirely. 820 is the height the arch needs (FLOOR +
+        // its 668 rise), so a short window shrinks instead of losing the arch head.
+        // Never scales up past 1:1.
+        const S = Math.min(1, cssW / 1180, cssH / 820);
+        c.setTransform(dpr * S, 0, 0, dpr * S, 0, 0);
+        const w = cssW / S, h = cssH / S;
 
         let sd = 20260916 >>> 0;
         const rnd = () => { sd = (sd * 1664525 + 1013904223) >>> 0; return sd / 4294967296; };
@@ -191,6 +208,15 @@ function ariaDungeonBg(container) {
         // ---- pillars, caps, bowls
         for (const side of [-1, 1]) {
             const x0 = cx + side * PX - PW / 2;
+            // AO down the sides: without it the pillar blocks read as floating in the wall
+            const edgeAO = (ex, ew, ey, eh) => {
+                let g = c.createLinearGradient(ex, 0, ex - 24, 0);
+                g.addColorStop(0, 'rgba(0,0,0,.9)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+                c.fillStyle = g; c.fillRect(ex - 24, ey, 24, eh);
+                g = c.createLinearGradient(ex + ew, 0, ex + ew + 24, 0);
+                g.addColorStop(0, 'rgba(0,0,0,.9)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+                c.fillStyle = g; c.fillRect(ex + ew, ey, 24, eh);
+            };
             for (let y = h - FLOOR - PH; y < h - FLOOR;) {
                 const bh = rr(38, 52);
                 face(x0 + rr(0, 1.5), y, PW - rr(0, 2), Math.min(bh, h - FLOOR - y), rr(12, 17));
@@ -198,6 +224,12 @@ function ariaDungeonBg(container) {
             }
             const capY = h - FLOOR - PH - CAPH;
             face(cx + side * PX - CAPW / 2, capY, CAPW, CAPH, 17.5, { jit: 1 });
+            // cap overhang: drop shadow onto the shaft below
+            const cao = c.createLinearGradient(0, capY + CAPH, 0, capY + CAPH + 14);
+            cao.addColorStop(0, 'rgba(0,0,0,.6)'); cao.addColorStop(1, 'rgba(0,0,0,0)');
+            c.fillStyle = cao; c.fillRect(x0 - 2, capY + CAPH, PW + 4, 14);
+            edgeAO(x0, PW, capY + CAPH, h - FLOOR - capY - CAPH);
+            edgeAO(cx + side * PX - CAPW / 2, CAPW, capY, CAPH);
             // bowl
             const bY = capY - BOWLH, bw = 52;
             c.save();
@@ -463,6 +495,10 @@ function ariaDungeonBg(container) {
         const vg = c.createRadialGradient(cx, h * 0.5, Math.min(w, h) * 0.28, cx, h * 0.5, Math.max(w, h) * 0.78);
         vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(2,3,5,.72)');
         c.fillStyle = vg; c.fillRect(0, 0, w, h);
+
+        const bowlY = (h - FLOOR - PH - CAPH - BOWLH) * S;
+        bowlPts = [{ x: (cx - PX) * S, y: bowlY }, { x: (cx + PX) * S, y: bowlY }];
+        if (syncEmitters) syncEmitters();
     }
 
     function startEmbers(tries) {
@@ -480,10 +516,8 @@ function ariaDungeonBg(container) {
         };
         fit();
         // brazier emitters sit on the two pillar bowls (geometry mirrors the template)
-        const emitters = () => [
-            { x: w / 2 - 511, y: h - 474, ph: 0 },
-            { x: w / 2 + 511, y: h - 474, ph: 2.3 },
-        ];
+        const emitters = () => (bowlPts.length ? bowlPts : [{ x: w / 2 - 511, y: h - 474 }, { x: w / 2 + 511, y: h - 474 }])
+            .map((p, i) => ({ x: p.x, y: p.y, ph: i ? 2.3 : 0 }));
         const newFlame = (e) => ({
             e, x: e.x + (Math.random() - 0.5) * 22, y: e.y + 2 + (Math.random() - 0.5) * 5,
             r: 7 + Math.random() * 13,
@@ -515,7 +549,10 @@ function ariaDungeonBg(container) {
             for (let i = 0; i < 9; i++) { const s = newSpark(e); s.life = Math.random() * s.span; s.y -= Math.random() * 140; sparks.push(s); }
             for (let i = 0; i < 12; i++) { const m = newSmoke(e); m.life = Math.random() * m.span; smoke.push(m); }
         }
-        onResize = () => { fit(); if (stoneCv.clientWidth !== stoneW) paintStone(); em = emitters(); flames.forEach((f, i) => f.e = em[i % 2]); sparks.forEach((s, i) => s.e = em[i % 2]); smoke.forEach((m, i) => m.e = em[i % 2]); };
+        syncEmitters = () => { em = emitters(); flames.forEach((f, i) => f.e = em[i % 2]); sparks.forEach((s, i) => s.e = em[i % 2]); smoke.forEach((m, i) => m.e = em[i % 2]); };
+        // A height-only resize used to skip paintStone, leaving the old bitmap stretched
+        // over the new box while the fire (which does refit) drifted off the bowls.
+        onResize = () => { fit(); schedulePaint(); syncEmitters(); };
         window.addEventListener('resize', onResize);
 
         let last = performance.now(), frames = 0, mode = 'raf';
@@ -642,7 +679,7 @@ function ariaDungeonBg(container) {
         destroy() {
             active = false;
             if (raf) cancelAnimationFrame(raf);
-            clearInterval(iv); clearTimeout(brzWatch);
+            clearInterval(iv); clearTimeout(brzWatch); clearTimeout(paintT);
             if (onResize) window.removeEventListener('resize', onResize);
             layer.remove();
         },
