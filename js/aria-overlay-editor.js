@@ -344,7 +344,9 @@ function refreshCharIdPicker(current) {
     pick.innerHTML = '';
     const none = document.createElement('option');
     none.value = '';
-    none.textContent = '— auto (1er joueur connu) —';
+    // On a player overlay "auto" is that overlay's own character (the only entry the
+    // picker offers anyway); on a GM overlay it is the first known player.
+    none.textContent = OWNER_TYPE === 'gm' ? '— auto (1er joueur connu) —' : '— auto (vous) —';
     pick.appendChild(none);
     availablePlayers().forEach(p => {
         const opt = document.createElement('option');

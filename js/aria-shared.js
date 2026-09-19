@@ -1951,7 +1951,12 @@ function makeChat({ selfId, selfName, contacts }) {
 
     function receive(m) {
         if (!add(m)) return;
-        if (m.authorId !== selfId() && (m.thread !== current || !paneOpen())) unread.add(m.thread);
+        // The player's sidebar shows the global thread at all times, so a message
+        // already on screen must not also light the Messages tab. The GM has no
+        // sidebar — no #chat-global-log — and its global unread mark is real.
+        const onScreen = (m.thread === current && paneOpen())
+                      || (m.thread === 'global' && !!$('chat-global-log'));
+        if (m.authorId !== selfId() && !onScreen) unread.add(m.thread);
         render();
     }
 
@@ -1985,10 +1990,14 @@ function makeChat({ selfId, selfName, contacts }) {
     async function load() {
         const code = (ARIA.joinCode() || '').trim().toUpperCase();
         if (!code) { render(); return; }
+        // desc, not asc: the limit is applied after the sort, so ascending would pin
+        // the read to the first 500 messages the campaign ever had and stop loading
+        // history the moment it passed that mark. add() sorts each thread by ts, so
+        // taking the newest 500 costs nothing in display order.
         const rows = await sbSelect('campaign_chat',
             'join_code=eq.' + encodeURIComponent(code) +
             '&or=(thread.eq.global,thread.like.*' + encodeURIComponent(selfId()) + '*)' +
-            '&order=created_at.asc&limit=500');
+            '&order=created_at.desc&limit=500');
         rows.forEach(r => add({
             id: r.id, thread: r.thread, authorId: r.author_id,
             authorName: r.author_name, body: r.body, ts: Date.parse(r.created_at) || 0,

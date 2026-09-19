@@ -8,3 +8,6 @@
 /commits
 .worktrees/
 /.superpowers
+
+# Supabase CLI link state (local-only)
+/supabase/

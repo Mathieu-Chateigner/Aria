@@ -829,51 +829,60 @@ function applyEventWidgetPosition(elId, widgetType) {
     el.style.transform = `translate(0) scale(${scale})`;
 }
 
+// The character a widget is about. No charId means "this overlay's character": a
+// player overlay knows whose it is from its own id, and the editor's "auto" offers
+// nothing else there. This used to be `[...presenceCache.values()][0]`, written out
+// at all eight call sites — whoever Ably happened to return first, so a player's own
+// stream showed another player's name, HP and inventory, and swapped them as people
+// joined or left. A GM overlay has no character of its own and keeps that fallback.
+const widgetChar = cfg => presenceCache.get((cfg || {}).charId || MAP_CHAR_ID)
+                       || (MAP_CHAR_ID ? null : [...presenceCache.values()][0]);
+
 // Return the inner HTML for a given overlay widget based on live presence/roll data.
 function renderWidgetContent(widget) {
     const cfg = widget.config || {};
     switch (widget.type) {
         case 'character_name': {
             // Lower-third nameplate — dark glass plate + accent edge (design frame 20)
-            const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
+            const p = widgetChar(cfg);
             const name = p ? esc(p.name) : '—';
             const cls = (p && p.charClass) ? `<div class="ow-np-class">${esc(p.charClass)}</div>` : '';
             return `<div class="ow-nameplate"><div class="ow-np-edge"></div><div class="ow-np-body"><div class="ow-np-name">${name}</div>${cls}</div></div>`;
         }
         case 'hp_bar': {
-            const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
+            const p = widgetChar(cfg);
             if (!p) return '<div class="ow-hp-wrap"><div class="ow-hp-label">—</div><div class="ow-hp-track"><div class="ow-hp-fill" style="width:0%"></div><div class="ow-hp-text">— PV</div></div></div>';
             const pct = Math.max(0, Math.min(100, (p.hp / (p.maxHP || 1)) * 100));
             const colorCls = pct > 60 ? '' : pct > 30 ? ' yellow' : ' red';
             return `<div class="ow-hp-wrap"><div class="ow-hp-label">${esc(p.name)}</div><div class="ow-hp-track"><div class="ow-hp-fill${colorCls}" style="width:${pct}%"></div><div class="ow-hp-text">${esc(p.hp)} / ${esc(p.maxHP)} PV</div></div></div>`;
         }
         case 'stats': {
-            const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
+            const p = widgetChar(cfg);
             if (!p?.stats) return '<div class="ow-stats">—</div>';
             return `<div class="ow-stats">${['FOR','DEX','END','INT','CHA'].map(s => `<div class="ow-stat"><span class="ow-stat-label">${s}</span><span class="ow-stat-value">${esc(p.stats[s] ?? '—')}</span></div>`).join('')}</div>`;
         }
         case 'protection': {
-            const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
+            const p = widgetChar(cfg);
             if (!p?.protection) return '<div class="ow-protection">—</div>';
             return `<div class="ow-protection">⊞ ${esc(p.protection.nom || '—')} — ${esc(p.protection.valeur ?? 0)}</div>`;
         }
         case 'skills': {
-            const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
+            const p = widgetChar(cfg);
             if (!p?.skills?.length) return '<div class="ow-list">—</div>';
             return `<div class="ow-list">${p.skills.slice(0, cfg.maxItems || 10).map(s => `<div class="ow-list-item"><span class="ow-list-name">${esc(s.name)}</span><span class="ow-list-value">${esc(s.pct)}%</span></div>`).join('')}</div>`;
         }
         case 'weapons': {
-            const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
+            const p = widgetChar(cfg);
             if (!p?.weapons?.length) return '<div class="ow-list">—</div>';
             return `<div class="ow-list">${p.weapons.filter(w => w.nom).map(w => `<div class="ow-list-item"><span class="ow-list-name">${esc(w.nom)}</span><span class="ow-list-value">${esc(w.degats)}</span></div>`).join('')}</div>`;
         }
         case 'inventory': {
-            const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
+            const p = widgetChar(cfg);
             if (!p?.inventory?.length) return '<div class="ow-list">—</div>';
             return `<div class="ow-list">${p.inventory.slice(0, cfg.maxItems || 10).map(i => `<div class="ow-list-item"><span class="ow-list-name">${esc(i.name)}</span><span class="ow-list-value">×${esc(i.qty)}</span></div>`).join('')}</div>`;
         }
         case 'potions': {
-            const p = cfg.charId ? presenceCache.get(cfg.charId) : [...presenceCache.values()][0];
+            const p = widgetChar(cfg);
             if (!p?.potions?.length) return '<div class="ow-list">—</div>';
             return `<div class="ow-list">${p.potions.slice(0, cfg.maxItems || 8).map(pt => `<div class="ow-list-item"><span class="ow-list-name">${esc(pt.name)}</span><span class="ow-list-value">×${esc(pt.qty ?? 1)}</span></div>`).join('')}</div>`;
         }

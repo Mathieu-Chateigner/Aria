@@ -310,10 +310,13 @@ function _clearLocalPlayerData() {
 }
 
 // Group child rows by their parent id and write one localStorage key per parent.
-// Every parent that had rows gets its key rewritten; parents with none are left
-// alone here — deletions are handled by the orphan sweep on the character list.
-function _storeByParent(which, entity, rows, parentCol) {
-    const byParent = {};
+// Every character in `ids` gets its key rewritten, including those with no rows:
+// the DB is authoritative after a successful load, so an empty result means
+// "deleted on another device". Writing only the parents that had rows left those
+// deletions local-only, and the next _syncAllPlayerData() upserted them back
+// (the same resurrection bug the GM side already guards against).
+function _storeByParent(which, entity, rows, parentCol, ids) {
+    const byParent = Object.fromEntries(ids.map(id => [id, []]));
     rows.forEach(row => (byParent[row[parentCol]] ||= []).push(fromRow(entity, row)));
     Object.entries(byParent).forEach(([pid, arr]) =>
         localStorage.setItem(charKey(which, pid), JSON.stringify(arr)));
@@ -352,8 +355,8 @@ async function loadFromSupabase() {
             if (s.map_notes) localStorage.setItem(charKey('mapNotes', s.character_id), JSON.stringify(s.map_notes));
         });
 
-        _storeByParent('notes', ENT.characterNote, notes, 'character_id');
-        _storeByParent('files', ENT.characterFile, files, 'character_id');
+        _storeByParent('notes', ENT.characterNote, notes, 'character_id', [...dbIds]);
+        _storeByParent('files', ENT.characterFile, files, 'character_id', [...dbIds]);
 
         return true;
     } catch(e) { console.warn('[ARIA] Supabase load failed:', e); return false; }
