@@ -649,3 +649,122 @@ body.dock-dragging .tab-btn, body.dock-dragging .split-pane-hdr { cursor: grabbi
 .map-tokens { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .map-token { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
              padding: 1px 7px; font-size: 10px; color: var(--parchment); white-space: nowrap; }
+
+/* ═══════════════════════════════════════════════
+   CHAT — global thread (player sidebar) + Messages tab (both panels)
+   ═══════════════════════════════════════════════ */
+.chat-log {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    padding: 10px 12px;
+}
+.chat-msg { display: flex; flex-direction: column; gap: 2px; }
+.chat-meta { display: flex; align-items: baseline; gap: 6px; }
+.chat-author {
+    font-family: 'Archivo', sans-serif;
+    font-size: 10px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--gold);
+}
+.chat-msg.mine .chat-author { color: var(--dim); }
+.chat-time { font-family: ui-monospace, Menlo, monospace; font-size: 9px; color: var(--faint); }
+.chat-body {
+    font-size: 13.5px;
+    line-height: 1.45;
+    color: var(--text);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    border-left: 2px solid var(--line2);
+    padding-left: 8px;
+}
+.chat-msg.mine .chat-body { border-left-color: var(--gold-dim); }
+.chat-empty { color: var(--faint); font-style: italic; font-size: 12px; }
+
+.chat-input-row { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--line2); }
+.chat-input {
+    flex: 1;
+    min-width: 0;
+    background: var(--field);
+    border: 1px solid var(--line2);
+    border-radius: 3px;
+    padding: 7px 9px;
+    color: var(--text);
+    font-family: 'Archivo', sans-serif;
+    font-size: 13px;
+}
+.chat-input:focus { outline: none; border-color: var(--gold-dim); }
+.chat-send {
+    background: var(--accent-soft);
+    border: 1px solid var(--gold-dim);
+    border-radius: 3px;
+    color: var(--gold);
+    font-family: 'Archivo', sans-serif;
+    font-size: 12px;
+    padding: 0 12px;
+    cursor: pointer;
+}
+.chat-send:hover { background: rgba(var(--accent-rgb), .22); }
+
+/* Sidebar instance (player only) — takes the space left under the weapons. */
+.sidebar-chat { flex: 1; min-height: 180px; display: flex; flex-direction: column; }
+.sidebar-chat .panel-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0; }
+
+/* Messages tab */
+.chat-wrap { display: flex; height: 100%; min-height: 420px; }
+.chat-threads {
+    width: 220px;
+    flex-shrink: 0;
+    overflow-y: auto;
+    background: var(--rail);
+    border-right: 1px solid var(--line2);
+    padding: 14px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.chat-thread {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 11px;
+    cursor: pointer;
+    border-left: 2px solid var(--line2);
+    border-radius: 0 3px 3px 0;
+}
+.chat-thread:hover { background: var(--accent-soft); }
+.chat-thread.active { background: var(--accent-soft); border-left-color: var(--gold); }
+.chat-thread-name {
+    flex: 1;
+    font-family: 'Archivo', sans-serif;
+    font-size: 13.5px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.chat-thread-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); flex-shrink: 0; }
+.chat-thread-dot.on { background: var(--ok); }
+.chat-badge { color: var(--gold); font-size: 9px; }
+.chat-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.chat-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 20px;
+    color: var(--warm);
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid var(--line2);
+}
+.chat-main .chat-log { padding: 14px 20px; }
+.chat-main .chat-input-row { padding: 12px 20px; }
+.tab-btn.has-unread::after {
+    content: '●';
+    color: var(--gold);
+    font-size: 8px;
+    margin-left: 5px;
+    vertical-align: middle;
+}
+.content.split-mode .chat-threads { width: 160px; padding: 10px 8px; }

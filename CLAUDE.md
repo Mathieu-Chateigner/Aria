@@ -129,11 +129,13 @@ All three apps share **one Ably key** (entered on `index.html`) and use five gam
 | `aria-damage` | `aria-gm` (damage/heal/monster-state/tab-config/grants/karma-set) + `aria-player` (Soigner damage/heal to a target) | `aria-player` (GM damage/heal + grants, all addressed by `charId`) + `aria-overlay` (monster-state; ignores `source:'player'` damage/heal — see payloads) |
 | `aria-presence` | `aria-player` + `aria-gm` (Ably **presence** enter/update — not messages) | all three, via `presence.subscribe` + `presence.get`. The presence set is the roster: who is connected, each participant's character data, and the GM's room/spotlight. See *Presence*. |
 | `aria-music` | `aria-gm` (play/stop/pause/resume commands) | `aria-player` (subscribe only) — GM does **not** subscribe to its own commands |
+| `aria-chat` | `aria-player` + `aria-gm` (global thread) | both panels — the Discussion panel and the Messages tab |
+| `aria-chat-{ID}` | whoever writes a private message | the one participant whose inbox it is (`ID` = a `charId`, or `gm`) |
 | `aria-overlay-config` | overlay editor (layout/content updates) | `aria-overlay` (receives layout changes in real time) |
 
 #### Per-campaign channel scoping
 
-The five game channels (`aria-rolls`, `aria-rolls-hidden`, `aria-cards`, `aria-damage`, `aria-music`) are **scoped per campaign** by suffixing the campaign join code: `aria-rolls-{JOINCODE}`, etc. Each app derives the suffix the same way via a `campaignChannel(base)` helper:
+The game channels (`aria-rolls`, `aria-rolls-hidden`, `aria-cards`, `aria-damage`, `aria-music`, `aria-chat`) are **scoped per campaign** by suffixing the campaign join code: `aria-rolls-{JOINCODE}`, etc. Each app derives the suffix the same way via a `campaignChannel(base)` helper:
 - GM: `currentJoinCode`
 - Player: `character.campaignKey`
 - Overlay: `?campaign=JOINCODE` URL param
@@ -143,6 +145,18 @@ The join code is uppercased/trimmed in all three. An **empty** token falls back 
 `aria-overlay-config` stays **global** — it is already isolated by `overlayId` (`gm_{campaignId}` or `player_{charId}`).
 
 > **`monster-state`** is published by the GM on `aria-damage` (scoped) and consumed by `aria-overlay` on the same channel (filtered by `overlayId`). It is **not** on `aria-overlay-config`.
+
+### Chat
+
+`makeChat()` in `aria-shared.js` — one instance per panel (`chat`), the same pattern as the deck and the notes. One **global** thread per campaign plus one **private** thread per pair of participants.
+
+A thread id is `'global'`, or the two participant ids **sorted and joined with `|`** — the GM is `'gm'`, a player is their `charId`. Both ends derive the same id from their own side, so there is no thread registry and nothing to agree on first. `aria-shared.selfcheck.js` asserts that property; if it ever fails, each side writes into a thread the other never reads.
+
+**Delivery is per-recipient, not per-thread.** A private message is published to the recipient's inbox channel (`aria-chat-{CODE}-{id}`) *and* to our own (so a second tab of the same character keeps up). Every client subscribes to exactly two channels — the global one and its own inbox — and never receives a conversation it is not in. A global message goes on `aria-chat-{CODE}`; the publish echoes back, which is why every message carries a `uid()` and `add()` drops ids already seen.
+
+**Persistence is `campaign_chat`** (`specs/campaign_chat.sql`), keyed by **join code** rather than `campaign_id`: both ends know the code, only the GM knows the campaign UUID. Nothing is kept in localStorage — a chat that only exists on the device it was typed on is not a chat. `load()` reads the same slice the transport delivers (`thread.eq.global` or `thread.like.*self*`), newest 500. Because the table hangs off the join code, `sbDeleteCascade` cannot reach it — `deleteCampaign()` deletes those rows by join code itself.
+
+The UI is `#chat-global-log` / `#chat-global-input` (player sidebar, under the weapons — the GM page has no sidebar and reads the same thread through the `Général` row) and the `Messages` tab (`#tab-chat`: `#chat-thread-list`, `#chat-thread-title`, `#chat-log`, `#chat-input`) on both panels. Contacts come from the roster — presence peers plus the GM on the player side, the `players` Map on the GM's — and any thread with history whose other end is no longer listed keeps a row of its own, so a conversation outlives the connection it happened over. Unread marks a thread until its pane is actually open (`openPanes.includes('tab-chat')`), and dots `#tab-btn-chat`.
 
 ### Supabase credentials
 
@@ -508,6 +522,12 @@ Player stores granted files in `localStorage: aria-player-files-{charId}`. The F
 ```
 GM plays locally via `_musicTriggerPlay()` AND broadcasts — it does not subscribe. Player stores volume in `localStorage('aria-music-volume')` (0–100 integer, default 80); the music bar (`#music-bar`) uses `visibility:hidden` until the first track plays.
 
+### `aria-chat` / `msg` (global) — `aria-chat-{ID}` / `msg` (private)
+```js
+{ id, thread, authorId, authorName, body, ts }   // thread: 'global' | '<idA>|<idB>' (sorted)
+```
+`id` is a `uid()`; receivers drop ids they have already seen, which is what makes the echo of one's own publish harmless. Persisted to `campaign_chat` by the sender only.
+
 ### `aria-cards` / `draw` | `reshuffle`
 ```js
 { cardId, excluded: [...], drawn: [...], deckIds: [...], lastCardId }
@@ -535,14 +555,14 @@ Lists all saved characters. Creating a character prompts for name, class, an opt
 Lists all campaigns, each showing its join code (click to copy). `selectCampaign(id)` → `loadCampaignState(id)` → `initApp()`. After entering a campaign, the join code is shown in the topbar (click to copy) so the GM can share it with players.
 
 ### Player panel tabs
-`Compétences` | `Caractéristiques` | `Jet libre` | `Inventaire` | `Notes` | `Cartes` | `⚗ Alchimie` | `Fichiers` | `📹 Caméras` | `Personnage`
+`Compétences` | `Caractéristiques` | `Jet libre` | `Inventaire` | `Notes` | `Messages` | `Cartes` | `⚗ Alchimie` | `Fichiers` | `📹 Caméras` | `Personnage`
 
 The Caméras tab carries a toolbar above the grid: the camera picker (`#cam-device-pick`) and the tile-size slider (`#cam-size`) + `Réinit.` — see *Choosing which camera to publish* and *Camera tile size* under VDO.ninja.
 
 `Cartes` and `⚗ Alchimie` are hidden by default — shown only when GM enables them via `tab-config`. `Fichiers` auto-shows when the GM grants at least one file (`playerFiles.length > 0`). `Caméras` auto-shows while a `vdoRoom` is known (`camerasAvailable()`) — see *A viewer tile requires a room* below.
 
 ### GM panel tabs
-`Joueurs` | `Monstres` | `Jets` | `Jet MJ` | `Cartes` | `⚗ Alchimie` | `Fichiers` | `♪ Musique`
+`Joueurs` | `Monstres` | `Jets` | `Jet MJ` | `Cartes` | `⚗ Alchimie` | `Fichiers` | `♪ Musique` | `Messages`
 
 The GM Fichiers tab lets the GM upload files to Supabase Storage (`campaign-files` bucket) and grant/revoke access per player. `gmFiles` entries: `{ id, name, type, url, path, grantedTo: [] | 'all' }`. Upload via `uploadFileToSupabase()`, grant via `file-grant` message on `aria-damage`.
 

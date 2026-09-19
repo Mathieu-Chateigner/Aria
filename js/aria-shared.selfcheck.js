@@ -21,8 +21,8 @@ global.localStorage = {
     removeItem: k => _store.delete(k),
 };
 const src = fs.readFileSync(__dirname + '/aria-shared.js', 'utf8');
-const { rollDiceFormula, formulaToDiceSpec, rollPassesFilter, classify, append, makeCamera } =
-    new Function(src + '\nreturn { rollDiceFormula, formulaToDiceSpec, rollPassesFilter, classify, append, makeCamera };')();
+const { rollDiceFormula, formulaToDiceSpec, rollPassesFilter, classify, append, makeCamera, makeChat } =
+    new Function(src + '\nreturn { rollDiceFormula, formulaToDiceSpec, rollPassesFilter, classify, append, makeCamera, makeChat };')();
 
 // ── Dice formulas ─────────────────────────────────────────────────────────────
 // Flat terms are exact, so assert their totals directly.
@@ -223,6 +223,20 @@ assert.strictEqual(dark.advertisedId(), '');
     dcam.setVideoDevice('');
     assert.ok(!frame.src.includes('videodevice'), frame.src);
     delete global.document;
+}
+
+// -- Chat thread ids ----------------------------------------------------------
+// The whole private-chat design rests on both ends deriving the same thread id from
+// their own point of view, with no roster and nothing agreed on first. If these two
+// ever disagree, each side writes into a thread the other never reads.
+{
+    const mk = id => makeChat({ selfId: () => id, selfName: () => id, contacts: () => [] });
+    const gm = mk('gm'), player = mk('abc-123');
+    assert.strictEqual(gm.dmId('abc-123'), player.dmId('gm'));
+    assert.strictEqual(gm.dmId('abc-123'), 'abc-123|gm');
+    // A thread id carries both participants, so the Supabase read filter
+    // (thread LIKE %self%) and the inbox routing both find it from either side.
+    assert.ok(gm.dmId('abc-123').includes('gm') && player.dmId('gm').includes('abc-123'));
 }
 
 console.log('aria-shared self-check: all assertions passed');

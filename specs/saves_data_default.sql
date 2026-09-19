@@ -1,0 +1,13 @@
+-- Fix: creating a new save key fails with
+--   null value in column "data" of relation "saves" violates not-null constraint
+-- and every characters / character_state write then fails on the foreign key, so a
+-- brand-new key never syncs to Supabase at all.
+--
+-- `saves.data` is the legacy JSON blob runMigration() reads. It is NOT NULL with no
+-- default, and confirmNewKey() / _syncAll*Data() upsert only { save_key, type }.
+-- The fix belongs here rather than in the JS: sending `data: {}` from the panels
+-- would also run on every full sync and blank the blob of keys not yet migrated.
+--
+-- Run once in the Supabase SQL editor. Existing rows are untouched, and a
+-- merge-duplicates upsert that omits `data` still leaves it alone.
+alter table saves alter column data set default '{}'::jsonb;

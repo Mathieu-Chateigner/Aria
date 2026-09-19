@@ -123,6 +123,7 @@
                 <button class="tab-btn" data-tab="tab-alchemy" onclick="switchTab('tab-alchemy',this)">Alchimie</button>
                 <button class="tab-btn" data-tab="tab-files" onclick="switchTab('tab-files',this)">Fichiers</button>
                 <button class="tab-btn" data-tab="tab-music" onclick="switchTab('tab-music',this)">Musique</button>
+                <button class="tab-btn" id="tab-btn-chat" data-tab="tab-chat" onclick="switchTab('tab-chat',this)">Messages</button>
                 <button class="tab-btn" data-tab="tab-gm-notes" onclick="switchTab('tab-gm-notes',this)">Notes</button>
             </div>
 
@@ -486,6 +487,22 @@
                 </div>
                 <div id="music-add-status" class="music-add-status"></div>
             </div>
+            <!-- MESSAGES — Général + one private thread per participant. The list,
+                 the log and the title are all filled by makeChat() in aria-shared.js. -->
+            <div class="tab-content" id="tab-chat">
+                <div class="chat-wrap">
+                    <div class="chat-threads" id="chat-thread-list"></div>
+                    <div class="chat-main">
+                        <div class="chat-title" id="chat-thread-title">Général</div>
+                        <div class="chat-log" id="chat-log"></div>
+                        <div class="chat-input-row">
+                            <input class="chat-input" id="chat-input" placeholder="Message…" onkeydown="if(event.key==='Enter')chat.send()" />
+                            <button class="chat-send" onclick="chat.send()">Envoyer</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- NOTES MJ -->
             <div class="tab-content" id="tab-gm-notes">
                 <div class="notes-wrap">

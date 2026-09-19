@@ -1907,3 +1907,186 @@ async function refreshPresenceSet() {
     try { applyPresenceSet(await ablyPresence.presence.get()); }
     catch (err) { console.error(`[${ARIA.tag}] presence get:`, err); }
 }
+
+// ═══════════════════════════════════════════
+//  CHAT
+// ═══════════════════════════════════════════
+// One global thread per campaign, plus a private thread per pair of participants.
+// A thread id is 'global', or the two participant ids sorted and joined with '|' —
+// the GM is 'gm', a player is their charId — so both ends derive the same id with
+// no roster to agree on first.
+//
+// Delivery is per-recipient rather than per-thread: a private message is published
+// to the recipient's inbox channel (aria-chat-{CODE}-{id}) and to our own, so a
+// client subscribes to exactly two channels, its other tabs keep up, and it never
+// receives a conversation it is not part of. The same rule filters the read from
+// campaign_chat, which is where "saved all the time" lives — a chat kept in
+// localStorage would not survive the device it was typed on.
+//
+// The element ids are all optional: the GM page has no sidebar, so it has no global
+// log of its own and the Général row in the thread list is its only view of it.
+function makeChat({ selfId, selfName, contacts }) {
+    const threads = new Map();   // threadId → [msg], oldest first
+    const seen = new Set();      // msg ids — our own publish echoes back to us
+    const unread = new Set();
+    let current = 'global';
+    let ably = null, chGlobal = null, chInbox = null;
+
+    const $ = id => document.getElementById(id);
+    const msgs = t => threads.get(t) || [];
+    const dmId = other => [selfId(), other].sort().join('|');
+    // Who a thread has to reach: the participants that are not us.
+    const recipients = t => t === 'global' ? [] : t.split('|').filter(id => id !== selfId());
+    const paneOpen = () => openPanes.includes('tab-chat');
+    const chanFor = id => ably ? ably.channels.get(campaignChannel('aria-chat') + '-' + id) : null;
+
+    function add(m) {
+        if (!m || !m.id || seen.has(m.id)) return false;
+        seen.add(m.id);
+        const arr = msgs(m.thread).concat({ ...m, ts: +m.ts || Date.now() });
+        arr.sort((a, b) => a.ts - b.ts);
+        threads.set(m.thread, arr);
+        return true;
+    }
+
+    function receive(m) {
+        if (!add(m)) return;
+        if (m.authorId !== selfId() && (m.thread !== current || !paneOpen())) unread.add(m.thread);
+        render();
+    }
+
+    // ── transport ───────────────────────────
+    function attach(client) {
+        detach();
+        if (!client) return;
+        ably = client;
+        const base = campaignChannel('aria-chat');
+        chGlobal = ably.channels.get(base);
+        chInbox  = ably.channels.get(base + '-' + selfId());
+        chGlobal.subscribe('msg', m => receive(m.data));
+        chInbox.subscribe('msg', m => receive(m.data));
+    }
+
+    function detach() {
+        chGlobal?.unsubscribe();
+        chInbox?.unsubscribe();
+        ably = chGlobal = chInbox = null;
+    }
+
+    // Character/campaign switch: these threads belong to the campaign we just left.
+    function reset() {
+        detach();
+        threads.clear(); seen.clear(); unread.clear();
+        current = 'global';
+        render();
+    }
+
+    // ── persistence ─────────────────────────
+    async function load() {
+        const code = (ARIA.joinCode() || '').trim().toUpperCase();
+        if (!code) { render(); return; }
+        const rows = await sbSelect('campaign_chat',
+            'join_code=eq.' + encodeURIComponent(code) +
+            '&or=(thread.eq.global,thread.like.*' + encodeURIComponent(selfId()) + '*)' +
+            '&order=created_at.asc&limit=500');
+        rows.forEach(r => add({
+            id: r.id, thread: r.thread, authorId: r.author_id,
+            authorName: r.author_name, body: r.body, ts: Date.parse(r.created_at) || 0,
+        }));
+        render();
+    }
+
+    function persist(m) {
+        const code = (ARIA.joinCode() || '').trim().toUpperCase();
+        if (!code) return;
+        sbInsert('campaign_chat', {
+            id: m.id, join_code: code, thread: m.thread, author_id: m.authorId,
+            author_name: m.authorName, body: m.body, created_at: new Date(m.ts).toISOString(),
+        });
+    }
+
+    // ── sending ─────────────────────────────
+    function post(thread, body) {
+        body = (body || '').trim();
+        if (!body) return;
+        const m = { id: uid(), thread, authorId: selfId(), authorName: selfName(), body, ts: Date.now() };
+        add(m);
+        persist(m);
+        if (thread === 'global') chGlobal?.publish('msg', m);
+        else {
+            recipients(thread).forEach(id => chanFor(id)?.publish('msg', m));
+            chInbox?.publish('msg', m);
+        }
+        render();
+    }
+
+    function sendFrom(inputId, thread) {
+        const input = $(inputId);
+        if (!input) return;
+        post(thread, input.value);
+        input.value = '';
+    }
+    const send       = () => sendFrom('chat-input', current);
+    const sendGlobal = () => sendFrom('chat-global-input', 'global');
+
+    function select(thread) {
+        current = thread;
+        unread.delete(thread);
+        render();
+        $('chat-input')?.focus();
+    }
+
+    // ── rendering ───────────────────────────
+    const stamp = ts => new Date(ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+    function renderLog(box, thread) {
+        if (!box) return;
+        // Only follow the tail when the reader is already at it — scrolling back
+        // through a conversation must not be yanked away by the next message.
+        const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+        if (!msgs(thread).length) { fill(box, el('div', { className: 'chat-empty', textContent: 'Aucun message.' })); return; }
+        fill(box, msgs(thread).map(m => el('div',
+            { className: 'chat-msg' + (m.authorId === selfId() ? ' mine' : '') },
+            el('div', { className: 'chat-meta' },
+                el('span', { className: 'chat-author', textContent: m.authorName || '—' }),
+                el('span', { className: 'chat-time', textContent: stamp(m.ts) })),
+            el('div', { className: 'chat-body', textContent: m.body }))));
+        if (atBottom) box.scrollTop = box.scrollHeight;
+    }
+
+    function title(thread) {
+        if (thread === 'global') return 'Général';
+        const other = recipients(thread)[0];
+        return contacts().find(c => c.id === other)?.name || 'Privé';
+    }
+
+    function render() {
+        if (paneOpen()) unread.delete(current);
+        renderLog($('chat-global-log'), 'global');
+        renderLog($('chat-log'), current);
+        const t = $('chat-thread-title');
+        if (t) t.textContent = title(current);
+        const row = (id, name, online) => el('div',
+            { className: 'chat-thread' + (id === current ? ' active' : ''), onclick: () => select(id) },
+            el('span', { className: 'chat-thread-dot' + (online ? ' on' : '') }),
+            el('span', { className: 'chat-thread-name', textContent: name }),
+            unread.has(id) && el('span', { className: 'chat-badge', textContent: '●' }));
+        const listed = new Set(['global']);
+        const rows = [row('global', 'Général', true)];
+        contacts().forEach(c => { listed.add(dmId(c.id)); rows.push(row(dmId(c.id), c.name || '—', c.online)); });
+        // A conversation outlives the connection it happened over: a thread whose
+        // other end is no longer in the presence set still has to be readable, so
+        // anything with history and no contact row gets one, named from the message.
+        [...threads.keys()].forEach(t => {
+            if (t === 'global' || listed.has(t) || !msgs(t).length) return;
+            const other = msgs(t).find(m => m.authorId !== selfId());
+            rows.push(row(t, other?.authorName || 'Privé', false));
+        });
+        fill($('chat-thread-list'), ...rows);
+        const btn = $('tab-btn-chat');
+        if (btn) btn.classList.toggle('has-unread', unread.size > 0);
+    }
+
+    return { attach, detach, reset, load, send, sendGlobal, select, render, post,
+             dmId, openWith: id => select(dmId(id)) };
+}

@@ -579,6 +579,7 @@ function switchCharacter() {
     ablyMap = null; mapState = null; mapSelectedPoiId = null; mapPendingPoiId = null; mapDeniedPoiId = null; mapNotes = {};
     cam.releaseLock();   // before resetCameraState: it blanks the push iframe
     resetCameraState();
+    chat.reset();
     localStorage.removeItem(LAST_CHAR_KEY);   // deliberate exit — don't auto-re-enter
     showSelectionScreen();
 }
@@ -664,6 +665,7 @@ function renderTabLayout() {
     applyTabLayout();
     // Fill the cameras grid as soon as its pane opens (renders in place).
     if (openPanes.includes('tab-cameras')) renderCamerasTab();
+    if (openPanes.includes('tab-chat')) chat.render();   // clears its unread mark
     renderPresenceUI(); // the rail hides while the Cameras pane is open
     finishTabLayout();
 }
@@ -680,6 +682,21 @@ const notes = makeNotes({
     sync:     (note, pos) => syncCharacterNote(note, pos),
     syncSoon: (note, pos) => debouncedSyncNote(note, pos),
     remove:   id => deleteCharacterNote(id),
+});
+
+// ═══════════════════════════════════════════
+//  CHAT
+// ═══════════════════════════════════════════
+// The engine is makeChat() in aria-shared.js. Contacts come from the presence set,
+// so the private threads follow the roster; the GM is always offered, since it is
+// the one participant a player always has something to say to.
+const chat = makeChat({
+    selfId:   () => currentCharId,
+    selfName: () => character?.name || 'Joueur',
+    contacts: () => [
+        { id: 'gm', name: 'MJ', online: gmOnline },
+        ...Object.entries(knownPlayers).map(([id, p]) => ({ id, name: p.name, online: true })),
+    ],
 });
 
 // Show/hide conditional tabs based on GM-granted access and character type.
@@ -2280,6 +2297,9 @@ function initAbly() {
         });
         // Covers arriving late: the GM answers a request with the whole state.
         ablyMap.publish('request', {});
+        // Chat: live over Ably, history from campaign_chat.
+        chat.attach(ablyInstance);
+        chat.load();
         ablyInstance.connection.on('connected',    () => { console.log('[PLAYER] Ably connected'); setAblyStatus(true); sendPresence(); });
         ablyInstance.connection.on('failed',       () => { console.error('[PLAYER] Ably connection FAILED'); setAblyStatus(false); });
         ablyInstance.connection.on('disconnected', () => console.warn('[PLAYER] Ably disconnected'));
@@ -2551,6 +2571,7 @@ function applyPresenceSet(members) {
     // The room is what decides whether we publish at all, so a change to it changes
     // the stream ID we advertise — say so now rather than leaving receivers to guess.
     if (roomChanged) { cam.syncPushFrame(); sendPresence(); }
+    chat.render();   // the contact list is the roster
     updateCamerasTabVisibility();   // → renderPresenceUI + renderCamerasTab
 }
 
@@ -2645,6 +2666,7 @@ function saveConfig() {
         ablyRolls = null; ablyRollsHidden = null; ablyCards = null; ablyDamage = null; ablyMusic = null; ablyInstance = null;
         ablyPresence = null; presenceEntered = false;
         resetCameraState();
+        chat.reset();   // the threads belong to the campaign just left
         // Soigner targets are campaign-scoped too; the new campaign's presence set
         // repopulates the picker.
         Object.keys(knownPlayers).forEach(k => delete knownPlayers[k]);

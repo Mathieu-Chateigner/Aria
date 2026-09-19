@@ -540,6 +540,11 @@ function deleteCampaign(id) {
     // The child tables come from ENT, so adding a campaign-scoped entity cannot
     // leave rows behind here. This used to be nine hand-written sbDelete calls.
     sbDeleteCascade(ENT.campaign, 'campaign_id', id);
+    // campaign_chat hangs off the join code rather than campaign_id — both sides of a
+    // conversation know the code and only the GM knows the campaign UUID — so the
+    // ENT cascade cannot reach it.
+    const gone = getCampaigns().find(c => c.id === id);
+    if (gone?.joinCode) sbDelete('campaign_chat', 'join_code=eq.' + encodeURIComponent(gone.joinCode));
     const campaigns = getCampaigns().filter(c => c.id !== id);
     saveCampaigns(campaigns);
     _dropCampaignKeys(id);
@@ -618,6 +623,7 @@ function switchCampaign() {
     // session is over — no message to publish first, and nothing to await before
     // closing (a fire-and-forget publish followed by close() would have been dropped).
     if (ablyInstance) { try { ablyInstance.close(); } catch(_){} }
+    chat.reset();   // the threads belong to the campaign just left
     ablyInstance = null;
     ablyRolls = null; ablyRollsHidden = null; ablyCards = null; ablyDamage = null; ablyMusic = null; ablyMap = null;
     ablyPresence = null; gmPresenceEntered = false;
@@ -778,6 +784,7 @@ function renderTabLayout() {
     // that has to run on every layout change.
     renderPlayerCards();
     updateGMPushIframe();
+    if (openPanes.includes('tab-chat')) chat.render();   // clears its unread mark
     finishTabLayout();
 }
 
@@ -860,6 +867,9 @@ function initAbly() {
         // so the Joueurs tab cannot drift from who is actually connected.
         ablyPresence = ablyInstance.channels.get(campaignChannel('aria-presence'));
         ablyPresence.presence.subscribe(() => refreshPresenceSet());
+        // Chat: live over Ably, history from campaign_chat.
+        chat.attach(ablyInstance);
+        chat.load();
         publishGMPresence();
         publishMapState();
         console.log('[GM] initAbly: subscribed to all channels');
@@ -956,6 +966,7 @@ function applyPresenceSet(members) {
         publishGMPresence();
     }
     saveKnownPlayers();
+    chat.render();   // the contact list is the roster
     // Who the table thinks is publishing. A player with no streamId here is either
     // camera-off, on file://, or has not received our room yet — the GM card for them
     // will show the hatched placeholder, not a black rectangle.
@@ -3056,6 +3067,18 @@ const gmNotes = makeNotes({
     sync:     (note, pos) => syncGMNote(note, pos),
     syncSoon: (note, pos) => debouncedSyncGMNote(note, pos),
     remove:   id => deleteGMNoteFromDB(id),
+});
+
+// ═══════════════════════════════════════════
+//  CHAT
+// ═══════════════════════════════════════════
+// The engine is makeChat() in aria-shared.js. The GM is 'gm' to every participant,
+// and its contacts are the Joueurs roster — including offline entries, since the
+// known-players snapshot is exactly the list of people there is history with.
+const chat = makeChat({
+    selfId:   () => 'gm',
+    selfName: () => 'MJ',
+    contacts: () => [...players.values()].map(p => ({ id: p.charId, name: p.name, online: !!p.online })),
 });
 
 // Upload a file to Supabase Storage (campaign-files bucket) and return its URL and path.

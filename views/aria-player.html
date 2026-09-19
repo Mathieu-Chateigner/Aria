@@ -189,6 +189,20 @@
 
             <!-- COMBAT — Réactions / Protection / Armes sections (design frame 03) -->
             <div class="sidebar-combat" id="combat-sidebar-body"></div>
+
+            <!-- CHAT GLOBAL — always available, under the weapons. The private
+                 threads live in the Messages tab; this is the same 'global' thread
+                 the Général row there shows. -->
+            <div class="panel sidebar-chat">
+                <div class="panel-header">Discussion</div>
+                <div class="panel-body">
+                    <div class="chat-log" id="chat-global-log"></div>
+                    <div class="chat-input-row">
+                        <input class="chat-input" id="chat-global-input" placeholder="Message…" onkeydown="if(event.key==='Enter')chat.sendGlobal()" />
+                        <button class="chat-send" onclick="chat.sendGlobal()" title="Envoyer">➤</button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- CONTENT -->
@@ -199,6 +213,7 @@
                 <button class="tab-btn" data-tab="tab-free" onclick="switchTab('tab-free',this)">Jet libre</button>
                 <button class="tab-btn" data-tab="tab-inventory" onclick="switchTab('tab-inventory',this)">Inventaire</button>
                 <button class="tab-btn" data-tab="tab-notes" onclick="switchTab('tab-notes',this)">Notes</button>
+                <button class="tab-btn" id="tab-btn-chat" data-tab="tab-chat" onclick="switchTab('tab-chat',this)">Messages</button>
                 <button class="tab-btn" id="tab-btn-cards" data-tab="tab-cards" onclick="switchTab('tab-cards',this)">Cartes</button>
                 <button class="tab-btn" id="tab-btn-alchemy" data-tab="tab-alchemy" onclick="switchTab('tab-alchemy',this)">Alchimie</button>
                 <button class="tab-btn" id="tab-btn-files" data-tab="tab-files" style="display:none;" onclick="switchTab('tab-files',this)">Documents</button>
@@ -315,6 +330,22 @@
                     <div class="notes-editor">
                         <input class="notes-name-input" id="notes-name-input" placeholder="Nom de la note…" oninput="notes.rename()" />
                         <textarea class="notes-area" id="notes-area" placeholder="Contenu…" oninput="notes.save()"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MESSAGES — Général + one private thread per participant. The list,
+                 the log and the title are all filled by makeChat() in aria-shared.js. -->
+            <div class="tab-content" id="tab-chat">
+                <div class="chat-wrap">
+                    <div class="chat-threads" id="chat-thread-list"></div>
+                    <div class="chat-main">
+                        <div class="chat-title" id="chat-thread-title">Général</div>
+                        <div class="chat-log" id="chat-log"></div>
+                        <div class="chat-input-row">
+                            <input class="chat-input" id="chat-input" placeholder="Message…" onkeydown="if(event.key==='Enter')chat.send()" />
+                            <button class="chat-send" onclick="chat.send()">Envoyer</button>
+                        </div>
                     </div>
                 </div>
             </div>
