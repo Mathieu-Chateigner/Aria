@@ -55,7 +55,9 @@ html, body { height: 100%; background: var(--ink); color: var(--text); font-fami
 .palette-item.event-item { border-color: rgba(169,139,221,0.3); }
 .palette-item.event-item:hover { border-color: var(--violet); }
 
-#editor-canvas-wrap { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 24px;
+/* Same shape as #editor-preview's column (label + box, top-aligned, same padding)
+   so the canvas and the preview frame sit at the same height. */
+#editor-canvas-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 10px; overflow: hidden; padding: 16px 14px;
     background: repeating-conic-gradient(var(--rail) 0% 25%, var(--feed1) 0% 50%) 0 0 / 28px 28px; }
 #editor-canvas { position: relative; border: 1px solid var(--line2); border-radius: 4px; aspect-ratio: 16 / 9;
     background: repeating-linear-gradient(135deg, var(--feed1) 0 14px, var(--rail) 14px 28px); }
@@ -91,11 +93,16 @@ html, body { height: 100%; background: var(--ink); color: var(--text); font-fami
 #editor-preview { flex: 1 1 0; min-width: 260px; background: var(--railV); border-left: 1px solid var(--line2); overflow-y: auto; padding: 16px 14px; display: flex; flex-direction: column; }
 /* Mirrors #editor-canvas-wrap: the frame is centered both axes in the space
    above the test-event buttons, same as the canvas is centered in its wrap. */
-#preview-canvas-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+#preview-canvas-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 10px; }
 #preview-frame-wrap { position: relative; aspect-ratio: 16 / 9; background: #000; border: 1px solid var(--line2); border-radius: 4px; overflow: hidden; flex-shrink: 0; }
 #preview-frame { width: 100%; height: 100%; border: none; }
 #preview-tests-wrap { flex-shrink: 0; width: 100%; }
-#preview-canvas-wrap .palette-section-label { margin-bottom: 0; }
+#preview-canvas-wrap .palette-section-label, #editor-canvas-wrap .palette-section-label { margin-bottom: 0; }
+
+/* Alignment guides drawn while dragging/resizing a widget. */
+.snap-guide { position: absolute; background: var(--ember); opacity: .8; pointer-events: none; z-index: 20; }
+.snap-guide.x { top: 0; bottom: 0; width: 1px; }
+.snap-guide.y { left: 0; right: 0; height: 1px; }
 #preview-tests { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .test-btn { background: var(--panel); border: 1px solid var(--line); border-radius: 3px; padding: 7px 10px; font-family: 'Archivo', sans-serif; font-size: 11px; color: var(--text); cursor: pointer; transition: border-color 0.15s, background 0.15s; }
 .test-btn:hover { border-color: var(--violet); background: var(--field2); }

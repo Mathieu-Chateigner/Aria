@@ -116,12 +116,15 @@ async function init() {
 // widget positions are percentages, so the two only look comparable ("what the
 // overlay shows") when both boxes are literally the same size, not just both 16:9.
 function resizeCanvas() {
-    const wrap        = document.getElementById('editor-canvas-wrap');
-    const previewWrap  = document.getElementById('editor-preview');
+    const wrap         = document.getElementById('editor-canvas-wrap');
+    const previewWrap  = document.getElementById('preview-canvas-wrap');
     const canvas       = document.getElementById('editor-canvas');
     const previewFrame = document.getElementById('preview-frame-wrap');
-    const availW = Math.min(wrap.clientWidth - 32, previewWrap.clientWidth - 28);
-    const availH = wrap.clientHeight - 32;
+    // Both columns are "label + box", top-aligned with the same padding, so the two
+    // boxes line up as long as they get the same size and neither overflows its column.
+    const labelH = (wrap.firstElementChild?.offsetHeight || 0) + 10;
+    const availW = Math.min(wrap.clientWidth - 28, previewWrap.clientWidth);
+    const availH = Math.min(wrap.clientHeight - 32, previewWrap.clientHeight) - labelH;
     const w = Math.min(availW, availH * 16 / 9);
     const h = w * 9 / 16;
     canvas.style.width  = w + 'px';
@@ -197,6 +200,58 @@ function snapVal(v) {
     return gridSnap ? Math.round(v / 5) * 5 : Math.round(v * 10) / 10;
 }
 
+// Alignment snapping: while the grid is off, a dragged/resized edge or centre that
+// lands within SNAP_T percent of a canvas edge/centre or of another widget's
+// edge/centre locks onto it, and a guide line is drawn. Hold Alt to bypass.
+const SNAP_T = 0.8;
+
+function snapCands(exceptId) {
+    const others = widgets.filter(w => w.id !== exceptId);
+    return {
+        x: [0, 50, 100, ...others.flatMap(w => [w.x, w.x + w.w / 2, w.x + w.w])],
+        y: [0, 50, 100, ...others.flatMap(w => [w.y, w.y + w.h / 2, w.y + w.h])],
+    };
+}
+
+// Best snap for a set of [offsetFromOrigin, absolutePosition] edges against candidates.
+// Returns { origin, line } — the new origin value and the guide to draw — or null.
+function snapEdges(edges, cands) {
+    let best = null;
+    for (const [off, val] of edges)
+        for (const c of cands) {
+            const d = Math.abs(val - c);
+            if (d <= SNAP_T && (!best || d < best.d)) best = { d, origin: c - off, line: c };
+        }
+    return best;
+}
+
+function snapMove(widget, x, y) {
+    const c = snapCands(widget.id);
+    const bx = snapEdges([[0, x], [widget.w / 2, x + widget.w / 2], [widget.w, x + widget.w]], c.x);
+    const by = snapEdges([[0, y], [widget.h / 2, y + widget.h / 2], [widget.h, y + widget.h]], c.y);
+    return { x: bx ? bx.origin : x, y: by ? by.origin : y, guides: [bx && ['x', bx.line], by && ['y', by.line]] };
+}
+
+// Snap one edge value to its candidate list; returns [value, guideLine|null].
+function snapOne(val, cands) {
+    const b = snapEdges([[0, val]], cands);
+    return b ? [b.origin, b.line] : [val, null];
+}
+
+// Draw (or clear) the guide lines on the canvas.
+function showGuides(guides) {
+    const canvas = document.getElementById('editor-canvas');
+    canvas.querySelectorAll('.snap-guide').forEach(g => g.remove());
+    for (const g of guides) {
+        if (!g) continue;
+        const [axis, at] = g;
+        const line = document.createElement('div');
+        line.className = 'snap-guide ' + axis;
+        line.style[axis === 'x' ? 'left' : 'top'] = at + '%';
+        canvas.appendChild(line);
+    }
+}
+
 // Rebuild all widget DOM elements on the editor canvas from the widgets array.
 function renderCanvas() {
     const canvas = document.getElementById('editor-canvas');
@@ -240,13 +295,18 @@ function startDrag(e, widgetId) {
     const startX = e.clientX, startY = e.clientY, origX = widget.x, origY = widget.y;
 
     function onMove(e) {
-        widget.x = snapVal(Math.max(0, Math.min(100 - widget.w, origX + ((e.clientX - startX) / rect.width) * 100)));
-        widget.y = snapVal(Math.max(0, Math.min(100 - widget.h, origY + ((e.clientY - startY) / rect.height) * 100)));
+        let x = origX + ((e.clientX - startX) / rect.width) * 100;
+        let y = origY + ((e.clientY - startY) / rect.height) * 100;
+        let guides = [];
+        if (!gridSnap && !e.altKey) ({ x, y, guides } = snapMove(widget, x, y));
+        showGuides(guides);
+        widget.x = snapVal(Math.max(0, Math.min(100 - widget.w, x)));
+        widget.y = snapVal(Math.max(0, Math.min(100 - widget.h, y)));
         const el = document.querySelector(`.editor-widget[data-id="${widgetId}"]`);
         if (el) { el.style.left = widget.x + '%'; el.style.top = widget.y + '%'; }
         syncPropsPanel();
     }
-    function onUp() { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); scheduleAutoSave(); }
+    function onUp() { showGuides([]); document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); scheduleAutoSave(); }
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
     e.preventDefault();
@@ -261,18 +321,29 @@ function startResize(e, widgetId, handle) {
     const { x: sx, y: sy, w: sw, h: sh } = widget;
     const MIN = 5;
 
+    const cands = snapCands(widgetId);
+
     function onMove(e) {
         const dx = ((e.clientX - startX) / rect.width) * 100;
         const dy = ((e.clientY - startY) / rect.height) * 100;
-        if (handle.includes('e')) widget.w = snapVal(Math.max(MIN, sw + dx));
-        if (handle.includes('s')) widget.h = snapVal(Math.max(MIN, sh + dy));
-        if (handle.includes('w')) { const nw = Math.max(MIN, sw - dx); widget.x = snapVal(sx + sw - nw); widget.w = snapVal(nw); }
-        if (handle.includes('n')) { const nh = Math.max(MIN, sh - dy); widget.y = snapVal(sy + sh - nh); widget.h = snapVal(nh); }
+        const snap = !gridSnap && !e.altKey;
+        const guides = [];
+        const fit = (val, axis) => {
+            if (!snap) return val;
+            const [v, line] = snapOne(val, cands[axis]);
+            if (line !== null) guides.push([axis, line]);
+            return v;
+        };
+        if (handle.includes('e')) widget.w = snapVal(Math.max(MIN, fit(sx + sw + dx, 'x') - sx));
+        if (handle.includes('s')) widget.h = snapVal(Math.max(MIN, fit(sy + sh + dy, 'y') - sy));
+        if (handle.includes('w')) { const nx = Math.min(fit(sx + dx, 'x'), sx + sw - MIN); widget.x = snapVal(nx); widget.w = snapVal(sx + sw - nx); }
+        if (handle.includes('n')) { const ny = Math.min(fit(sy + dy, 'y'), sy + sh - MIN); widget.y = snapVal(ny); widget.h = snapVal(sy + sh - ny); }
+        showGuides(guides);
         const el = document.querySelector(`.editor-widget[data-id="${widgetId}"]`);
         if (el) { el.style.left = widget.x + '%'; el.style.top = widget.y + '%'; el.style.width = widget.w + '%'; el.style.height = widget.h + '%'; }
         syncPropsPanel();
     }
-    function onUp() { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); scheduleAutoSave(); }
+    function onUp() { showGuides([]); document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); scheduleAutoSave(); }
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
     e.preventDefault();
@@ -508,7 +579,7 @@ const TEST_EVENTS = [
     { label: 'Critique succès', fn: () => testRoll(5, 60, true)   },
     { label: 'Critique échec',  fn: () => testRoll(95, 60, false) },
     { label: 'Dé simple',       fn: () => testRoll(4, null, null, 'd6') },
-    { label: 'Carte tirée',     fn: () => testPublish('aria-cards', 'draw', { cardId: 'A-spades' }) },
+    { label: 'Carte tirée',     fn: () => testDeliver('showDrawnCard', { cardId: 'A-spades' }) },
     { label: 'Dégâts',          fn: () => testDamage(6) },
     { label: 'Soin',            fn: () => testHeal(6) },
     { label: 'Écran MORT',      fn: () => testDamage(999) },
@@ -533,14 +604,19 @@ function testPlayer() {
     return players[0] || { charId: 'test-char', label: 'Joueur test' };
 }
 
-function testPublish(baseChannel, event, data) {
-    if (!ablyClient) return;
-    ablyClient.channels.get(campaignChannel(baseChannel)).publish(event, data);
+// Test events are for THIS editor's preview only — they used to be published on the
+// campaign's real Ably channels, so every player's overlay flashed them and a test
+// "Dégâts" actually hit the targeted player. The preview iframe is same-origin and
+// aria-overlay.js declares its VFX entry points as top-level functions, so calling
+// them directly delivers the effect to nobody else.
+function testDeliver(fn, data) {
+    const win = document.getElementById('preview-frame').contentWindow;
+    try { win?.[fn]?.(data); } catch (_) {}
 }
 
 function testRoll(roll, threshold, success, skillName) {
     const p = testPlayer();
-    testPublish('aria-rolls', 'roll', {
+    testDeliver('showRoll', {
         skillName: skillName || 'Compétence test', threshold, roll, success,
         char: p.label, bonusMalus: 0, playerId: 'preview',
     });
@@ -551,7 +627,7 @@ function testDamage(damage) {
     const maxHP = 20;
     const hpBefore = Math.min(maxHP, damage + 8);
     const hpAfter = Math.max(0, hpBefore - damage);
-    testPublish('aria-damage', 'damage', { targetId: p.charId, damage, hpBefore, hpAfter, maxHP, charName: p.label, source: 'gm' });
+    testDeliver('showDamage', { targetId: p.charId, damage, hpBefore, hpAfter, maxHP, charName: p.label, source: 'gm' });
 }
 
 function testHeal(amount) {
@@ -559,7 +635,7 @@ function testHeal(amount) {
     const maxHP = 20;
     const hpBefore = Math.max(0, maxHP - amount - 4);
     const hpAfter = Math.min(maxHP, hpBefore + amount);
-    testPublish('aria-damage', 'heal', { targetId: p.charId, amount, hpBefore, hpAfter, maxHP, charName: p.label, source: 'gm' });
+    testDeliver('showHeal', { targetId: p.charId, amount, hpBefore, hpAfter, maxHP, charName: p.label, source: 'gm' });
 }
 
 document.addEventListener('DOMContentLoaded', init);
