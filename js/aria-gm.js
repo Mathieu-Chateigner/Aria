@@ -844,6 +844,9 @@ function initAbly() {
         // A late joiner — a player connecting an hour in, or an OBS browser source
         // restarted mid-session — asks, and gets the whole state back.
         ablyMap.subscribe('request', () => publishMapState());
+        // Same handshake for monster HP: it is only published when a monster changes,
+        // so without this an overlay that started after the last edit shows nothing.
+        ablyDamage.subscribe('monster-request', () => publishMonsterStateToOverlay());
         // Incoming move requests are remote-controlled — anyone holding the Ably key can
         // publish one — so charId is validated the same way handlePresence() validates it.
         ablyMap.subscribe('move-request', msg => {

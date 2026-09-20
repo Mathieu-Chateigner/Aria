@@ -936,6 +936,7 @@ body.shake {
      resized, without touching a single font-size in this file. */
 .ow-event-box { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 #pos-roll-card, #pos-drawn-card { z-index: 10; }
+#pos-waiting { z-index: 4; }
 #pos-dmg-number, #pos-heal-number, #pos-dmg-hpbar { z-index: 202; }
 
 /* ── PERSISTENT WIDGET LAYER ─────────────────── */

@@ -65,11 +65,13 @@ const WIDGET_DEFS = {
         { type: 'heal_number',       label: 'Nombre de soin',       defaultW: 15, defaultH: 12 },
         { type: 'hp_bar_animation',  label: 'Barre PV (animation)', defaultW: 22, defaultH: 9.3 },
         { type: 'mort_screen',       label: 'Écran MORT',           defaultW: 100, defaultH: 100 },
+        { type: 'waiting_screen',    label: "Écran d'attente",      defaultW: 10.6, defaultH: 5.8 },
         // Full-screen VFX: nothing to place, so they are checkboxes in the palette
         // rather than boxes on the canvas. Present in the layout = enabled.
         { type: 'screen_shake',       label: 'Secousse écran',       defaultW: 100, defaultH: 100, toggleOnly: true },
         { type: 'damage_vignette',    label: 'Vignette rouge',       defaultW: 100, defaultH: 100, toggleOnly: true },
         { type: 'blood_particles',    label: 'Particules de sang',   defaultW: 100, defaultH: 100, toggleOnly: true },
+        { type: 'crit_particles',     label: 'Confettis critiques',  defaultW: 100, defaultH: 100, toggleOnly: true },
     ],
 };
 

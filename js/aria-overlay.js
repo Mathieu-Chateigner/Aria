@@ -289,11 +289,15 @@ if (ABLY_KEY) {
     // channel, so it must be received here, not on aria-overlay-config.
     dmgCh.subscribe('monster-state', msg => {
         if (!OVERLAY_ID || msg.data.overlayId !== OVERLAY_ID) return;
-        const widget = overlayConfig.widgets.find(w => w.type === 'monster_list');
-        if (!widget) return;
-        widget.config = { ...widget.config, monsters: msg.data.monsters };
+        const list = overlayConfig.widgets.filter(w => w.type === 'monster_list');
+        if (!list.length) return;
+        list.forEach(w => { w.config = { ...w.config, monsters: msg.data.monsters }; });
         updateWidgetData();
     });
+    // The GM only publishes monster-state when a monster changes, so a browser source
+    // that started after the last edit would sit on an empty list for the rest of the
+    // session. Ask once at connect — same handshake as the map's 'request' below.
+    dmgCh.publish('monster-request', {});
 
     // Map. `state` replaces wholesale; `request` at connect is what gets a restarted OBS
     // browser source its picture back mid-session.
@@ -552,6 +556,7 @@ window.addEventListener('resize', resize);
 
 // Spawn confetti particles from the center for crit success or fail.
 function spawnParticles(type) {
+    if (!eventEnabled('crit_particles')) return;
     particles = [];
     const cx = canvas.width / 2, cy = canvas.height / 2;
     for (let i = 0; i < 70; i++) {
@@ -674,6 +679,9 @@ let dmgTimer = null;
 
 // Display damage VFX: screen shake, red vignette, blood, number, and HP bar drain.
 function showDamage(data) {
+    // A player overlay is that character's: another player taking a hit must not
+    // shake their stream. A GM overlay is the table's and keeps every hit.
+    if (MAP_CHAR_ID && data.targetId && data.targetId !== MAP_CHAR_ID) return;
     clearTimeout(dmgTimer);
 
     const isDead = data.hpAfter <= 0;
@@ -744,6 +752,7 @@ function showDamage(data) {
 
 // Display heal VFX: green number and HP bar fill animation.
 function showHeal(data) {
+    if (MAP_CHAR_ID && data.targetId && data.targetId !== MAP_CHAR_ID) return;
     clearTimeout(dmgTimer);
 
     const max = data.maxHP || 1;
@@ -811,6 +820,7 @@ const EVENT_BASE_SIZE = {
     damage_number:    { w: 15, h: 12 },
     heal_number:      { w: 15, h: 12 },
     hp_bar_animation: { w: 22, h: 9.3 },
+    waiting_screen:   { w: 10.6, h: 5.8 },
 };
 // #dmg-hpbar-wrap is 420x40px and sits `bottom: 60px` inside its box, so a 100px
 // (9.3%) tall box puts its top edge exactly on the box's top edge. The damage/heal
@@ -1003,6 +1013,7 @@ function renderWidgetLayer() {
     applyEventWidgetPosition('pos-dmg-number', 'damage_number');
     applyEventWidgetPosition('pos-heal-number', 'heal_number');
     applyEventWidgetPosition('dmg-mort', 'mort_screen');
+    applyEventWidgetPosition('pos-waiting', 'waiting_screen');
 }
 
 // Refresh all widget inner HTML from the latest presence/roll data without rebuilding the layer.
