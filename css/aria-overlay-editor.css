@@ -54,10 +54,13 @@ html, body { height: 100%; background: var(--ink); color: var(--text); font-fami
 .palette-item:hover { border-color: var(--violet); background: var(--field2); }
 .palette-item.event-item { border-color: rgba(169,139,221,0.3); }
 .palette-item.event-item:hover { border-color: var(--violet); }
+.palette-item.effect-item { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.palette-item.effect-item input { accent-color: var(--violet); cursor: pointer; }
 
-/* Same shape as #editor-preview's column (label + box, top-aligned, same padding)
-   so the canvas and the preview frame sit at the same height. */
-#editor-canvas-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 10px; overflow: hidden; padding: 16px 14px;
+/* Same shape as #editor-preview's column: the box is the only in-flow child, so it
+   is centred on the viewport, and the label floats above it. Both columns have the
+   same height and the same padding, so the two boxes land at the same place. */
+#editor-canvas-wrap { flex: 1; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 16px 14px;
     background: repeating-conic-gradient(var(--rail) 0% 25%, var(--feed1) 0% 50%) 0 0 / 28px 28px; }
 #editor-canvas { position: relative; border: 1px solid var(--line2); border-radius: 4px; aspect-ratio: 16 / 9;
     background: repeating-linear-gradient(135deg, var(--feed1) 0 14px, var(--rail) 14px 28px); }
@@ -90,14 +93,14 @@ html, body { height: 100%; background: var(--ink); color: var(--text); font-fami
 .props-textarea { width: 100%; height: 80px; background: var(--field); border: 1px solid var(--line2); border-radius: 3px; color: var(--text); padding: 7px 9px; font-size: 13px; font-family: 'Archivo', sans-serif; resize: vertical; }
 .props-textarea:focus { outline: none; border-color: var(--ember); }
 
-#editor-preview { flex: 1 1 0; min-width: 260px; background: var(--railV); border-left: 1px solid var(--line2); overflow-y: auto; padding: 16px 14px; display: flex; flex-direction: column; }
+#editor-preview { flex: 1 1 0; position: relative; min-width: 260px; background: var(--railV); border-left: 1px solid var(--line2); overflow-y: auto; padding: 16px 14px; display: flex; flex-direction: column; }
 /* Mirrors #editor-canvas-wrap: the frame is centered both axes in the space
    above the test-event buttons, same as the canvas is centered in its wrap. */
-#preview-canvas-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 10px; }
+#preview-canvas-wrap { flex: 1; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; }
 #preview-frame-wrap { position: relative; aspect-ratio: 16 / 9; background: #000; border: 1px solid var(--line2); border-radius: 4px; overflow: hidden; flex-shrink: 0; }
 #preview-frame { width: 100%; height: 100%; border: none; }
-#preview-tests-wrap { flex-shrink: 0; width: 100%; }
-#preview-canvas-wrap .palette-section-label, #editor-canvas-wrap .palette-section-label { margin-bottom: 0; }
+#preview-tests-wrap { position: absolute; left: 14px; right: 14px; bottom: 16px; }
+#preview-canvas-wrap > .palette-section-label, #editor-canvas-wrap > .palette-section-label { position: absolute; top: 0; left: 0; right: 0; text-align: center; margin: 0; }
 
 /* Alignment guides drawn while dragging/resizing a widget. */
 .snap-guide { position: absolute; background: var(--ember); opacity: .8; pointer-events: none; z-index: 20; }

@@ -65,8 +65,15 @@ const WIDGET_DEFS = {
         { type: 'heal_number',       label: 'Nombre de soin',       defaultW: 15, defaultH: 12 },
         { type: 'hp_bar_animation',  label: 'Barre PV (animation)', defaultW: 22, defaultH: 9.3 },
         { type: 'mort_screen',       label: 'Écran MORT',           defaultW: 100, defaultH: 100 },
+        // Full-screen VFX: nothing to place, so they are checkboxes in the palette
+        // rather than boxes on the canvas. Present in the layout = enabled.
+        { type: 'screen_shake',       label: 'Secousse écran',       defaultW: 100, defaultH: 100, toggleOnly: true },
+        { type: 'damage_vignette',    label: 'Vignette rouge',       defaultW: 100, defaultH: 100, toggleOnly: true },
+        { type: 'blood_particles',    label: 'Particules de sang',   defaultW: 100, defaultH: 100, toggleOnly: true },
     ],
 };
+
+const TOGGLE_ONLY_TYPES = new Set(WIDGET_DEFS.event.filter(d => d.toggleOnly).map(d => d.type));
 
 const WIDGET_LABELS = Object.fromEntries(
     [...WIDGET_DEFS.persistent, ...WIDGET_DEFS.event].map(d => [d.type, d.label])
@@ -82,6 +89,9 @@ async function init() {
     const rows = await sbSelect('overlay_configs', 'id=eq.' + encodeURIComponent(OVERLAY_ID));
     if (rows.length && rows[0].config?.widgets) {
         widgets = rows[0].config.widgets;
+        // Layouts saved before the height was locked can hold any height for an
+        // event widget; the overlay ignores it, so re-derive it from the width.
+        widgets.forEach(w => lockEventRatio(w, 'w'));
     }
 
     document.getElementById('editor-owner-label').textContent =
@@ -95,6 +105,7 @@ async function init() {
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
     renderPalette();
+    renderEffectToggles();
     renderCanvas();
     bindTopbarButtons();
     bindPropsPanel();
@@ -120,11 +131,13 @@ function resizeCanvas() {
     const previewWrap  = document.getElementById('preview-canvas-wrap');
     const canvas       = document.getElementById('editor-canvas');
     const previewFrame = document.getElementById('preview-frame-wrap');
-    // Both columns are "label + box", top-aligned with the same padding, so the two
-    // boxes line up as long as they get the same size and neither overflows its column.
-    const labelH = (wrap.firstElementChild?.offsetHeight || 0) + 10;
+    // Both boxes are centred in columns of the same height, so they line up as long
+    // as they get the same size. The label above and the test buttons below are
+    // out of flow, so the height is capped to keep clear of both symmetrically.
+    const labelH = (wrap.querySelector('.palette-section-label')?.offsetHeight || 0) + 10;
+    const testsH = (document.getElementById('preview-tests-wrap')?.offsetHeight || 0) + 10;
     const availW = Math.min(wrap.clientWidth - 28, previewWrap.clientWidth);
-    const availH = Math.min(wrap.clientHeight - 32, previewWrap.clientHeight) - labelH;
+    const availH = Math.min(wrap.clientHeight - 32, previewWrap.clientHeight) - 2 * Math.max(labelH, testsH);
     const w = Math.min(availW, availH * 16 / 9);
     const h = w * 9 / 16;
     canvas.style.width  = w + 'px';
@@ -162,6 +175,7 @@ function renderPalette() {
     }
 
     for (const def of WIDGET_DEFS.event) {
+        if (def.toggleOnly) continue;
         const el = document.createElement('div');
         el.className = 'palette-item event-item';
         el.textContent = def.label;
@@ -169,6 +183,29 @@ function renderPalette() {
         el.addEventListener('dragstart', e => e.dataTransfer.setData('widgetType', def.type));
         el.addEventListener('click', () => addWidget(def.type, 30, 30));
         eventEl.appendChild(el);
+    }
+}
+
+// Full-screen VFX have no position: they are either in the layout or not. One
+// checkbox each, instead of four stacked 100%-wide boxes nothing could be selected
+// through.
+function renderEffectToggles() {
+    const box = document.getElementById('palette-effects');
+    box.innerHTML = '';
+    for (const def of WIDGET_DEFS.event.filter(d => d.toggleOnly)) {
+        const row = document.createElement('label');
+        row.className = 'palette-item effect-item';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = widgets.some(w => w.type === def.type);
+        cb.addEventListener('change', () => {
+            if (cb.checked) addWidget(def.type, 0, 0);
+            else widgets = widgets.filter(w => w.type !== def.type);
+            scheduleAutoSave();
+        });
+        row.appendChild(cb);
+        row.appendChild(document.createTextNode(def.label));
+        box.appendChild(row);
     }
 }
 
@@ -189,15 +226,39 @@ function addWidget(type, x, y) {
     if (['skills','inventory','potions','roll_history','player_hp_summary','player_stats',
          'player_inventory','player_skills','monster_list'].includes(type)) widget.config.maxItems = 8;
     if (type === 'camera') widget.config.streamId = '';
+    lockEventRatio(widget, 'w');
     widgets.push(widget);
     renderCanvas();
-    selectWidget(widget.id);
+    if (!TOGGLE_ONLY_TYPES.has(type)) selectWidget(widget.id);
     scheduleAutoSave();
 }
 
 // Snap a percentage value to the nearest grid step when grid snap is enabled.
 function snapVal(v) {
     return gridSnap ? Math.round(v / 5) * 5 : Math.round(v * 10) / 10;
+}
+
+// Event widgets are drawn on stream at their natural size scaled by w / baseW
+// (see EVENT_BASE_SIZE in aria-overlay.js) — their height is NOT free, it follows
+// the width. So the editor locks their box to the same ratio; otherwise the
+// outline here and the card on stream had nothing to do with each other.
+// mort_screen is excluded: it is full-screen and gets no scale.
+const EVENT_RATIO = Object.fromEntries(WIDGET_DEFS.event
+    .filter(d => d.type !== 'mort_screen' && !d.toggleOnly)
+    .map(d => [d.type, d.defaultH / d.defaultW]));
+
+function eventRatio(type) { return EVENT_RATIO[type] || 0; }
+
+// Force an event widget's height back onto its ratio (driving from 'w' or 'h').
+function lockEventRatio(widget, drive) {
+    const r = eventRatio(widget.type);
+    if (!r) return;
+    if (drive === 'h') widget.w = widget.h / r;
+    // aria-overlay.js clamps the scale to [0.3, 3]; past that the box would grow
+    // while the card on stream stops growing.
+    const baseW = WIDGET_DEFS.event.find(d => d.type === widget.type).defaultW;
+    widget.w = snapVal(Math.max(0.3 * baseW, Math.min(3 * baseW, widget.w)));
+    widget.h = snapVal(widget.w * r);
 }
 
 // Alignment snapping: while the grid is off, a dragged/resized edge or centre that
@@ -258,6 +319,7 @@ function renderCanvas() {
     [...canvas.children].forEach(c => c.remove());
 
     for (const widget of widgets) {
+        if (TOGGLE_ONLY_TYPES.has(widget.type)) continue;
         const el = document.createElement('div');
         el.className = 'editor-widget' + (widget.category === 'event' ? ' event-widget' : '');
         if (widget.id === selectedId) el.classList.add('selected');
@@ -323,21 +385,38 @@ function startResize(e, widgetId, handle) {
 
     const cands = snapCands(widgetId);
 
+    // Ratio lock: forced for event widgets (the overlay derives their height from
+    // their width anyway), on Ctrl for everything else. Alt already means "no snap".
+    const vertical = handle === 'n' || handle === 's';
+
     function onMove(e) {
         const dx = ((e.clientX - startX) / rect.width) * 100;
         const dy = ((e.clientY - startY) / rect.height) * 100;
         const snap = !gridSnap && !e.altKey;
-        const guides = [];
+        let guides = [];
         const fit = (val, axis) => {
             if (!snap) return val;
             const [v, line] = snapOne(val, cands[axis]);
             if (line !== null) guides.push([axis, line]);
             return v;
         };
-        if (handle.includes('e')) widget.w = snapVal(Math.max(MIN, fit(sx + sw + dx, 'x') - sx));
-        if (handle.includes('s')) widget.h = snapVal(Math.max(MIN, fit(sy + sh + dy, 'y') - sy));
-        if (handle.includes('w')) { const nx = Math.min(fit(sx + dx, 'x'), sx + sw - MIN); widget.x = snapVal(nx); widget.w = snapVal(sx + sw - nx); }
-        if (handle.includes('n')) { const ny = Math.min(fit(sy + dy, 'y'), sy + sh - MIN); widget.y = snapVal(ny); widget.h = snapVal(sy + sh - ny); }
+        let nx = sx, ny = sy, nw = sw, nh = sh;
+        if (handle.includes('e')) nw = Math.max(MIN, fit(sx + sw + dx, 'x') - sx);
+        if (handle.includes('s')) nh = Math.max(MIN, fit(sy + sh + dy, 'y') - sy);
+        if (handle.includes('w')) { nx = Math.min(fit(sx + dx, 'x'), sx + sw - MIN); nw = sx + sw - nx; }
+        if (handle.includes('n')) { ny = Math.min(fit(sy + dy, 'y'), sy + sh - MIN); nh = sy + sh - ny; }
+
+        const ratio = eventRatio(widget.type) || (e.ctrlKey ? sh / sw : 0);
+        if (ratio) {
+            if (vertical) nw = nh / ratio; else nh = nw * ratio;
+            if (handle.includes('w')) nx = sx + sw - nw;
+            if (handle.includes('n')) ny = sy + sh - nh;
+            // the derived axis no longer sits on whatever it snapped to
+            guides = guides.filter(g => g[0] === (vertical ? 'y' : 'x'));
+        }
+        widget.x = snapVal(nx); widget.y = snapVal(ny);
+        widget.w = snapVal(nw); widget.h = snapVal(nh);
+        lockEventRatio(widget, vertical ? 'h' : 'w');   // also applies the scale clamp
         showGuides(guides);
         const el = document.querySelector(`.editor-widget[data-id="${widgetId}"]`);
         if (el) { el.style.left = widget.x + '%'; el.style.top = widget.y + '%'; el.style.width = widget.w + '%'; el.style.height = widget.h + '%'; }
@@ -489,8 +568,8 @@ function bindPropsPanel() {
     }
     applyNum('prop-x',         (w, v) => { w.x = Math.max(0, Math.min(95, v)); });
     applyNum('prop-y',         (w, v) => { w.y = Math.max(0, Math.min(95, v)); });
-    applyNum('prop-w',         (w, v) => { w.w = Math.max(5, v); });
-    applyNum('prop-h',         (w, v) => { w.h = Math.max(5, v); });
+    applyNum('prop-w',         (w, v) => { w.w = Math.max(5, v); lockEventRatio(w, 'w'); });
+    applyNum('prop-h',         (w, v) => { w.h = Math.max(5, v); lockEventRatio(w, 'h'); });
     applyNum('prop-opacity',   (w, v) => { w.config.opacity  = Math.max(0, Math.min(1, v)); });
     applyNum('prop-font-size', (w, v) => { w.config.fontSize = Math.max(8, v); });
     applyNum('prop-maxitems',  (w, v) => { w.config.maxItems = Math.max(1, v); });
@@ -583,6 +662,9 @@ const TEST_EVENTS = [
     { label: 'Dégâts',          fn: () => testDamage(6) },
     { label: 'Soin',            fn: () => testHeal(6) },
     { label: 'Écran MORT',      fn: () => testDamage(999) },
+    { label: 'Secousse',        fn: () => testDeliver('shakeScreen') },
+    { label: 'Vignette',        fn: () => testDeliver('flashVignette') },
+    { label: 'Sang',            fn: () => testDeliver('spawnBlood', 45) },
 ];
 
 function initPreview() {

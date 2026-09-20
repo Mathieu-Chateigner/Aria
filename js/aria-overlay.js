@@ -594,8 +594,27 @@ function resizeDmgCanvas() { dmgCanvas.width = window.innerWidth; dmgCanvas.heig
 resizeDmgCanvas();
 window.addEventListener('resize', resizeDmgCanvas);
 
+// The three full-screen damage VFX. Each is its own event widget, so a layout can
+// keep the number and the HP bar without the whole screen shaking.
+function shakeScreen() {
+    if (!eventEnabled('screen_shake')) return;
+    document.body.classList.remove('shake');
+    void document.body.offsetWidth; // reflow to restart animation
+    document.body.classList.add('shake');
+    setTimeout(() => document.body.classList.remove('shake'), 600);
+}
+
+function flashVignette() {
+    if (!eventEnabled('damage_vignette')) return;
+    const vig = document.getElementById('dmg-vignette');
+    vig.classList.remove('flash');
+    void vig.offsetWidth;
+    vig.classList.add('flash');
+}
+
 // Spawn blood splatter particles at a random position on screen.
 function spawnBlood(count) {
+    if (!eventEnabled('blood_particles')) return;
     const cx = window.innerWidth * (0.3 + Math.random() * 0.4);
     const cy = window.innerHeight * (0.15 + Math.random() * 0.25);
     const colors = ['#cc0000', '#990000', '#ff2222', '#880000', '#dd1111', '#aa0000'];
@@ -659,19 +678,8 @@ function showDamage(data) {
 
     const isDead = data.hpAfter <= 0;
 
-    // 1 — screen shake
-    document.body.classList.remove('shake');
-    void document.body.offsetWidth; // reflow to restart animation
-    document.body.classList.add('shake');
-    setTimeout(() => document.body.classList.remove('shake'), 600);
-
-    // 2 — red vignette
-    const vig = document.getElementById('dmg-vignette');
-    vig.classList.remove('flash');
-    void vig.offsetWidth;
-    vig.classList.add('flash');
-
-    // 3 — blood particles
+    shakeScreen();
+    flashVignette();
     spawnBlood(isDead ? 80 : 45);
 
     // 4 — damage number
@@ -809,6 +817,17 @@ const EVENT_BASE_SIZE = {
 // numbers keep an arbitrary base: their width is the text's, so it changes with the
 // value and there is no natural size to match a box to.
 
+// Is this event type part of the layout? An event the layout doesn't contain (or
+// hides) must not play at all — without this the positioned ones fell through to
+// the legacy centred CSS and appeared on stream anyway, and the full-screen VFX
+// (shake / vignette / blood) fired on every hit with no way to turn them off.
+// An *empty* layout still means "never edited": keep everything, or an overlay with
+// no saved widgets would show nothing.
+function eventEnabled(type) {
+    if (!overlayConfig.widgets.length) return true;
+    return overlayConfig.widgets.some(w => w.type === type && w.category === 'event' && w.visible !== false);
+}
+
 // Apply an event widget's position/size (and derived scale) from the overlay
 // config to its .ow-event-box wrapper. Unconfigured (no matching widget) clears
 // the transform, which drops the wrapper back to its CSS default (inset:0, no
@@ -816,8 +835,10 @@ const EVENT_BASE_SIZE = {
 function applyEventWidgetPosition(elId, widgetType) {
     const el = document.getElementById(elId);
     if (!el) return;
+    if (!eventEnabled(widgetType)) { el.style.cssText = 'display:none'; return; }
     const style = getEventWidgetStyle(widgetType);
     if (!style) { el.style.cssText = ''; return; }
+    el.style.removeProperty('display');
     // #dmg-mort is the element itself, not an .ow-event-box wrapper — it centres its
     // own contents, so it must not inherit the box's top-left anchoring.
     if (!el.classList.contains('ow-event-box')) { delete style.alignItems; delete style.justifyContent; }
