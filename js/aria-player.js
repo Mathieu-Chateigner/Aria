@@ -426,6 +426,18 @@ function loadCharacterState(id) {
             : { couronne: 0, orbe: 0, sceptre: 0, sou: 0 };
     }
     if (!character.specials) character.specials = [];
+    // Skills are template-owned, and the template can gain entries after a character was
+    // created — createCharacter() deep-copies it once and nothing has back-filled it since.
+    // Merge by name so a later template addition reaches existing characters: pct/bonus the
+    // player set are never touched. Without this the combat sidebar's Parade/Esquive lookup
+    // (find() over /combat.rapproch/, /esquiv/, /tabasser/, /réflexes/) silently returns
+    // undefined and the button just isn't rendered — no error, no empty state.
+    {
+        const tpl  = character.ariaType === 'contemporary' ? DEFAULT_CHAR_CONTEMPORARY : DEFAULT_CHAR_ANCIENT;
+        const have = new Set((character.skills || []).map(s => s.name));
+        character.skills = [...(character.skills || []),
+                            ...tpl.skills.filter(s => !have.has(s.name)).map(s => ({ ...s }))];
+    }
     if (character.karma === undefined) character.karma = 0;
     deck.load(JSON.parse(localStorage.getItem(cardKey()) || 'null'));
     playerRollHistory = JSON.parse(localStorage.getItem(charKey('rolls', id)) || '[]');
