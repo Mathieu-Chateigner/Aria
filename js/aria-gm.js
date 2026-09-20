@@ -9,6 +9,7 @@ ARIA.configure({
     splitKey:     'aria-gm-split-layout',
     defaultPane:  'tab-players',
     joinCode:     () => currentJoinCode || '',
+    overlayId:    () => currentCampaignId ? 'gm_' + currentCampaignId : '',
     syncAll:      () => _syncAllGMData(),
     clearLocal:   () => _clearLocalGMData(),
     afterRestore: () => restoreLastCampaign(),
@@ -16,8 +17,6 @@ ARIA.configure({
 });
 
 let ablyInstance = null, ablyRolls = null, ablyCards = null, ablyDamage = null, ablyRollsHidden = null;
-let pendingGMRoll = null;        // { name, threshold, atk } for GM rolls in progress
-let gmRollSafetyTimer = null;    // fallback timer in case RollFinished never fires
 
 // Players, keyed by charId (stable UUID) -> presence data + { online }.
 //
@@ -616,9 +615,6 @@ function switchCampaign() {
     stopGMSelfView();
     if (renderPlayerCardsTimer) { clearTimeout(renderPlayerCardsTimer); renderPlayerCardsTimer = null; }
     if (renderMonstersTimer) { clearTimeout(renderMonstersTimer); renderMonstersTimer = null; }
-    if (dddiceSDK) { try { dddiceSDK.disconnect?.(); } catch(_){} dddiceSDK = null; }
-    clearTimeout(gmRollSafetyTimer);
-    pendingGMRoll = null;
     // Closing the connection leaves the presence set, which is how players learn the
     // session is over — no message to publish first, and nothing to await before
     // closing (a fire-and-forget publish followed by close() would have been dropped).
@@ -668,7 +664,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
 // Initialize the full GM app after a campaign is selected.
 function initApp() {
-    console.log('[GM] initApp: campaign:', currentCampaignId, '| joinCode:', currentJoinCode, '| ablyKey:', config.ablyKey ? 'set' : 'MISSING', '| dddice:', config.dddiceKey ? 'set' : 'none');
+    console.log('[GM] initApp: campaign:', currentCampaignId, '| joinCode:', currentJoinCode, '| ablyKey:', config.ablyKey ? 'set' : 'MISSING');
     renderPlayerCards();
     renderMonsters();
     renderMapTab();
@@ -681,7 +677,6 @@ function initApp() {
     initGmDeck();
     renderTabLayout(); // apply the restored multi-pane layout
     loadConfigInputs();
-    if (config.dddiceKey && config.dddiceRoom) initDddice();
     if (config.ablyKey) initAbly();   // enters presence with the room + spotlight
     cam.acquireLock();
     updateGMPushIframe();   // drives the topbar button, the push frame and the preview
@@ -790,11 +785,17 @@ function renderTabLayout() {
 
 function copyOverlayUrl() {
     const base = window.location.href.replace(/aria-gm\.html.*$/, 'aria-overlay.html');
-    const params = new URLSearchParams({ mode: 'gm', ably: config.ablyKey || '' });
-    if (config.dddiceKey)  params.set('dddice_key', config.dddiceKey);
-    if (config.dddiceRoom) params.set('dddice_room', extractRoomSlug(config.dddiceRoom));
-    if (currentCampaignId) params.set('overlay', 'gm_' + currentCampaignId);  // scopes layout + monster widget to this campaign
-    if (currentJoinCode)   params.set('campaign', currentJoinCode);            // scopes the rolls/cards/damage channels to this campaign
+    // Just the save key — not even the role: the overlay reads the Ably key off the
+    // saves row, and learns which campaign is open (and that it is a GM overlay) from
+    // whichever panel answers on the route channel. So this URL survives every switch.
+    // The long form is the fallback for a browser with no save key.
+    const params = saveKey
+        ? new URLSearchParams({ s: saveKey })
+        : new URLSearchParams({ mode: 'gm', ably: config.ablyKey || '' });
+    if (!saveKey) {
+        if (currentCampaignId) params.set('overlay', 'gm_' + currentCampaignId);
+        if (currentJoinCode)   params.set('campaign', currentJoinCode);
+    }
     const url = `${base}?${params}`;
     navigator.clipboard.writeText(url).then(() => {
         const btn = document.querySelector('.config-modal button[onclick="copyOverlayUrl()"]');
@@ -804,30 +805,6 @@ function copyOverlayUrl() {
         setTimeout(() => btn.textContent = orig, 2000);
     });
 }
-// Initialize the dddice SDK for GM rolls: fetch themes, create renderer, connect to room.
-// Connect to dddice and resolve finished rolls against the GM's pending roll. The
-// connection itself is initDddiceSDK() in aria-shared.js.
-//
-// RollFinished fires for incoming player rolls as well as the GM's own, so the
-// canvas is always cleared but only a pending GM roll is consumed.
-function initDddice() {
-    return initDddiceSDK(roll => {
-        setTimeout(() => dddiceSDK?.clear(), 1500);
-        if (!pendingGMRoll) return;
-        // Another participant's dice landing mid-animation must not be taken as the
-        // GM's result (only enforced when both UUIDs are known).
-        const finishedUuid = _ddRollUuid(roll);
-        if (pendingGMRoll.uuid && finishedUuid && finishedUuid !== pendingGMRoll.uuid) return;
-        clearTimeout(gmRollSafetyTimer);
-        const { name, threshold, atk } = pendingGMRoll;
-        pendingGMRoll = null;
-        const total = (roll.total_value ?? 0) === 0 ? 100 : (roll.total_value ?? 0);
-        const success = total <= threshold;
-        const dmgResult = (success && atk?.dmg?.trim()) ? rollDiceFormula(atk.dmg) : null;
-        showGMRollResult(name, threshold, total, success, dmgResult);
-    });
-}
-
 // Initialize Ably channels and subscribe to all game events (rolls, cards, presence).
 function initAbly() {
     console.log('[GM] initAbly: connecting with key', config.ablyKey?.slice(0, 8) + '...', '| campaign channel suffix:', currentJoinCode || '(global)');
@@ -841,6 +818,7 @@ function initAbly() {
         ablyDamage = ablyInstance.channels.get(campaignChannel('aria-damage'));
         ablyMusic = ablyInstance.channels.get(campaignChannel('aria-music'));
         ablyMap = ablyInstance.channels.get(campaignChannel('aria-map'));
+        initRouteChannel(ablyInstance);   // tells this save key's OBS overlay which campaign to show
         // A late joiner — a player connecting an hour in, or an OBS browser source
         // restarted mid-session — asks, and gets the whole state back.
         ablyMap.subscribe('request', () => publishMapState());
@@ -2075,36 +2053,13 @@ function togglePlayerFilter(name) {
 // ═══════════════════════════════════════════
 //  GM ROLLS
 // ═══════════════════════════════════════════
-// Safety fallback for GM dddice rolls: if RollFinished never fires (e.g. network
-// drop after the roll was created), resolve the pending roll locally after 12s so
-// the result panel never hangs. Cleared by the RollFinished handler on success.
-function armGMRollSafetyTimer() {
-    clearTimeout(gmRollSafetyTimer);
-    gmRollSafetyTimer = setTimeout(() => {
-        if (!pendingGMRoll) return;
-        const { name, threshold, atk } = pendingGMRoll;
-        pendingGMRoll = null;
-        const roll = Math.floor(Math.random() * 100) + 1;
-        const success = roll <= threshold;
-        const dmgResult = (success && atk?.dmg?.trim()) ? rollDiceFormula(atk.dmg) : null;
-        showGMRollResult(name, threshold, roll, success, dmgResult);
-    }, 12000);
-}
 // Execute a free-threshold GM roll from the Jet MJ form.
 function doGMFreeRoll() {
     const name = document.getElementById('gm-free-name').value.trim() || 'Jet MJ';
     const t = parseInt(document.getElementById('gm-free-threshold').value);
     if (isNaN(t) || t < 1 || t > 100) { alert('Seuil invalide.'); return; }
-    if (dddiceSDK && dddiceAPI) {
-        pendingGMRoll = { name, threshold: t, atk: null, uuid: null };
-        armGMRollSafetyTimer();
-        dddiceSDK.roll([{ type: 'd10x', theme: dddiceAPI.theme }, { type: 'd10', theme: dddiceAPI.theme }])
-            .then(res => { if (pendingGMRoll) pendingGMRoll.uuid = _ddRollUuid(res); })
-            .catch(e => { console.error('dddice GM roll:', e); clearTimeout(gmRollSafetyTimer); pendingGMRoll = null; const r = Math.floor(Math.random() * 100) + 1; showGMRollResult(name, t, r, r <= t); });
-    } else {
-        const roll = Math.floor(Math.random() * 100) + 1;
-        showGMRollResult(name, t, roll, roll <= t);
-    }
+    const roll = Math.floor(Math.random() * 100) + 1;
+    showGMRollResult(name, t, roll, roll <= t);
 }
 // Roll an attack for the selected monster, optionally rolling damage on success.
 function doGMMonsterRoll() {
@@ -2115,26 +2070,10 @@ function doGMMonsterRoll() {
     const atkIdx = getSelectValue('gm-attack-select');
     const atk = (m && atkIdx !== '') ? m.attacks[parseInt(atkIdx)] : null;
     const name = atk ? `${m.name} — ${atk.name}` : m ? `${m.name} (${t}%)` : `Jet MJ (${t}%)`;
-    if (dddiceSDK && dddiceAPI) {
-        pendingGMRoll = { name, threshold: t, atk, uuid: null };
-        armGMRollSafetyTimer();
-        dddiceSDK.roll([{ type: 'd10x', theme: dddiceAPI.theme }, { type: 'd10', theme: dddiceAPI.theme }])
-            .then(res => { if (pendingGMRoll) pendingGMRoll.uuid = _ddRollUuid(res); })
-            .catch(e => {
-                console.error('dddice GM roll:', e);
-                clearTimeout(gmRollSafetyTimer);
-                pendingGMRoll = null;
-                const roll = Math.floor(Math.random() * 100) + 1;
-                const success = roll <= t;
-                const dmgResult = (success && atk?.dmg?.trim()) ? rollDiceFormula(atk.dmg) : null;
-                showGMRollResult(name, t, roll, success, dmgResult);
-            });
-    } else {
-        const roll = Math.floor(Math.random() * 100) + 1;
-        const success = roll <= t;
-        const dmgResult = (success && atk && atk.dmg && atk.dmg.trim()) ? rollDiceFormula(atk.dmg) : null;
-        showGMRollResult(name, t, roll, success, dmgResult);
-    }
+    const roll = Math.floor(Math.random() * 100) + 1;
+    const success = roll <= t;
+    const dmgResult = (success && atk?.dmg?.trim()) ? rollDiceFormula(atk.dmg) : null;
+    showGMRollResult(name, t, roll, success, dmgResult);
 }
 // Display a GM roll result in the result panel with optional damage and player target buttons.
 function showGMRollResult(name, threshold, roll, success, dmgResult) {
@@ -2276,14 +2215,13 @@ function loadConfigInputs() {
     document.getElementById('cfg-vdo-room').value = currentVdoRoom;
     document.getElementById('cfg-vdo-room-password').value = currentVdoRoomPassword;
 }
-// Save config modal changes: VDO room, theme, dddice. Republishes presence; it does
+// Save config modal changes: VDO room and theme. Republishes presence; it does
 // not reconnect Ably unless the connection is actually gone — see below.
 function saveConfig() {
     const newVdoRoom = document.getElementById('cfg-vdo-room').value.trim();
     const newVdoRoomPassword = document.getElementById('cfg-vdo-room-password').value.trim();
     config = {
         ...config,
-        dddiceTheme: document.getElementById('cfg-dddice-theme').value || '',
         lightMode: document.getElementById('cfg-light-mode').checked,
     };
     localStorage.setItem('aria-config', JSON.stringify(config));
@@ -2294,10 +2232,6 @@ function saveConfig() {
         const camp = campaigns.find(c => c.id === currentCampaignId);
         if (camp) { camp.vdoRoom = newVdoRoom; camp.vdoRoomPassword = newVdoRoomPassword; saveCampaigns(campaigns); }
     }
-    teardownDddice();
-    clearTimeout(gmRollSafetyTimer);
-    pendingGMRoll = null;
-    if (config.dddiceKey && config.dddiceRoom) initDddice();
     // The Ably connection is NOT torn down here. Nothing in this modal can change it:
     // the key comes from index.html and the channel suffix from the join code, which
     // this modal only displays. Closing it left the presence set, and the GM leaving

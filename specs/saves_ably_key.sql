@@ -1,0 +1,11 @@
+-- The OBS overlay link is just ?s=SAVEKEY. Everything else — which Ably key to
+-- connect with, and whether this is a player or a GM overlay — is looked up from
+-- the saves row, so the link never has to be re-copied and is short enough to type.
+--
+-- The panels write it from initRouteChannel() (aria-shared.js) on every entry; the
+-- overlay reads it with the anon key. Anyone holding the save key can already read
+-- every character and campaign under it, so this exposes nothing new — but it does
+-- mean the save key is the whole secret. Treat the overlay URL as one.
+--
+-- Run once in the Supabase SQL editor.
+alter table saves add column if not exists ably_key text;

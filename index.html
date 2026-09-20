@@ -328,10 +328,6 @@
             </div>
             <label class="config-label">Clé Ably</label>
             <input class="config-input" id="cfg-ably" type="password" placeholder="xxxxxxxx:xxxxxxxx" />
-            <label class="config-label">Clé API dddice</label>
-            <input class="config-input" id="cfg-dddice-key" type="password" placeholder="Votre clé API…" />
-            <label class="config-label">Room dddice</label>
-            <input class="config-input" id="cfg-dddice-room" placeholder="slug ou URL complète" />
             <label class="config-label">Clé API YouTube <span style="font-size:11px;opacity:.6;">(optionnel — pour les playlists)</span></label>
             <input class="config-input" id="cfg-youtube-key" type="password" placeholder="AIzaSy…" />
             <button class="config-save-btn" id="cfg-save-btn" onclick="saveConfig()">Sauvegarder</button>
@@ -348,8 +344,6 @@
         function openConfig() {
             const cfg = JSON.parse(localStorage.getItem('aria-config') || '{}');
             document.getElementById('cfg-ably').value        = cfg.ablyKey       || '';
-            document.getElementById('cfg-dddice-key').value  = cfg.dddiceKey     || '';
-            document.getElementById('cfg-dddice-room').value = cfg.dddiceRoom    || '';
             document.getElementById('cfg-youtube-key').value = cfg.youtubeApiKey || '';
             document.getElementById('cfg-scrim').classList.add('show');
         }
@@ -365,8 +359,6 @@
         function saveConfig() {
             const cfg = JSON.parse(localStorage.getItem('aria-config') || '{}');
             cfg.ablyKey       = document.getElementById('cfg-ably').value.trim();
-            cfg.dddiceKey     = document.getElementById('cfg-dddice-key').value.trim();
-            cfg.dddiceRoom    = document.getElementById('cfg-dddice-room').value.trim();
             cfg.youtubeApiKey = document.getElementById('cfg-youtube-key').value.trim();
             localStorage.setItem('aria-config', JSON.stringify(cfg));
             const btn = document.getElementById('cfg-save-btn');

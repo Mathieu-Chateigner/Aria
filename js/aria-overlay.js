@@ -1,11 +1,21 @@
 const params = new URLSearchParams(window.location.search);
-const MODE = params.get('mode') || 'gm';
-const ABLY_KEY = params.get('ably') || '';
-const DDDICE_KEY = params.get('dddice_key') || '';
-const DDDICE_ROOM = params.get('dddice_room') || '';
+// The URL pasted into OBS is just ?s=<save key>. Everything below is resolved from
+// it at startup — the Ably key and player/gm mode from the saves row, the campaign
+// and the widget layout from the panel over the route channel — so the link never
+// has to be re-copied when the campaign or character changes.
+//
+// The resolved values are written back into the address bar on the self-reload, so
+// a page that is already running carries the full set and skips the lookup.
+const SAVE_KEY = params.get('s') || '';
+// Only ever set on the resolved URL (pinned, or written by the self-reload below).
+// While it is empty the overlay does not yet know whose it is, and takes whatever
+// role the panel answering on the route channel says it is.
+const WANT_MODE = params.get('mode') || '';
+let MODE = WANT_MODE || 'gm';
+let ABLY_KEY = params.get('ably') || '';
 const OVERLAY_ID = params.get('overlay') || '';
-// Campaign join code from the overlay URL (?campaign=XXXXX). Scopes the rolls/cards/damage
-// channels so this overlay only shows events from its campaign. Empty → global channels.
+// Campaign join code (?campaign=XXXXX). Scopes the rolls/cards/damage channels so this
+// overlay only shows events from its campaign. Empty → global channels.
 const CAMPAIGN = (params.get('campaign') || '').trim().toUpperCase();
 function campaignChannel(base) { return CAMPAIGN ? `${base}-${CAMPAIGN}` : base; }
 
@@ -164,15 +174,11 @@ function syncMapWidget(el, widget) {
 let rollDismiss = null;
 let cardDismiss = null;
 
-// State for synchronising Ably roll data with the dddice animation
-const pendingRollQueue = [];  // queue of roll payloads waiting for animation to finish
-let diceFinished = false;     // set true when dddice RollFinished fires before Ably message arrives
-let diceConnected = false;    // true once the dddice SDK is connected to the room
-
-if (MODE === 'gm') document.getElementById('waiting').classList.add('show');
 
 // ── ABLY ──────────────────────────────────
-if (ABLY_KEY) {
+// Everything the save key resolves to is known by the time this runs.
+function startAbly() {
+    if (MODE === 'gm') document.getElementById('waiting').classList.add('show');
     const ably = new Ably.Realtime({ key: ABLY_KEY, transports: ['web_socket'] });
 
     // Dice rolls
@@ -181,29 +187,9 @@ if (ABLY_KEY) {
         rollHistory.push(msg.data);
         if (rollHistory.length > ROLL_HISTORY_MAX) rollHistory.shift();
         updateWidgetData();
-        const data = msg.data;
-        if (diceConnected) {
-            // SDK is active: queue data and wait for RollFinished to display it
-            pendingRollQueue.push(data);
-            if (diceFinished) {
-                // Animation already finished before Ably message arrived
-                diceFinished = false;
-                showRoll(pendingRollQueue.shift());
-            } else {
-                // Safety: if RollFinished never fires (e.g. SDK connected but not rendering),
-                // fall back to showing the result after 8s
-                setTimeout(() => {
-                    const idx = pendingRollQueue.indexOf(data);
-                    if (idx !== -1) {
-                        pendingRollQueue.splice(idx, 1);
-                        showRoll(data);
-                    }
-                }, 8000);
-            }
-        } else {
-            // No SDK: fall back to the original 3s delay
-            setTimeout(() => showRoll(data), 3000);
-        }
+        // Short delay before the card shows, so the roll lands on stream a beat after
+        // the player's own float card rather than simultaneously.
+        setTimeout(() => showRoll(msg.data), 3000);
     });
 
     // Card draws
@@ -323,47 +309,49 @@ if (ABLY_KEY) {
             if (el) el.innerHTML = renderWidgetContent(widget);
         });
     }
-} else {
-    console.warn('No Ably key. Pass ?ably=YOUR_KEY in the URL.');
+    if (SAVE_KEY) subscribeRoute(ably);
 }
 
-// ── DDDICE SDK ─────────────────────────────
-// Connects to the dddice room and renders incoming 3D dice rolls in the canvas.
-// Pass ?dddice_key=YOUR_KEY&dddice_room=YOUR_ROOM_SLUG in the overlay URL.
-// Extract the room slug from a full dddice/VDO.ninja URL or return the raw value.
-function extractRoomSlug(val) {
-    if (!val) return '';
-    const m = val.match(/\/room\/([^/?#]+)/);
-    return m ? m[1] : val.trim();
+// Which campaign/character does this save key have open? Ask, and reload when the
+// answer differs from the params we are running with. The panel also publishes
+// unprompted on entry, so a switch mid-session lands here too.
+//
+// The reply is what settles `mode`: the overlay is a GM one because a GM panel
+// answered, not because the URL said so. A pinned ?mode= still wins — that is the
+// escape hatch when one save key has both a GM panel and a player panel open.
+function subscribeRoute(ably) {
+    const routeCh = ably.channels.get('aria-route-' + SAVE_KEY);
+    routeCh.subscribe('route', msg => {
+        const d = msg.data || {};
+        if (!d.overlay) return;                              // panel on its selection screen
+        if (WANT_MODE && d.mode !== WANT_MODE) return;
+        const camp = String(d.campaign || '').trim().toUpperCase();
+        if (d.overlay === OVERLAY_ID && camp === CAMPAIGN) return;
+        const p = new URLSearchParams(window.location.search);
+        p.set('mode', d.mode === 'gm' ? 'gm' : 'player');
+        p.set('ably', ABLY_KEY);
+        p.set('overlay', d.overlay);
+        p.set('campaign', camp);
+        location.replace(window.location.pathname + '?' + p);
+    });
+    routeCh.publish('hello', {});
 }
 
-if (DDDICE_KEY && DDDICE_ROOM) {
-    (async () => {
-        try {
-            const { ThreeDDice, ThreeDDiceRollEvent } = await import('https://esm.sh/dddice-js');
-            const canvas = document.getElementById('dddice-canvas');
-            const sdk = new ThreeDDice(canvas, DDDICE_KEY);
-            sdk.start();
-            await sdk.connect(extractRoomSlug(DDDICE_ROOM));
-            diceConnected = true;
-
-            sdk.on(ThreeDDiceRollEvent.RollFinished, () => {
-                setTimeout(() => sdk.clear(), 1500);
-                if (pendingRollQueue.length > 0) {
-                    diceFinished = false;
-                    showRoll(pendingRollQueue.shift());
-                } else {
-                    // Ably message hasn't arrived yet — flag it and wait briefly
-                    diceFinished = true;
-                    setTimeout(() => { diceFinished = false; }, 3000);
-                }
-            });
-        } catch (e) {
-            console.warn('dddice SDK failed to load, falling back to timer:', e);
-            diceConnected = false;
-        }
-    })();
+// Bootstrap from ?s= alone: the saves row holds the Ably key, and the route channel
+// holds everything else. Only that one channel is opened here — the game channels
+// would be on the wrong campaign (or the global fallback) and the reload is a
+// round-trip away, so subscribing them now would just churn.
+async function startFromSaveKey() {
+    const rows = await sbSelect('saves', 'save_key=eq.' + encodeURIComponent(SAVE_KEY) + '&select=ably_key');
+    if (!rows.length) { console.warn('Unknown save key:', SAVE_KEY); return; }
+    if (!rows[0].ably_key) { console.warn('No Ably key stored for this save key — open the panel once to publish it.'); return; }
+    ABLY_KEY = rows[0].ably_key;
+    subscribeRoute(new Ably.Realtime({ key: ABLY_KEY, transports: ['web_socket'] }));
 }
+
+if (ABLY_KEY) startAbly();
+else if (SAVE_KEY) startFromSaveKey();
+else console.warn('Nothing to connect with. Pass ?s=YOUR_SAVE_KEY in the URL.');
 
 // ══════════════════════════════════════════
 //  DICE ROLL DISPLAY

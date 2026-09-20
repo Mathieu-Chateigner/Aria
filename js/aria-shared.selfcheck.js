@@ -21,8 +21,8 @@ global.localStorage = {
     removeItem: k => _store.delete(k),
 };
 const src = fs.readFileSync(__dirname + '/aria-shared.js', 'utf8');
-const { rollDiceFormula, formulaToDiceSpec, rollPassesFilter, classify, append, makeCamera, makeChat } =
-    new Function(src + '\nreturn { rollDiceFormula, formulaToDiceSpec, rollPassesFilter, classify, append, makeCamera, makeChat };')();
+const { rollDiceFormula, rollPassesFilter, classify, append, makeCamera, makeChat } =
+    new Function(src + '\nreturn { rollDiceFormula, rollPassesFilter, classify, append, makeCamera, makeChat };')();
 
 // ── Dice formulas ─────────────────────────────────────────────────────────────
 // Flat terms are exact, so assert their totals directly.
@@ -45,14 +45,6 @@ for (let i = 0; i < 200; i++) {
 // Whitespace and case are normalised away.
 assert.match(rollDiceFormula(' 3 D 4 ').breakdown, /^\[\d+\+\d+\+\d+\]$/);
 
-// The dddice hand-off sees the same grammar: dice flattened, modifier kept.
-assert.deepStrictEqual(formulaToDiceSpec('2d6+2'), { dice: ['d6', 'd6'], modifier: 2 });
-assert.deepStrictEqual(formulaToDiceSpec('1d8-1'), { dice: ['d8'], modifier: -1 });
-assert.deepStrictEqual(formulaToDiceSpec('5'),     { dice: [], modifier: 5 });
-assert.deepStrictEqual(formulaToDiceSpec(''),      { dice: [], modifier: 0 });
-// A bare number formula has no dice, which is the signal rollWeaponDamage uses to
-// skip dddice and roll locally.
-assert.strictEqual(formulaToDiceSpec('7').dice.length, 0);
 
 // ── Roll filter pills ─────────────────────────────────────────────────────────
 // The regression this replaced: the GM's copy ended in `has(type)`, so a critical

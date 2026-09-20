@@ -20,6 +20,7 @@ const ARIA = {
     splitKey:    'aria-split-layout', // localStorage key for the pane layout
     defaultPane: 'tab-skills',        // pane to fall back to when none are open
     joinCode:    () => '',            // active campaign join code, for channel scoping
+    overlayId:   () => '',            // 'player_{charId}' | 'gm_{campaignId}', for the overlay route
     syncAll:     async () => {},      // full push of local data to Supabase
     clearLocal:  () => {},            // drop this save key's local data on key switch
     afterRestore: () => {},           // re-enter the last character/campaign on load
@@ -95,11 +96,9 @@ function rollPassesFilter(entry, filter) {
 }
 
 // ── Dice formulas ─────────────────────────────────────────────────────────────
-// Split a formula ("2d6+2", "1d8-1", "3d4", "5") into signed terms. One tokenizer
-// behind both consumers: rollDiceFormula, which rolls locally, and
-// formulaToDiceSpec, which hands the dice to dddice and keeps the flat modifier.
-// The grammar used to be written out three times — once per panel plus the dddice
-// variant — and the panels' two copies had already drifted on the empty case.
+// Split a formula ("2d6+2", "1d8-1", "3d4", "5") into signed terms, for
+// rollDiceFormula. The grammar used to be written out once per panel and the two
+// copies had already drifted on the empty case.
 function _diceTerms(formula) {
     const expr = String(formula ?? '').replace(/\s+/g, '').toLowerCase();
     if (!expr) return [];
@@ -129,32 +128,6 @@ function rollDiceFormula(formula) {
     }
     return { total, breakdown: parts.join(' ') };
 }
-
-// Flatten a formula into the dice list dddice needs plus the flat modifier. dddice
-// rolls only positive dice, so a subtracted dice term ("2d6-1d4") cannot be
-// expressed and its sign is dropped here, exactly as before; such formulas are
-// vanishingly rare for weapon damage.
-// ponytail: sign dropped on dice terms, split the roll if a formula ever needs it.
-function formulaToDiceSpec(formula) {
-    const dice = []; let modifier = 0;
-    for (const t of _diceTerms(formula)) {
-        if (t.sides) { for (let i = 0; i < t.count; i++) dice.push(`d${t.sides}`); }
-        else if (!isNaN(t.flat)) modifier += t.sign * t.flat;
-    }
-    return { dice, modifier };
-}
-
-// Accept either a full dddice room URL or a bare slug.
-function extractRoomSlug(val) {
-    if (!val) return '';
-    const m = val.match(/\/room\/([^/?#]+)/);
-    return m ? m[1] : val.trim();
-}
-
-// Extract a roll UUID from either the sdk.roll() response or a RollFinished payload.
-// RollFinished fires for EVERY roll in the shared room; matching UUIDs stops another
-// participant's dice from being consumed as this tab's pending result.
-function _ddRollUuid(r) { return r?.uuid ?? r?.data?.uuid ?? null; }
 
 // Scope a channel name to the active campaign. An empty join code falls back to the
 // bare global channel (backward compatible; unlinked players).
@@ -1150,12 +1123,6 @@ function toggleConfig() {
     document.getElementById('config-scrim').classList.toggle('show');
 }
 
-// Update the dddice status dot and text labels in the topbar and config modal.
-function setDddiceStatus(ok, detail) {
-    ['dddice-dot', 'cfg-dddice-dot'].forEach(id => { const e = document.getElementById(id); if (e) e.className = 'status-dot ' + (ok ? 'connected' : 'error'); });
-    ['dddice-status', 'cfg-dddice-status'].forEach(id => { const e = document.getElementById(id); if (e) e.textContent = ok ? `dddice: ${detail || 'connecté'}` : `Erreur: ${detail || 'dddice'}`; });
-}
-
 // Pan/zoom an <img> with the wheel and drag (file previews, monster art).
 function wireImageZoom(img) {
     let scale = 1, tx = 0, ty = 0;
@@ -1182,80 +1149,6 @@ function wireImageZoom(img) {
         document.addEventListener('mouseup', up);
     });
     img.addEventListener('dblclick', e => { e.preventDefault(); scale = 1; tx = 0; ty = 0; apply(); });
-}
-
-// ═══════════════════════════════════════════
-//  dddice
-// ═══════════════════════════════════════════
-// Everything up to and including the RollFinished subscription was written out in
-// both panels. What actually differs between them is the RollFinished handler — the
-// player matches the roll against its own pending state and hides its canvas
-// wrapper, the GM resolves a monster attack — so that is the only hook.
-let dddiceSDK = null;            // ThreeDDice SDK instance
-let dddiceAPI = null;            // { key, room, theme } once connected
-let dddiceResizeHandler = null;  // stored so it can be removed before re-registering
-
-// Fetch the account's dice-box themes and fill the config modal's dropdown.
-async function _dddiceThemes() {
-    const res = await fetch('https://dddice.com/api/1.0/dice-box', {
-        headers: { 'Authorization': `Bearer ${config.dddiceKey}`, 'Accept': 'application/json' },
-    });
-    if (!res.ok) throw new Error(`Dice box HTTP ${res.status}`);
-    const themes = (await res.json()).data || [];
-    if (!themes.length) throw new Error('Aucun thème.');
-    return themes;
-}
-
-// Load the SDK, connect to the room, and subscribe onRollFinished. Resolves true
-// once connected, false when dddice is unconfigured or the setup failed.
-// Init order matters: .start() must precede .connect().
-async function initDddiceSDK(onRollFinished) {
-    const slug = extractRoomSlug(config.dddiceRoom);
-    if (!config.dddiceKey || !slug) return false;
-    try {
-        const { ThreeDDice, ThreeDDiceRollEvent } = await import('https://esm.sh/dddice-js');
-        const themes = await _dddiceThemes();
-
-        const sel = document.getElementById('cfg-dddice-theme');
-        fill(sel, themes.map(t => el('option', { value: t.id, textContent: t.name ? `${t.name} (${t.id})` : t.id })));
-        sel.disabled = false;
-        sel.value = config.dddiceTheme && themes.find(t => t.id === config.dddiceTheme) ? config.dddiceTheme : themes[0].id;
-
-        dddiceSDK = new ThreeDDice(document.getElementById('dddice-canvas'), config.dddiceKey);
-        dddiceSDK.start();
-        await dddiceSDK.connect(slug);
-        dddiceSDK.on(ThreeDDiceRollEvent.RollFinished, onRollFinished);
-
-        // Keep the WebGL viewport in sync with the window. Removed before
-        // re-registering because saveConfig() re-inits the SDK; only the GM used to
-        // do this, so the player's dice rendered at a stale scale after a resize.
-        if (dddiceResizeHandler) window.removeEventListener('resize', dddiceResizeHandler);
-        dddiceResizeHandler = () => dddiceSDK?.resize();
-        window.addEventListener('resize', dddiceResizeHandler);
-
-        dddiceAPI = { key: config.dddiceKey, room: slug, theme: sel.value };
-        setDddiceStatus(true, themes.find(t => t.id === sel.value)?.name || sel.value);
-        sel.onchange = () => {
-            if (dddiceAPI) dddiceAPI.theme = sel.value;
-            config.dddiceTheme = sel.value;
-            localStorage.setItem('aria-config', JSON.stringify(config));
-        };
-        return true;
-    } catch (e) {
-        console.error('dddice:', e);
-        setDddiceStatus(false, e.message);
-        dddiceSDK = null;
-        dddiceAPI = null;
-        return false;
-    }
-}
-
-// Disconnect the SDK and drop the resize listener, before a re-init or a teardown.
-function teardownDddice() {
-    if (dddiceResizeHandler) { window.removeEventListener('resize', dddiceResizeHandler); dddiceResizeHandler = null; }
-    try { dddiceSDK?.disconnect(); } catch (_) {}
-    dddiceSDK = null;
-    dddiceAPI = null;
 }
 
 // ═══════════════════════════════════════════
@@ -1341,6 +1234,37 @@ function copySaveKey() {
     const btns = document.querySelectorAll('.sel-save-btn');
     const copyBtn = [...btns].find(b => b.textContent === 'Copier');
     if (copyBtn) { copyBtn.textContent = 'Copié !'; setTimeout(() => { copyBtn.textContent = 'Copier'; }, 2000); }
+}
+
+// ═══════════════════════════════════════════
+//  OVERLAY ROUTE CHANNEL
+// ═══════════════════════════════════════════
+// The OBS overlay URL used to carry ?overlay= and ?campaign=, so it had to be
+// re-copied into OBS on every campaign/character switch. It now carries only the
+// save key, and this channel answers "which campaign/character is that save key
+// currently playing" — live. The overlay reloads itself with the new pair.
+//
+// Global channel (not campaign-scoped): the save key is what it is keyed on, and
+// that is also what the overlay URL carries. The overlay asks with 'hello' on
+// startup rather than relying on message history, so it can be (re)started at any
+// time, before or after the panel.
+let _routeCh = null;
+
+function initRouteChannel(ably) {
+    _routeCh = null;
+    if (!ably || !saveKey) return;
+    // The overlay URL is only ?s=<save key>, so the Ably key it needs to reach this
+    // channel at all has to come from somewhere the overlay can read with nothing but
+    // that key: the saves row. Written on every entry so a changed key catches up.
+    if (config.ablyKey) sbPatch('saves', { ably_key: config.ablyKey }, 'save_key=eq.' + encodeURIComponent(saveKey));
+    _routeCh = ably.channels.get('aria-route-' + saveKey);
+    _routeCh.subscribe('hello', () => publishRoute());
+    publishRoute();
+}
+
+function publishRoute() {
+    if (!_routeCh) return;
+    _routeCh.publish('route', { mode: ARIA.role, overlay: ARIA.overlayId(), campaign: ARIA.joinCode() || '' });
 }
 
 // Cancel key entry: return to the gateway if no key exists, else just hide it.

@@ -1947,10 +1947,6 @@ body.light-mode .rh-date::-webkit-calendar-picker-indicator { filter: none; }
 }
 .music-unlock-prompt:hover { background: var(--gold-dim); color: var(--bg); }
 
-/* ── dddice CANVAS ── */
-/* Wrapper controls visibility; SDK only refs the canvas */
-#dddice-canvas { width: 100%; height: 100%; display: block; }
-
 /* ── CARTE ── */
 /* Geometry and idle appearance are shared (aria-panel.css); only the ".me" token
    variant is player-specific — the GM has no character of its own to mark. */

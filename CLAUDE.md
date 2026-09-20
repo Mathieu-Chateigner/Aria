@@ -74,7 +74,7 @@ js/
 
 ### `aria-shared.js`
 
-Loaded before the panel script on both panel pages (`aria-supabase.js` → `aria-shared.js` → `aria-player.js`/`aria-gm.js`). It holds everything the two panels would otherwise keep byte-identical copies of: the split-pane engine, the music transport, the DOM builder, the save-key gateway, the dddice connection, the dice grammar, the roll-filter predicate, and four widget factories.
+Loaded before the panel script on both panel pages (`aria-supabase.js` → `aria-shared.js` → `aria-player.js`/`aria-gm.js`). It holds everything the two panels would otherwise keep byte-identical copies of: the split-pane engine, the music transport, the DOM builder, the save-key gateway, the dice grammar, the roll-filter predicate, and four widget factories.
 
 **The factories are the pattern to follow when a widget exists on both sides.** Each returns an object holding its own state; the panel creates one instance and the HTML calls its methods (`deck.draw()`, `notes.add()`, `cam.toggle()`, `fileViewer.close()`).
 
@@ -198,7 +198,7 @@ Both apps read from the **same** key:
 
 ```js
 // localStorage: aria-config
-{ ablyKey, dddiceKey, dddiceRoom, dddiceTheme, lightMode: bool, youtubeApiKey }
+{ ablyKey, lightMode: bool, youtubeApiKey }
 ```
 `youtubeApiKey` is optional — used only for YouTube Data API v3 playlist import in the GM Musique tab.
 
@@ -341,22 +341,11 @@ A separate drag-and-drop editor opened in a new tab from the player or GM panel.
 
 `loadOverlayConfig()` **yields to a live layout**: it awaits Supabase at startup while the editor publishes over Ably and writes to the DB concurrently, so a `layout-update` arriving during that round-trip is newer than anything the read can return. The `layoutFromAbly` flag makes the stale row a no-op instead of dropping the OBS output back to the previous layout until the next edit.
 
-### dddice 3D dice (browser SDK)
-
-Loaded at runtime via dynamic `import('https://esm.sh/dddice-js')` — no npm, no build.
-
-- **`initDddiceSDK(onRollFinished)`** in `aria-shared.js` does the whole connection — import, theme fetch, dropdown fill, `new ThreeDDice(canvas, key)`, `.start()`, `.connect(slug)`, resize listener — and owns `dddiceSDK` / `dddiceAPI` / `dddiceResizeHandler`. The **`RollFinished` handler is the only per-panel part**, and is its sole argument; `teardownDddice()` is the matching disconnect. Each panel's `initDddice()` is now just that handler (plus the player's asset preload). Only the GM used to register the resize listener, so the player's dice rendered at a stale scale after a window resize.
-- A `<canvas id="dddice-canvas">` is positioned fixed/full-screen with `pointer-events:none` and high `z-index` in all three apps
-- `RollFinished` event clears the canvas after 1.5s
-- A 12s safety timer (`dddiceRollSafetyTimer`) forces fallback if the SDK stalls
-- Overlay syncs Ably roll data with dddice animation via `pendingRollData`/`diceFinished` flags; if SDK is not configured, a 3s fixed delay is used instead
-- `saveConfig()` always disconnects dddice and removes the resize listener before reinit. It **does not close the Ably connection** — see *`Reconnecter` does not reconnect* below. When it does close one (player, campaign switch), it must call `ablyInstance.close()`: nulling the refs without closing leaves the old WebSocket subscribed and duplicates every incoming message
-
 ---
 
 ## ARIA game rules
 
-- Roll **1d100** (simulated as two d10s via dddice: `d10x` tens + `d10` ones, total 0 = 100)
+- Roll **1d100** locally (`Math.random`); the result card shows after a short delay. The overlay waits 3s before showing an incoming roll so it lands a beat after the roller's own card.
 - **≤ threshold** = SUCCÈS, **> threshold** = ÉCHEC
 - **SUCCÈS CRITIQUE**: roll ≤ 10 AND roll ≤ threshold
 - **ÉCHEC CRITIQUE**: roll ≥ 91 AND roll > threshold
@@ -549,7 +538,7 @@ GM plays locally via `_musicTriggerPlay()` AND broadcasts — it does not subscr
 Displays Joueur / Maître de Jeu cards and a **⚙ Configuration** panel at the bottom. Reads and writes `aria-config` via inline `<script>`. This is the canonical entry point for key configuration.
 
 ### Player character selection screen
-Lists all saved characters. Creating a character prompts for name, class, an optional campaign join code, and the character type (Médiéval/Contemporain radio — picks the template). The join code and type are shown as badges on each character card. `selectCharacter(id)` → `loadCharacterState(id)` → `initApp()`. `switchCharacter()` closes Ably (which leaves the presence set), releases the push lock, and tears down dddice before returning.
+Lists all saved characters. Creating a character prompts for name, class, an optional campaign join code, and the character type (Médiéval/Contemporain radio — picks the template). The join code and type are shown as badges on each character card. `selectCharacter(id)` → `loadCharacterState(id)` → `initApp()`. `switchCharacter()` closes Ably (which leaves the presence set) and releases the push lock before returning.
 
 ### GM campaign selection screen
 Lists all campaigns, each showing its join code (click to copy). `selectCampaign(id)` → `loadCampaignState(id)` → `initApp()`. After entering a campaign, the join code is shown in the topbar (click to copy) so the GM can share it with players.
@@ -701,12 +690,6 @@ Never use `parent.innerHTML = ''` on a container that holds camera iframes. The 
 
 `reconcile()` decides a node is dead when `node.parentNode !== container` — **not** `isConnected`. A container that is itself detached (a closed pane) has children that are all `!isConnected`, and treating those as dead appends a duplicate on every pass.
 
-### dddice resize listener accumulation
-Store the handler reference and call `removeEventListener` before re-registering (done in `saveConfig()`).
-
-### dddice init order
-Must call `.start()` before `.connect()`. The safety timer must be cleared inside `RollFinished`, not after `await sdk.roll()`.
-
 ### Campaign join code filtering
 `handlePresence()` in `aria-gm.js` early-returns if `data.campaignKey !== currentJoinCode`. When `currentJoinCode` is `null` (e.g. during init), no filtering is applied — all presence messages are accepted.
 
@@ -767,11 +750,27 @@ The builders live in `aria-shared.js`:
 
 ## OBS setup
 
-Don't hand-build these — use the **📋 Copier URL Overlay (OBS)** button in the player/GM ⚙ config modal, which fills in the right `campaign` (join code) and `overlay` (layout id) params for the active campaign/character.
+Don't hand-build these — use the **📋 Copier URL Overlay (OBS)** button in the player/GM ⚙ config modal.
+
+**Stable URL (preferred).** The ⚙ button emits the save key and nothing else — no key, no role, no campaign — so one URL pasted into OBS survives every campaign/character switch:
 
 ```
-https://mathieu-chateigner.github.io/Aria/views/aria-overlay.html?mode=player&ably=KEY&dddice_key=KEY&dddice_room=SLUG&overlay=player_CHARID&campaign=JOINCODE
-https://mathieu-chateigner.github.io/Aria/views/aria-overlay.html?mode=gm&ably=KEY&dddice_key=KEY&dddice_room=SLUG&overlay=gm_CAMPAIGNID&campaign=JOINCODE
+https://mathieu-chateigner.github.io/Aria/views/aria-overlay.html?s=SAVEKEY
+```
+
+Resolution order at startup: `?s=` → the `saves` row (`specs/saves_ably_key.sql` adds `ably_key`, written by `initRouteChannel()` on every entry) gives the **Ably key** → the global channel `aria-route-{SAVEKEY}` gives the **role, the campaign and the widget layout id**. The overlay publishes `hello` there and the panel holding that save key replies `route` `{ mode, overlay, campaign }` (and publishes it unprompted from `initAbly()`, i.e. on every entry/switch). The overlay then `location.replace`s itself with all four resolved values — so the running page is exactly the pinned-URL case below and the lookup happens once. `initRouteChannel()` / `publishRoute()` live in `aria-shared.js`; the panel side is the `ARIA.overlayId()` hook.
+
+**The reply settles `mode`.** The overlay is a GM overlay because a GM panel answered, not because the URL said so — `saves.type` is not consulted (one save key can hold both a GM campaign and the characters its owner plays, and `type` only remembers the last panel opened). A pinned `&mode=` still wins, `WANT_MODE` in `aria-overlay.js`: that is the escape hatch for one save key with both panels open at once, where otherwise whoever answers first decides.
+
+During bootstrap **only the route channel is opened** (`startFromSaveKey()`), not the game channels — their campaign is not known yet, so they would subscribe to the global fallback and be thrown away by the reload a round-trip later. Ignore a `route` whose `overlay` is empty (panel sitting on the selection screen), and reload only when the pair actually differs — otherwise it is a reload loop.
+
+**The save key is now the whole secret** — it is in an OBS browser-source URL, and it grants every character and campaign under it, plus the Ably key. Treat the overlay URL as sensitive: no screenshots, no bug reports.
+
+**Pinned form** — what the button emits with no save key in this browser, and what the stable URL resolves itself into:
+
+```
+https://mathieu-chateigner.github.io/Aria/views/aria-overlay.html?mode=player&ably=KEY&overlay=player_CHARID&campaign=JOINCODE
+https://mathieu-chateigner.github.io/Aria/views/aria-overlay.html?mode=gm&ably=KEY&overlay=gm_CAMPAIGNID&campaign=JOINCODE
 ```
 
 `campaign=JOINCODE` scopes the rolls/cards/damage channels to one campaign (see *Per-campaign channel scoping*). Omitting it falls back to the global channels — an overlay URL **without** `campaign` will receive nothing once players/GM are on a join code, so always re-copy the URL after this change. `overlay=` is required for the editor-made widget layout to load (player URLs use `player_{charId}`, GM URLs `gm_{campaignId}`).
