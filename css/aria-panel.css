@@ -268,6 +268,8 @@ body.dock-dragging .tab-btn, body.dock-dragging .split-pane-hdr { cursor: grabbi
 .notes-item:hover { background: var(--accent-soft); }
 .notes-item.active { background: var(--accent-soft); border-left-color: var(--gold); }
 .notes-item.active .notes-item-name { color: var(--text); }
+.notes-item.dragging { opacity: .45; }
+.notes-item.drop-target { border-left-color: var(--gold); background: var(--accent-soft); }
 /* Half-width pane: the notes widget steps down one notch (design frame 22). */
 .content.split-mode .notes-sidebar { width: 178px; padding: 14px 12px; }
 .content.split-mode .notes-editor { padding: 18px 20px; }

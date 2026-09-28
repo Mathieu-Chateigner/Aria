@@ -940,6 +940,65 @@ function applyStageMain() {
     cells.forEach(c => c.classList.toggle('stage-main', c === main));
 }
 
+// -- Camera tile order --------------------------------------------------------
+// Drag a tile by its name onto another. The order is CSS `order`, never a DOM move:
+// re-appending an iframe reloads it and drops its WebRTC connection. Keyed by stream
+// ID like camSizes, so it survives the cells being rebuilt; unknown tiles go last.
+const CAM_ORDER_KEY = 'aria-camera-order';
+let camOrder = [];
+try { camOrder = JSON.parse(localStorage.getItem(CAM_ORDER_KEY)) || []; } catch {}
+let camDragSid = null;
+
+function applyCamOrder() {
+    document.querySelectorAll('#cameras-grid .camera-cell').forEach(cell => {
+        const i = camOrder.indexOf(cellSid(cell));
+        cell.style.order = i < 0 ? 999 : i;
+    });
+}
+function moveCam(fromSid, toSid) {
+    const cells = [...document.querySelectorAll('#cameras-grid .camera-cell')]
+        .sort((a, b) => (+a.style.order || 0) - (+b.style.order || 0));
+    const sids = cells.map(cellSid).filter(Boolean);
+    const from = sids.indexOf(fromSid), to = sids.indexOf(toSid);
+    if (from < 0 || to < 0 || from === to) return;
+    sids.splice(to, 0, sids.splice(from, 1)[0]);
+    // Keep the rank of streams not on screen right now, after the visible ones.
+    camOrder = sids.concat(camOrder.filter(s => !sids.includes(s)));
+    localStorage.setItem(CAM_ORDER_KEY, JSON.stringify(camOrder));
+    applyCamOrder();
+}
+window.addEventListener('DOMContentLoaded', () => {
+    const grid = document.getElementById('cameras-grid');
+    if (!grid) return;
+    const done = () => {
+        camDragSid = null;
+        grid.classList.remove('cam-dragging');
+        grid.querySelectorAll('.dragging, .drop-target').forEach(c => c.classList.remove('dragging', 'drop-target'));
+    };
+    grid.addEventListener('dragstart', e => {
+        const cell = e.target.closest?.('.camera-cell');
+        camDragSid = cellSid(cell);
+        if (!camDragSid) { e.preventDefault(); return; }
+        e.dataTransfer.effectAllowed = 'move';
+        cell.classList.add('dragging');
+        grid.classList.add('cam-dragging');
+    });
+    grid.addEventListener('dragover', e => {
+        const cell = e.target.closest('.camera-cell');
+        if (!camDragSid || !cell || cellSid(cell) === camDragSid) return;
+        e.preventDefault();
+        grid.querySelectorAll('.drop-target').forEach(c => c !== cell && c.classList.remove('drop-target'));
+        cell.classList.add('drop-target');
+    });
+    grid.addEventListener('drop', e => {
+        const cell = e.target.closest('.camera-cell');
+        e.preventDefault();
+        if (camDragSid && cell) moveCam(camDragSid, cellSid(cell));
+        done();
+    });
+    grid.addEventListener('dragend', done);
+});
+
 // -- Camera tile size ---------------------------------------------------------
 // Two knobs. The slider moves --cam-w on the grid — one width for every tile, the
 // common zoom. The corner grip moves that one tile only, stored per stream ID in
@@ -1060,6 +1119,7 @@ function renderCamerasTab() {
             const labelEl = document.createElement('div');
             labelEl.className = 'camera-label';
             labelEl.textContent = character.name || 'Vous';
+            labelEl.draggable = true;
             selfCell.appendChild(wrap);
             selfCell.appendChild(labelEl);
             grid.insertBefore(selfCell, grid.firstChild);
@@ -1136,6 +1196,7 @@ function renderCamerasTab() {
             const labelEl = document.createElement('div');
             labelEl.className = 'camera-label';
             labelEl.textContent = label;
+            labelEl.draggable = true;
             cell.appendChild(wrap);
             cell.appendChild(labelEl);
             grid.appendChild(cell);
@@ -1151,6 +1212,7 @@ function renderCamerasTab() {
     if (presenceMode === 'tablee') applyStageMain();
     cam.renderDevicePick('cam-device-pick');
     applyCamSize(false);
+    applyCamOrder();
     // What the grid decided to show, and why it might be empty. A tile only exists
     // for a stream someone advertises, and only while a room is known.
     camLog('[VDO] renderCamerasTab | self tile:', cam.live() ? cam.streamId() : 'none (' + (cam.off ? 'camera cut' : !vdoRoom ? 'no room' : 'not live') + ')',
@@ -2454,7 +2516,7 @@ function applyPresenceSet(members) {
     // The room is what decides whether we publish at all, so a change to it changes
     // the stream ID we advertise — say so now rather than leaving receivers to guess.
     if (roomChanged) { cam.syncPushFrame(); sendPresence(); }
-    chat.render();   // the contact list is the roster
+    chat.renderContacts();   // the contact list is the roster
     updateCamerasTabVisibility();   // → renderPresenceUI + renderCamerasTab
 }
 

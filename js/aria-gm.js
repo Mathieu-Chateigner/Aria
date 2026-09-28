@@ -947,7 +947,7 @@ function applyPresenceSet(members) {
         publishGMPresence();
     }
     saveKnownPlayers();
-    chat.render();   // the contact list is the roster
+    chat.renderContacts();   // the contact list is the roster
     // Who the table thinks is publishing. A player with no streamId here is either
     // camera-off, on file://, or has not received our room yet — the GM card for them
     // will show the hatched placeholder, not a black rectangle.

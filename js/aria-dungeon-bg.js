@@ -24,7 +24,7 @@ function ariaDungeonBg(container) {
     container.prepend(layer);
 
     let stoneW = 0, stoneH = 0;
-    let raf = null, iv = null, onResize = null, brzWatch = null, active = true;
+    let raf = null, iv = null, onResize = null, brzWatch = null, active = true, resume = null;
     // Where the two bowls ended up, in CSS px — the fire reads them instead of
     // re-deriving the masonry constants at its own (unscaled) size.
     let bowlPts = [], syncEmitters = null, paintT = null;
@@ -557,7 +557,11 @@ function ariaDungeonBg(container) {
 
         let last = performance.now(), frames = 0, mode = 'raf';
         const tick = (t) => {
-            if (!active) { raf = requestAnimationFrame(tick); return; }
+            // Paused: stop the loop outright; setActive(true) restarts it via resume().
+            // It used to re-request a frame here — and in timer mode every 34ms tick
+            // started a fresh, self-perpetuating rAF chain, so a panel left open for
+            // hours piled up hundreds of thousands of callbacks per frame.
+            if (!active) { raf = null; return; }
             try {
                 const dt = Math.min(t - last, 48); last = t;
                 ctx.clearRect(0, 0, w, h);
@@ -651,10 +655,11 @@ function ariaDungeonBg(container) {
             } catch (err) { return; }
             if (mode === 'raf') raf = requestAnimationFrame(tick);
         };
+        resume = () => { if (mode === 'raf' && !raf) { last = performance.now(); raf = requestAnimationFrame(tick); } };
         raf = requestAnimationFrame(tick);
         // watchdog: some hosts pause rAF (hidden/offscreen iframe) — fall back to a timer
         brzWatch = setTimeout(() => {
-            if (frames === 0) {
+            if (frames === 0 && active) {   // paused ⇒ no frames by design, not a stalled rAF
                 mode = 'timer';
                 if (raf) cancelAnimationFrame(raf);
                 clearInterval(iv);
@@ -674,6 +679,7 @@ function ariaDungeonBg(container) {
         // of behind it. Pausing on top of that saves CPU/GPU on a machine also running OBS.
         setActive(v) {
             active = v;
+            if (v) resume?.();
             layer.style.display = v ? '' : 'none';
         },
         destroy() {

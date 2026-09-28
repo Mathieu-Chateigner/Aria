@@ -621,9 +621,26 @@ function makeNotes({ key, ids, sync, syncSoon, remove }) {
         render();
     }
 
+    // Drag a note onto another to take its place. Every note is re-synced, since
+    // `position` is the array index and a move shifts everything in between.
+    let dragId = null;
+    function move(fromId, toId) {
+        const from = list.findIndex(n => n.id === fromId), to = list.findIndex(n => n.id === toId);
+        if (from < 0 || to < 0 || from === to) return;
+        list.splice(to, 0, list.splice(from, 1)[0]);
+        persist();
+        list.forEach((n, i) => sync?.(n, i));
+        renderList();
+    }
+
     function renderList() {
         fill($('list'), list.map(note =>
-            el('div', { className: 'notes-item' + (note.id === currentId ? ' active' : '') },
+            el('div', { className: 'notes-item' + (note.id === currentId ? ' active' : ''), draggable: true,
+                ondragstart: e => { dragId = note.id; e.dataTransfer.effectAllowed = 'move'; e.currentTarget.classList.add('dragging'); },
+                ondragend: e => { dragId = null; e.currentTarget.classList.remove('dragging'); },
+                ondragover: e => { if (dragId && dragId !== note.id) { e.preventDefault(); e.currentTarget.classList.add('drop-target'); } },
+                ondragleave: e => e.currentTarget.classList.remove('drop-target'),
+                ondrop: e => { e.preventDefault(); e.currentTarget.classList.remove('drop-target'); move(dragId, note.id); } },
                 el('span', { className: 'notes-item-name', textContent: note.name || 'Sans titre',
                     onclick: () => select(note.id) }),
                 el('button', { className: 'notes-item-delete', title: 'Supprimer', textContent: '✕',
@@ -1865,7 +1882,14 @@ function makeChat({ selfId, selfName, contacts }) {
     const chanFor = id => ably ? ably.channels.get(campaignChannel('aria-chat') + '-' + id) : null;
 
     function add(m) {
-        if (!m || !m.id || seen.has(m.id)) return false;
+        if (!m || !m.id) return false;
+        if (seen.has(m.id)) {
+            // Our own publish echoing back: adopt Ably's timestamp in place of the
+            // Date.now() we stamped it with, so it sorts on the same clock as everyone else's.
+            const arr = msgs(m.thread), mine = arr.find(x => x.id === m.id);
+            if (mine && m.ts && mine.ts !== m.ts) { mine.ts = m.ts; arr.sort((a, b) => a.ts - b.ts); render(); }
+            return false;
+        }
         seen.add(m.id);
         const arr = msgs(m.thread).concat({ ...m, ts: +m.ts || Date.now() });
         arr.sort((a, b) => a.ts - b.ts);
@@ -1892,8 +1916,12 @@ function makeChat({ selfId, selfName, contacts }) {
         const base = campaignChannel('aria-chat');
         chGlobal = ably.channels.get(base);
         chInbox  = ably.channels.get(base + '-' + selfId());
-        chGlobal.subscribe('msg', m => receive(m.data));
-        chInbox.subscribe('msg', m => receive(m.data));
+        // Order by Ably's server timestamp, never the sender's clock: PCs at the table
+        // drift by seconds, and a reply from a machine running behind sorted above the
+        // message it answered.
+        const onMsg = m => receive({ ...m.data, ts: m.timestamp || m.data?.ts });
+        chGlobal.subscribe('msg', onMsg);
+        chInbox.subscribe('msg', onMsg);
     }
 
     function detach() {
@@ -1934,8 +1962,8 @@ function makeChat({ selfId, selfName, contacts }) {
         if (!code) return;
         sbInsert('campaign_chat', {
             id: m.id, join_code: code, thread: m.thread, author_id: m.authorId,
-            author_name: m.authorName, body: m.body, created_at: new Date(m.ts).toISOString(),
-        });
+            author_name: m.authorName, body: m.body,
+        });   // created_at: the column's default now() — server time, like Ably's, not ours
     }
 
     // ── sending ─────────────────────────────
@@ -1997,6 +2025,13 @@ function makeChat({ selfId, selfName, contacts }) {
         if (paneOpen()) unread.delete(current);
         renderLog($('chat-global-log'), 'global');
         renderLog($('chat-log'), current);
+        renderContacts();
+    }
+
+    // The roster part only — title and thread list. Presence changes land here: they
+    // used to run the full render(), rebuilding every message of both logs on every
+    // HP change or sheet edit of anyone at the table, which grew with the session.
+    function renderContacts() {
         const t = $('chat-thread-title');
         if (t) t.textContent = title(current);
         const row = (id, name, online) => el('div',
@@ -2020,6 +2055,6 @@ function makeChat({ selfId, selfName, contacts }) {
         if (btn) btn.classList.toggle('has-unread', unread.size > 0);
     }
 
-    return { attach, detach, reset, load, send, sendGlobal, select, render, post,
+    return { attach, detach, reset, load, send, sendGlobal, select, render, renderContacts, post,
              dmId, openWith: id => select(dmId(id)) };
 }

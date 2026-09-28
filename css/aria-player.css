@@ -2086,6 +2086,12 @@ body.light-mode .other-roll-toast .ort-verdict.cf { color: var(--bad); }
    cell is a bare flex column with no box of its own. */
 .camera-cell.spotlit .camera-iframe-wrap { border-color: var(--violet); box-shadow: 0 0 0 2px var(--violetsoft); }
 .camera-cell.spotlit .camera-label { color: var(--violet2); }
+/* Reorder: drag a tile by its name. The iframes would swallow dragover, so they stop
+   taking pointer events for the duration of the drag. */
+.camera-cell .camera-label { cursor: grab; }
+.cameras-grid.cam-dragging iframe { pointer-events: none; }
+.camera-cell.dragging { opacity: .45; }
+.camera-cell.drop-target .camera-iframe-wrap { border-color: var(--gold); }
 .camera-resize-handle {
     position: absolute;
     bottom: 0;
