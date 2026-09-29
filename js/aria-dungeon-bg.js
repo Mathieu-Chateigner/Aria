@@ -24,7 +24,7 @@ function ariaDungeonBg(container) {
     container.prepend(layer);
 
     let stoneW = 0, stoneH = 0;
-    let raf = null, iv = null, onResize = null, brzWatch = null, active = true, resume = null;
+    let raf = null, iv = null, onResize = null, brzWatch = null, active = true, resume = null, pause = null;
     // Where the two bowls ended up, in CSS px — the fire reads them instead of
     // re-deriving the masonry constants at its own (unscaled) size.
     let bowlPts = [], syncEmitters = null, paintT = null;
@@ -652,18 +652,28 @@ function ariaDungeonBg(container) {
                     ctx.beginPath(); ctx.arc(m.x, m.y, rr, 0, 6.2832); ctx.fill();
                 }
                 frames++;
-            } catch (err) { return; }
+            // A throwing frame ends the rAF chain; clear the handle so resume() can
+            // restart it instead of believing a loop is still running.
+            } catch (err) { raf = null; return; }
             if (mode === 'raf') raf = requestAnimationFrame(tick);
         };
-        resume = () => { if (mode === 'raf' && !raf) { last = performance.now(); raf = requestAnimationFrame(tick); } };
+        const startTimer = () => { clearInterval(iv); iv = setInterval(() => tick(performance.now()), 34); };
+        resume = () => {
+            last = performance.now();
+            if (mode === 'timer') startTimer();
+            else if (!raf) raf = requestAnimationFrame(tick);
+        };
+        // The rAF chain stops itself on the next tick; the timer has to be cleared, or it
+        // keeps waking the page ~30×/s for as long as the app is open.
+        pause = () => { clearInterval(iv); iv = null; };
         raf = requestAnimationFrame(tick);
         // watchdog: some hosts pause rAF (hidden/offscreen iframe) — fall back to a timer
         brzWatch = setTimeout(() => {
             if (frames === 0 && active) {   // paused ⇒ no frames by design, not a stalled rAF
                 mode = 'timer';
                 if (raf) cancelAnimationFrame(raf);
-                clearInterval(iv);
-                iv = setInterval(() => tick(performance.now()), 34);
+                raf = null;
+                startTimer();
             }
         }, 600);
     }
@@ -679,7 +689,7 @@ function ariaDungeonBg(container) {
         // of behind it. Pausing on top of that saves CPU/GPU on a machine also running OBS.
         setActive(v) {
             active = v;
-            if (v) resume?.();
+            if (v) resume?.(); else pause?.();
             layer.style.display = v ? '' : 'none';
         },
         destroy() {
