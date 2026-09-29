@@ -1289,6 +1289,15 @@ async function confirmNewKey() {
     showSelectionScreen();
 }
 
+// A new device knows only the save key. initRouteChannel() stores the Ably key on
+// the saves row, so fill it in from there rather than making the user re-enter it
+// on index.html. A key already set locally is never overwritten.
+function adoptAblyKey(key) {
+    if (!key || config.ablyKey) return;
+    config.ablyKey = key;
+    localStorage.setItem('aria-config', JSON.stringify(config));
+}
+
 // Load data from Supabase using an existing save key entered by the user.
 async function submitExistingKey() {
     const input = document.getElementById('gateway-key-input');
@@ -1296,12 +1305,13 @@ async function submitExistingKey() {
     if (!key) return;
     // Verify the key exists before adopting it — a typo would otherwise push the
     // previous key's local data under a brand-new key on the next sync.
-    const rows = await sbSelect('saves', 'save_key=eq.' + encodeURIComponent(key) + '&select=save_key');
+    const rows = await sbSelect('saves', 'save_key=eq.' + encodeURIComponent(key) + '&select=save_key,ably_key');
     if (!rows.length) { alert('Clé introuvable. Vérifiez la clé saisie.'); return; }
     // Switching keys: drop the old key's local data so it never merges into the new one.
     if (saveKey && key !== saveKey) ARIA.clearLocal();
     saveKey = key;
     localStorage.setItem('aria-save-key', key);
+    adoptAblyKey(rows[0].ably_key);
     await loadFromSupabase();
     hideGateway();
     showSelectionScreen();
@@ -1370,6 +1380,10 @@ function cancelGateway() {
 // On load: restore from Supabase if a save key exists, otherwise show the gateway.
 async function tryRestoreSupabase() {
     if (!saveKey) { showGateway(); return; }
+    if (!config.ablyKey) {
+        const rows = await sbSelect('saves', 'save_key=eq.' + encodeURIComponent(saveKey) + '&select=ably_key');
+        adoptAblyKey(rows[0]?.ably_key);
+    }
     const ok = await loadFromSupabase();
     hideGateway();
     showSelectionScreen();
@@ -1378,7 +1392,8 @@ async function tryRestoreSupabase() {
     if (ok) ARIA.syncAll();
     // After showSelectionScreen so that screen stays the fallback when nothing is
     // remembered, and the place "changer de personnage/campagne" returns to.
-    ARIA.afterRestore();
+    // Only on a refresh: arriving from index.html (a navigation) must land on the list.
+    if (performance.getEntriesByType('navigation')[0]?.type === 'reload') ARIA.afterRestore();
 }
 
 // ═══════════════════════════════════════════

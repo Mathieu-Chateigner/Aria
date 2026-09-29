@@ -641,7 +641,9 @@ function initApp() {
     renderAll();
     deck.mount();
     loadConfigInputs();
-    if (config.ablyKey) initAbly();
+    // initAbly() loads the chat history itself; without a key it never runs, and the
+    // history lives in Supabase, not Ably — load it anyway.
+    if (config.ablyKey) initAbly(); else chat.load();
     applyTabVisibility();
     document.getElementById('tab-char').addEventListener('input', scheduleAutoSave);
     document.getElementById('tab-inventory').addEventListener('input', scheduleAutoSave);

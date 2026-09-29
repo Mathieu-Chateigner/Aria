@@ -677,7 +677,9 @@ function initApp() {
     initGmDeck();
     renderTabLayout(); // apply the restored multi-pane layout
     loadConfigInputs();
-    if (config.ablyKey) initAbly();   // enters presence with the room + spotlight
+    // initAbly() enters presence and loads the chat history; without a key the
+    // history (Supabase, not Ably) still has to be loaded.
+    if (config.ablyKey) initAbly(); else chat.load();
     cam.acquireLock();
     updateGMPushIframe();   // drives the topbar button, the push frame and the preview
     applyReadTable();
