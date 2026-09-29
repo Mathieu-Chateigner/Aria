@@ -1035,6 +1035,7 @@ function updateGMPushIframe() {
     // is exactly the case where the preview is black or hidden. It hides itself when
     // no room is set.
     cam.renderDevicePick('gm-cam-device-pick');
+    cam.renderMicPick('gm-cam-mic-pick', 'gm-cam-ptt-key');
     const wrap = document.getElementById('gm-self-view-wrap');
     const section = document.getElementById('gm-self-view-section');
     if (!wrap || !section) return;

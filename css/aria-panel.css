@@ -770,3 +770,6 @@ body.dock-dragging .tab-btn, body.dock-dragging .split-pane-hdr { cursor: grabbi
     vertical-align: middle;
 }
 .content.split-mode .chat-threads { width: 160px; padding: 10px 8px; }
+
+/* Push-to-talk key button while the key is held. */
+button.talking { background: rgba(var(--accent-rgb), .35); border-color: var(--gold); color: var(--gold-light); }

@@ -214,6 +214,26 @@ assert.strictEqual(dark.advertisedId(), '');
     // Back to automatic clears the param rather than pinning an empty device.
     dcam.setVideoDevice('');
     assert.ok(!frame.src.includes('videodevice'), frame.src);
+
+    // -- Microphone modes ------------------------------------------------------
+    // Off must keep the camera-only prompt (&audiodevice=0); ptt starts muted and the
+    // key drives the iframe; auto leaves it to VDO.ninja's noise gate.
+    assert.ok(frame.src.includes('audiodevice=0'), 'mic is off by default');
+    dcam.setMicMode('auto');
+    assert.ok(frame.src.includes('noisegate') && !frame.src.includes('audiodevice=0'), frame.src);
+    dcam.setMicMode('ptt');
+    assert.ok(frame.src.includes('&mute') && !frame.src.includes('audiodevice=0'), frame.src);
+    // Every makeCamera registers its own listeners; the others sit in mode 'off' and ignore the key.
+    const key = e => _listeners.keydown.forEach(f => f(e)), up = e => _listeners.keyup.forEach(f => f(e));
+    frame.contentWindow.posted.length = 0;
+    key({ code: 'KeyV', repeat: false, target: { tagName: 'INPUT' } });   // typing in a field: ignored
+    key({ code: 'KeyB', repeat: false, target: { tagName: 'BODY' } });    // not the talk key
+    assert.strictEqual(frame.contentWindow.posted.length, 0);
+    key({ code: 'KeyV', repeat: false, target: { tagName: 'BODY' } });
+    up({ code: 'KeyV' });
+    assert.deepStrictEqual(frame.contentWindow.posted, [{ mic: true }, { mic: false }]);
+    dcam.setMicMode('off');
+    assert.ok(frame.src.includes('audiodevice=0'), frame.src);
     delete global.document;
 }
 

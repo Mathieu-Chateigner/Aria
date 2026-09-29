@@ -1211,6 +1211,7 @@ function renderCamerasTab() {
         cell.classList.toggle('spotlit', !!spot && cellSid(cell) === spot));
     if (presenceMode === 'tablee') applyStageMain();
     cam.renderDevicePick('cam-device-pick');
+    cam.renderMicPick('cam-mic-pick', 'cam-ptt-key');
     applyCamSize(false);
     applyCamOrder();
     // What the grid decided to show, and why it might be empty. A tile only exists

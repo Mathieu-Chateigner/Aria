@@ -764,6 +764,48 @@ function makeCamera({ tag, sidPrefix, lockPrefix, frameId,
     let devices = [];
     try { devices = JSON.parse(localStorage.getItem(DEV_LIST_KEY) || '[]'); } catch (_) {}
 
+    // ── Microphone ────────────────────────────────────────────────────────────
+    // 'off' (default) | 'ptt' (hold a key) | 'auto' (VDO.ninja's noise gate opens on
+    // voice). Like the device, a property of this machine and this person rather than
+    // of a character, so it is not scoped.
+    //   ptt  — the push URL carries &mute, and the key posts {mic:true|false} to the
+    //          iframe. Only works while this tab has focus: a web page cannot hear a
+    //          global hotkey.
+    //   auto — &noisegate ducks the mic to 3% below the threshold and holds it open
+    //          1s after speech. VDO.ninja's gate attenuates rather than mutes, and has
+    //          no true voice-activity detector, so this is the closest it offers.
+    // Noise suppression is Chrome's own (VDO.ninja's &denoise, on by default).
+    const MIC_KEY = 'aria-mic-mode', PTT_KEY = 'aria-mic-ptt-key';
+    let micMode = localStorage.getItem(MIC_KEY) || 'off';
+    let pttKey = localStorage.getItem(PTT_KEY) || 'KeyV';   // KeyboardEvent.code: layout-independent
+    let pttBtn = null;                                      // the key button, for the "talking" cue
+    let micIds = {};                                        // remembered by renderMicPick()
+    const micParams = () => micMode === 'ptt' ? '&mute'
+                          : micMode === 'auto' ? '&noisegate&noisegatesettings=3,25,1000'
+                          : '&audiodevice=0';
+    const micSend = on => {
+        pttBtn?.classList.toggle('talking', on);
+        const f = document.getElementById(frameId);
+        if (f?.contentWindow && f.src && f.src !== 'about:blank') f.contentWindow.postMessage({ mic: on }, '*');
+    };
+    let rebinding = false;
+    window.addEventListener('keydown', e => {
+        if (rebinding) {                                    // the next key becomes the talk key
+            rebinding = false;
+            e.preventDefault();
+            if (e.code !== 'Escape') { pttKey = e.code; localStorage.setItem(PTT_KEY, pttKey); }
+            cam.renderMicPick();
+            return;
+        }
+        if (micMode !== 'ptt' || e.code !== pttKey || e.repeat) return;
+        const t = e.target;                                 // never steal a key someone is typing
+        if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
+        micSend(true);
+    });
+    // Released anywhere, and on blur: a keyup lost to another window must not leave the mic open.
+    window.addEventListener('keyup', e => { if (micMode === 'ptt' && e.code === pttKey) micSend(false); });
+    window.addEventListener('blur', () => { if (micMode === 'ptt') micSend(false); });
+
     // Every log line that carries a VDO.ninja URL goes through this: the room
     // password is enough to join the room and watch the whole table, and these logs
     // get pasted into bug reports.
@@ -894,13 +936,15 @@ function makeCamera({ tag, sidPrefix, lockPrefix, frameId,
             // Blank &view: "no streams will play; only publishing will be allowed" —
             // without it the push page joins as a full room client and downloads (and
             // renders) every other guest's video next to the self preview.
-            // &audiodevice=0 — NOT &noaudio. &noaudio is a *viewer-side* option: it
-            // silences incoming streams and does nothing to what we publish, so the
+            // Mic off = &audiodevice=0 — NOT &noaudio. &noaudio is a *viewer-side* option:
+            // it silences incoming streams and does nothing to what we publish, so the
             // push page kept asking for the microphone. Chrome asks for camera AND
             // mic in one prompt, and denying it fails getUserMedia outright — the
             // webcam then never starts and nothing on screen says why. &audiodevice=0
             // disables the mic before capture, so only the camera is requested.
-            let src = `https://vdo.ninja/?push=${streamId()}&room=${encodeURIComponent(room())}&view&autostart&webcam&audiodevice=0&cleanoutput`;
+            // Turning the mic on (micParams) brings that prompt back, which is why it
+            // is opt-in.
+            let src = `https://vdo.ninja/?push=${streamId()}&room=${encodeURIComponent(room())}&view&autostart&webcam${micParams()}&cleanoutput`;
             // Without this VDO.ninja takes whatever Chrome offers first, which on a
             // streaming machine is usually the OBS virtual camera.
             if (videoDevice) src += `&videodevice=${encodeURIComponent(videoDevice)}`;
@@ -999,10 +1043,44 @@ function makeCamera({ tag, sidPrefix, lockPrefix, frameId,
             if (videoDevice) localStorage.setItem(DEV_KEY, videoDevice);
             else localStorage.removeItem(DEV_KEY);
             camLog(tag, 'camera device →', videoDevice || '(auto)');
+            cam.repush();
+            onChange();
+        },
+
+        // The URL is the only switch for device and mic mode, so re-src the push frame.
+        repush() {
             const frame = document.getElementById(frameId);
             if (frame) frame.src = 'about:blank';   // force syncPushFrame past its "unchanged" check
             cam.syncPushFrame();
-            onChange();
+        },
+
+        get micMode() { return micMode; },
+        setMicMode(m) {
+            micMode = ['ptt', 'auto'].includes(m) ? m : 'off';
+            localStorage.setItem(MIC_KEY, micMode);
+            camLog(tag, 'mic →', micMode);
+            cam.repush();
+            cam.renderMicPick();
+        },
+
+        // Fill the mic <select> and the talk-key button (ids remembered from the first
+        // call, since the key handler above re-renders without knowing them). Hidden
+        // with no room — nothing is published then.
+        renderMicPick(selectId, keyBtnId) {
+            if (selectId) micIds = { selectId, keyBtnId };
+            if (!micIds.selectId) return;   // no panel has rendered its picker yet
+            const sel = document.getElementById(micIds.selectId), btn = document.getElementById(micIds.keyBtnId);
+            if (!sel || !btn) return;
+            sel.style.display = room() ? '' : 'none';
+            fill(sel, ...[['off', 'Micro : coupé'], ['ptt', 'Micro : push-to-talk'], ['auto', 'Micro : voix auto']]
+                .map(([v, t]) => el('option', { value: v, textContent: t })));
+            sel.value = micMode;
+            sel.onchange = () => cam.setMicMode(sel.value);
+            pttBtn = btn;
+            btn.style.display = room() && micMode === 'ptt' ? '' : 'none';
+            btn.textContent = rebinding ? 'Appuyez sur une touche…' : 'Touche : ' + pttKey.replace(/^(Key|Digit)/, '');
+            btn.title = 'Maintenir pour parler (onglet actif uniquement) — cliquer pour changer (Échap annule)';
+            btn.onclick = () => { rebinding = true; cam.renderMicPick(); };
         },
 
         // Fill a <select> with the known cameras. Kept here rather than in each panel
