@@ -127,7 +127,7 @@ const hubLive = (() => {
             next: at == null ? null : hubDayDiff(at),
             hour: at == null ? '' : new Date(at).toTimeString().slice(0, 5),
             rhythm: HUB_RHYTHM[r.rhythm] || HUB_RHYTHM.weekly, session: r.sessions_played || 0,
-            tags: r.tags || [], pitch: r.pitch || '', cover: r.cover_url || null,
+            tags: r.tags || [], pitch: r.pitch || '', cover: r.cover_url || null, first: r.first_session || null,
             role: r.is_gm ? 'MJ' : r.is_member ? 'Joueur' : undefined,
             pending: r.request === 'pending', accepted: r.request === 'accepted' && !r.is_member,
             code: r.join_code || null, beginner: hubIsBeginner(r.tags), ariaType: r.aria_type || 'ancient',
@@ -226,6 +226,19 @@ const hubLive = (() => {
             first_session: f.date ? new Date(f.date).toISOString() : null, cover_url: coverUrl || null,
         };
         return (await sbInsert('campaigns', row)) ? { id, code } : null;
+    }
+
+    // Edit from the same form. `f.cover` is the current URL when the image was kept,
+    // '' when removed; a new Blob replaces it.
+    // ponytail: a replaced cover stays in the bucket; delete it here if storage ever matters.
+    async function update(id, f, cover) {
+        const coverUrl = cover ? await sbUploadPublic('campaign-files', 'covers/' + id + '-' + Date.now() + '.jpg', cover) : (f.cover || null);
+        if (cover && !coverUrl) return false;
+        return sbPatch('campaigns', {
+            name: f.name.trim(), visibility: f.vis, pitch: f.pitch.trim() || null, tags: f.tagList, seats: f.seats,
+            rhythm: HUB_RHYTHM_KEY[f.rhythm] || 'weekly',
+            first_session: f.date ? new Date(f.date).toISOString() : null, cover_url: coverUrl,
+        }, 'id=eq.' + encodeURIComponent(id));
     }
 
     // "Entrer" opens the campaign's Accueil (le seuil).
@@ -331,7 +344,7 @@ const hubLive = (() => {
         return () => ably.close();
     }
 
-    return { load, freeChars, seat, ask, decide, byCode, create, loadConvs, send, markRead, entryUrl,
+    return { load, freeChars, seat, ask, decide, byCode, create, update, loadConvs, send, markRead, entryUrl,
              camp, character, saveCharacter, uploadArt, journal, prep, roster, presence,
              submitSheet, setApproval, pendingSheets, sheetForGM, decideSheet, demo: false };
 })();
@@ -382,6 +395,7 @@ const hubDemo = (veteran) => {
         create: async f => ({ id: 'c' + Date.now(), code: f.vis === 'prive'
             ? f.name.trim().replace(/[^A-Za-zÀ-ÿ]/g, '').slice(0, 4).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '') + '-' + Math.floor(1000 + Math.random() * 9000)
             : null }),
+        update: async () => true,
         loadConvs: null,   // no polling: the demo's replies are simulated by the page
         send: async () => true,
         markRead: () => {},

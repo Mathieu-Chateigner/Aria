@@ -14,6 +14,7 @@ const hub = {
     pick: null,                       // { campId } while choosing a character to sit with
     me: { name: '' }, camps: [], requests: [], convs: {}, friends: [], ready: true,
     f: { name: '', pitch: '', vis: 'public', seats: 4, rhythm: 'Hebdomadaire', date: '', tags: '', cover: '', coverBlob: null },
+    edit: null,   // id of the campaign the create form is editing
 };
 
 const VIS = {
@@ -151,7 +152,7 @@ const visible = k => k.vis !== 'prive' && !(k.role === 'MJ');
 function renderTabs() {
     const tabs = [['mine', 'Mes tables', mineRaw().length], ['explore', 'Explorer', null], ['create', 'Créer', null]];
     fill($('hb-nav'), tabs.map(([id, label, count]) => el('div', {
-        className: 'hb-tab' + (hub.tab === id ? ' on' : ''), onclick: () => { hub.tab = id; render(); } },
+        className: 'hb-tab' + (hub.tab === id ? ' on' : ''), onclick: () => { if (id === 'create' && hub.edit) resetForm(); hub.tab = id; render(); } },
         el('span', { textContent: label }),
         count != null && el('span', { className: 'hb-tab-count', textContent: count }))));
 }
@@ -302,8 +303,12 @@ function renderCreate() {
         el('div', { className: 'hb-vis-label', textContent: o.label, style: { color: f.vis === id ? o.c : '' } }),
         el('div', { className: 'hb-vis-desc', textContent: o.desc }))));
     fill($('hb-rhythm'), RHY.map(r => el('div', { className: 'hb-pill' + (f.rhythm === r ? ' on' : ''), textContent: r, onclick: () => { f.rhythm = r; renderCreate(); } })));
+    $('hb-create-kicker').textContent = hub.edit ? 'Vous êtes maître du jeu' : 'Vous serez maître du jeu';
+    $('hb-create-h1').textContent = hub.edit ? 'Modifier la campagne' : 'Forger une campagne';
+    $('hb-create-btn').textContent = hub.edit ? 'Enregistrer les modifications' : 'Forger la campagne';
+    $('hb-create-cancel').hidden = !hub.edit;
     $('hb-create-btn').classList.toggle('ready', !!f.name.trim());
-    $('hb-create-hint').textContent = f.vis === 'prive' ? 'Un sceau sera généré pour inviter vos joueurs.'
+    $('hb-create-hint').textContent = hub.edit ? '' : f.vis === 'prive' ? 'Un sceau sera généré pour inviter vos joueurs.'
         : f.vis === 'demande' ? 'Vous validerez chaque demande dans vos messages.' : 'La table apparaîtra aussitôt dans Explorer.';
     // preview
     const fd = f.date ? new Date(f.date) : null;
@@ -479,6 +484,7 @@ function renderModal() {
                 : el('div', { className: 'hb-modal-acts' },
                     el('div', { className: 'hb-cta' + (on ? '' : ' off'), textContent: cta, onclick: act }),
                     !isGM && el('div', { className: 'hb-modal-chat', textContent: 'Écrire à ' + mk.gm, onclick: () => openChat(mk.gmId, mk.gm, mk.name) }),
+                    isGM && el('div', { className: 'hb-modal-chat', textContent: 'Modifier la table', onclick: () => editCamp(mk) }),
                     isGM && mk.code && el('div', { className: 'hb-seal' },
                         el('div', { className: 'hb-seal-k', textContent: 'Sceau à partager' }),
                         el('div', { className: 'hb-seal-v', textContent: mk.code })))));
@@ -622,25 +628,54 @@ function pickCover(file) {
     });
 }
 
+const BLANK_FORM = () => ({ name: '', pitch: '', vis: 'public', seats: 4, rhythm: 'Hebdomadaire', date: '', tags: '', cover: '', coverBlob: null });
+function setFormInputs() {
+    const f = hub.f;
+    [['hb-f-name', f.name], ['hb-f-pitch', f.pitch], ['hb-f-date', f.date], ['hb-f-tags', f.tags]].forEach(([id, v]) => { $(id).value = v; });
+}
+function resetForm() { hub.f = BLANK_FORM(); hub.edit = null; setFormInputs(); }
+
+// The create form doubles as the edit form: prefilled, and create() patches instead of inserting.
+function editCamp(k) {
+    const local = t => new Date(t - new Date(t).getTimezoneOffset() * 60000).toISOString().slice(0, 16);   // datetime-local wants local time
+    hub.f = { name: k.name, pitch: k.pitch, vis: k.vis, seats: k.seats, rhythm: k.rhythm,
+        date: k.first ? local(Date.parse(k.first)) : '', tags: k.tags.join(', '), cover: k.cover || '', coverBlob: null };
+    hub.edit = k.id; hub.modal = null; hub.tab = 'create';
+    setFormInputs();
+    render();
+}
+
 async function create() {
     const f = hub.f;
     if (!f.name.trim()) { flash('Donnez un nom à votre campagne.', 'err'); return; }
     const d = f.date ? new Date(f.date) : null;
-    if (d && d < new Date()) { flash('La première séance doit être dans le futur.', 'err'); return; }
+    if (d && d < new Date() && !hub.edit) { flash('La première séance doit être dans le futur.', 'err'); return; }
     if (create.busy) return;
     create.busy = true;
-    const res = await hubData.create({ ...f, tagList: tagList(f.tags) }, f.coverBlob);
+    const form = { ...f, tagList: tagList(f.tags) };
+    const res = hub.edit ? await hubData.update(hub.edit, form, f.coverBlob) : await hubData.create(form, f.coverBlob);
     create.busy = false;
+    const at = d ? hubNextStart(d.getTime(), HUB_RHYTHM_KEY[f.rhythm]) : null;
+    const fields = {
+        name: f.name.trim(), vis: f.vis, seats: f.seats, rhythm: f.rhythm, first: d ? d.toISOString() : null,
+        next: at == null ? null : hubDayDiff(at), hour: at == null ? '' : new Date(at).toTimeString().slice(0, 5),
+        cover: f.cover || null, tags: tagList(f.tags), pitch: f.pitch.trim() || 'Une nouvelle table attend ses premiers joueurs.',
+        beginner: hubIsBeginner(tagList(f.tags)),
+    };
+    if (hub.edit) {
+        if (!res) { flash('Les modifications n\'ont pas pu être enregistrées.', 'err'); return; }
+        const k = campById(hub.edit);
+        if (k) Object.assign(k, fields);
+        resetForm();
+        hub.tab = 'mine';
+        render();
+        flash('Campagne modifiée.', 'ok');
+        return;
+    }
     if (!res) { flash('La campagne n\'a pas pu être forgée.', 'err'); return; }
     const code = f.vis === 'prive' ? res.code : null;
-    hub.camps.unshift({
-        id: res.id, name: f.name.trim(), gm: hub.me.name, vis: f.vis, seats: f.seats, taken: 0,
-        next: d ? dayDiff(d) : null, hour: d ? d.toTimeString().slice(0, 5) : '', rhythm: f.rhythm, session: 0,
-        cover: f.cover || null, tags: tagList(f.tags), pitch: f.pitch.trim() || 'Une nouvelle table attend ses premiers joueurs.',
-        role: 'MJ', code: res.code, beginner: hubIsBeginner(tagList(f.tags)), ariaType: 'ancient',
-    });
-    hub.f = { name: '', pitch: '', vis: 'public', seats: 4, rhythm: 'Hebdomadaire', date: '', tags: '', cover: '', coverBlob: null };
-    ['hb-f-name', 'hb-f-pitch', 'hb-f-date', 'hb-f-tags'].forEach(id => { $(id).value = ''; });
+    hub.camps.unshift({ id: res.id, gm: hub.me.name, taken: 0, session: 0, role: 'MJ', code: res.code, ariaType: 'ancient', ...fields });
+    resetForm();
     hub.tab = 'mine';
     render();
     flash(code ? 'Campagne forgée. Sceau à partager : ' + code
@@ -669,6 +704,7 @@ function wire() {
     drop.ondrop = e => { e.preventDefault(); hub.drag = false; pickCover(e.dataTransfer.files && e.dataTransfer.files[0]); };
     $('hb-drop-rm').onclick = e => { e.stopPropagation(); if (hub.f.cover) URL.revokeObjectURL(hub.f.cover); hub.f.cover = ''; hub.f.coverBlob = null; renderCreate(); };
     $('hb-create-btn').onclick = create;
+    $('hb-create-cancel').onclick = () => { resetForm(); hub.tab = 'mine'; render(); };
     fill($('hb-pv-av'), avatar(26, PAL['Aldric'], null, 4));
 
     $('hb-chat-back').onclick = () => { hub.chat = null; renderAside(); };
