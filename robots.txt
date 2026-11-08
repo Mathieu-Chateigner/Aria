@@ -6,4 +6,4 @@ Disallow: /views/
 Disallow: /*?s=
 Disallow: /*?ably=
 
-Sitemap: https://aria-jdr.fr/sitemap.xml
+Sitemap: https://mathieu-chateigner.github.io/Aria/sitemap.xml

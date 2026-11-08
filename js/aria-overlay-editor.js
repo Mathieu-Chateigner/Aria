@@ -6,8 +6,10 @@ const OWNER_TYPE = params.get('type') || 'player';
 const OWNER_ID   = params.get('id')   || '';
 const OVERLAY_ID = OWNER_TYPE + '_' + OWNER_ID;
 
-const ariaConfig = JSON.parse(localStorage.getItem('aria-config') || '{}');
-const ABLY_KEY   = ariaConfig.ablyKey || '';
+// The preview is the real overlay, which authenticates with the save key (same
+// origin, so it is in localStorage). This page itself gets an 'editor' token from the
+// ably-token function: publish on this layout's channel, and nothing else.
+const SAVE_KEY   = localStorage.getItem('aria-save-key') || '';
 
 // Same-origin lookup for the join code, so the preview iframe and test-event
 // publishers land on the campaign-scoped channels the real overlay listens to
@@ -27,7 +29,7 @@ function campaignChannel(base) { return CAMPAIGN ? `${base}-${CAMPAIGN}` : base;
 
 let widgets       = [];
 let selectedId    = null;
-let gridSnap      = false;
+let snapToGrid    = false;
 let ablyClient    = null;
 let ablyChannel   = null;
 let autoSaveTimer = null;
@@ -49,14 +51,14 @@ const WIDGET_DEFS = {
         { type: 'potions',           label: 'Potions',               defaultW: 25, defaultH: 15 },
         { type: 'custom_text',       label: 'Texte libre',           defaultW: 30, defaultH: 10 },
         { type: 'map',               label: 'Carte',                 defaultW: 40, defaultH: 45 },
-        { type: 'campaign_name',     label: 'Nom campagne',          defaultW: 30, defaultH: 8,  gmOnly: true },
-        { type: 'player_hp_summary', label: 'PV joueurs (résumé)',   defaultW: 30, defaultH: 30, gmOnly: true },
+        { type: 'campaign_name',     label: 'Nom campagne',          defaultW: 30, defaultH: 8 },
+        { type: 'player_hp_summary', label: 'PV joueurs (résumé)',   defaultW: 30, defaultH: 30 },
         { type: 'player_stats',      label: 'Stats joueurs',         defaultW: 35, defaultH: 35, gmOnly: true },
         { type: 'player_inventory',  label: 'Inventaires joueurs',   defaultW: 30, defaultH: 30, gmOnly: true },
         { type: 'player_skills',     label: 'Compétences joueurs',   defaultW: 30, defaultH: 30, gmOnly: true },
         { type: 'monster_list',      label: 'Monstres',              defaultW: 30, defaultH: 30, gmOnly: true },
-        { type: 'roll_history',      label: 'Historique jets',       defaultW: 35, defaultH: 25, gmOnly: true },
-        { type: 'camera',            label: 'Caméra joueur',         defaultW: 25, defaultH: 20, gmOnly: true },
+        { type: 'roll_history',      label: 'Historique jets',       defaultW: 35, defaultH: 25 },
+        { type: 'camera',            label: 'Caméra joueur',         defaultW: 25, defaultH: 20 },
     ],
     event: [
         { type: 'roll_card',         label: 'Carte de jet',         defaultW: 16.5, defaultH: 24 },
@@ -99,9 +101,9 @@ async function init() {
     document.getElementById('editor-owner-label').textContent =
         OWNER_TYPE === 'player' ? 'Joueur — ' + OWNER_ID : 'MJ — ' + OWNER_ID;
 
-    if (ABLY_KEY) {
-        ablyClient = new Ably.Realtime({ key: ABLY_KEY, transports: ['web_socket'] });
-        ablyChannel = ablyClient.channels.get('aria-overlay-config');
+    if (OWNER_ID && sbSignedIn()) {
+        ablyClient = ablyConnect({ kind: 'editor', overlay: OVERLAY_ID });
+        ablyChannel = ablyClient.channels.get('aria-overlay-config:' + OVERLAY_ID);
     }
 
     resizeCanvas();
@@ -152,9 +154,9 @@ function resizeCanvas() {
 function bindTopbarButtons() {
     document.getElementById('btn-save').addEventListener('click', saveConfig);
     document.getElementById('btn-grid-snap').addEventListener('click', () => {
-        gridSnap = !gridSnap;
-        document.getElementById('btn-grid-snap').classList.toggle('active', gridSnap);
-        document.getElementById('editor-canvas').classList.toggle('grid-on', gridSnap);
+        snapToGrid = !snapToGrid;
+        document.getElementById('btn-grid-snap').classList.toggle('active', snapToGrid);
+        document.getElementById('editor-canvas').classList.toggle('grid-on', snapToGrid);
     });
 }
 
@@ -237,7 +239,7 @@ function addWidget(type, x, y) {
 
 // Snap a percentage value to the nearest grid step when grid snap is enabled.
 function snapVal(v) {
-    return gridSnap ? Math.round(v / 5) * 5 : Math.round(v * 10) / 10;
+    return snapToGrid ? Math.round(v / 5) * 5 : Math.round(v * 10) / 10;
 }
 
 // Event widgets are drawn on stream at their natural size scaled by w / baseW
@@ -362,7 +364,7 @@ function startDrag(e, widgetId) {
         let x = origX + ((e.clientX - startX) / rect.width) * 100;
         let y = origY + ((e.clientY - startY) / rect.height) * 100;
         let guides = [];
-        if (!gridSnap && !e.altKey) ({ x, y, guides } = snapMove(widget, x, y));
+        if (!snapToGrid && !e.altKey) ({ x, y, guides } = snapMove(widget, x, y));
         showGuides(guides);
         widget.x = snapVal(Math.max(0, Math.min(100 - widget.w, x)));
         widget.y = snapVal(Math.max(0, Math.min(100 - widget.h, y)));
@@ -394,7 +396,7 @@ function startResize(e, widgetId, handle) {
     function onMove(e) {
         const dx = ((e.clientX - startX) / rect.width) * 100;
         const dy = ((e.clientY - startY) / rect.height) * 100;
-        const snap = !gridSnap && !e.altKey;
+        const snap = !snapToGrid && !e.altKey;
         let guides = [];
         const fit = (val, axis) => {
             if (!snap) return val;
@@ -528,6 +530,9 @@ function availableStreams() {
         try { chars = JSON.parse(localStorage.getItem('aria-characters') || '[]'); } catch (_) {}
         const me = chars.find(c => c.id === OWNER_ID);
         out.push({ sid: 'aria_' + OWNER_ID.slice(0, 8), label: (me?.name || 'Vous') + ' (vous)' });
+        let seen = {};
+        try { seen = JSON.parse(localStorage.getItem('aria-known-streams-' + OWNER_ID) || '{}'); } catch (_) {}
+        Object.entries(seen).forEach(([sid, name]) => { if (sid !== out[0].sid) out.push({ sid, label: name || sid }); });
     }
     return out;
 }
@@ -554,7 +559,9 @@ function refreshStreamPicker() {
     if (hint) {
         hint.textContent = streams.length > 1
             ? 'Joueurs vus au moins une fois dans cette campagne.'
-            : 'Aucun joueur détecté — ouvre le panneau MJ avec les joueurs connectés, puis rouvre cet éditeur.';
+            : OWNER_TYPE === 'gm'
+                ? 'Aucun joueur détecté — ouvre le panneau MJ avec les joueurs connectés, puis rouvre cet éditeur.'
+                : 'Aucune autre caméra détectée — ouvre ton panneau pendant une séance, puis rouvre cet éditeur.';
     }
 }
 
@@ -649,7 +656,7 @@ async function saveConfig() {
 // it already listens to the same layout-update channel this editor publishes
 // on, plus every game channel, so it stays live with zero extra sync code.
 function buildPreviewUrl() {
-    const p = new URLSearchParams({ mode: OWNER_TYPE, ably: ABLY_KEY, overlay: OVERLAY_ID });
+    const p = new URLSearchParams({ s: SAVE_KEY, mode: OWNER_TYPE, overlay: OVERLAY_ID });
     if (CAMPAIGN) p.set('campaign', CAMPAIGN);
     return '../views/aria-overlay.html?' + p.toString();
 }
@@ -658,7 +665,7 @@ const TEST_EVENTS = [
     { label: 'Succès',          fn: () => testRoll(45, 60, true)  },
     { label: 'Échec',           fn: () => testRoll(75, 60, false) },
     { label: 'Critique succès', fn: () => testRoll(5, 60, true)   },
-    { label: 'Critique échec',  fn: () => testRoll(95, 60, false) },
+    { label: 'Critique échec',  fn: () => testRoll(97, 60, false) },
     { label: 'Dé simple',       fn: () => testRoll(4, null, null, 'd6') },
     { label: 'Carte tirée',     fn: () => testDeliver('showDrawnCard', { cardId: 'A-spades' }) },
     { label: 'Dégâts',          fn: () => testDamage(6) },

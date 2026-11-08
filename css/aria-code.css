@@ -1,0 +1,37 @@
+/* ═══════════════════════════════════════════
+   CODE DE LA TABLE — views/aria-code.html
+   ═══════════════════════════════════════════
+   The document the signup checkbox links to. Plain reading page, no scene. */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body { background: var(--ink-0); color: var(--text-2); font-family: var(--font-ui); font-size: 15px; line-height: 1.65; }
+a { color: var(--ember); text-decoration: none; }
+a:hover { color: var(--ember2); text-decoration: underline; }
+
+.cd-page {
+    position: relative; z-index: 1; max-width: 760px; margin: 0 auto; padding: 56px 20px 72px;
+    background: rgba(5,6,8,.84); box-shadow: 0 0 80px 40px rgba(5,6,8,.84);   /* scrim over the scene (ariaBg) */
+}
+
+.cd-head { text-align: center; margin-bottom: 32px; }
+.cd-kicker { font-family: var(--font-mono); font-size: 11px; letter-spacing: .5em; text-indent: .5em; text-transform: uppercase; color: var(--parch-dim); }
+.cd-title { font-family: var(--font-display); font-size: 48px; font-weight: 600; line-height: 1.1; color: var(--warm); margin: 10px 0 8px; }
+.cd-sub { font-size: 14px; color: var(--text-3); margin-bottom: 6px; }
+.cd-date { font-size: 12px; color: var(--dim); }
+
+.cd-lead { font-family: var(--font-display); font-size: 20px; font-style: italic; color: var(--warm); text-align: center; margin-bottom: 32px; }
+
+.cd-toc { display: flex; flex-direction: column; gap: 4px; padding: 16px 20px; border: 1px solid var(--line); border-radius: 4px; margin-bottom: 40px; font-size: 14px; }
+
+section { margin-bottom: 36px; scroll-margin-top: 24px; }
+h2 { font-family: var(--font-display); font-size: 26px; font-weight: 600; color: var(--warm); padding-bottom: 6px; border-bottom: 1px solid var(--ember-line); margin-bottom: 14px; }
+h3 { font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); margin: 20px 0 8px; }
+p { margin-bottom: 10px; }
+ul { padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+ul ul { margin-top: 8px; gap: 4px; }
+li::marker { color: var(--ember); }
+strong { color: var(--text); font-weight: 600; }
+code { font-family: var(--font-mono); font-size: 13px; color: var(--text); }
+
+.cd-foot { border-top: 1px solid var(--line); padding-top: 20px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; font-size: 14px; }

@@ -45,7 +45,14 @@ const ARIA = {
 // Allow only http(s) URLs from remote-controlled records. File grants travel over
 // Ably and file rows live in Supabase — a javascript: URL assigned to iframe.src
 // would execute in this origin.
-function _safeUrl(u) { const s = String(u ?? '').trim(); return /^https?:\/\//i.test(s) ? s : ''; }
+// A shared file's URL, or '' — only files in this project's own public storage. File
+// grants travel over Ably, so the URL is a claim: a javascript: one would run in this
+// origin, and any other https one would put an arbitrary page in the viewer under
+// the campaign's name (phishing). Every real one comes from uploadFileToSupabase().
+function _fileUrl(u) {
+    const s = String(u ?? '').trim();
+    return s.startsWith(SUPABASE_URL + '/storage/v1/object/public/') && !/[\s"'<>]/.test(s) ? s : '';
+}
 
 // Coerce a remote-supplied value to a finite number, or null. Presence payloads are
 // remote-controlled (anyone with the Ably key can publish), and these land in
@@ -67,15 +74,109 @@ function uid() {
     return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
 
+// A random 8-character campaign join code, avoiding any in `used`. The alphabet drops I, O, 0 and 1 — the code
+// gets read aloud and typed by hand. The code is the invitation: 32^8 ≈ 10^12 and a
+// CSPRNG keep it from being guessed through join_code_taken / hub_campaign_by_code.
+function generateJoinCode(used = new Set()) {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let attempt = 0; attempt < 50; attempt++) {
+        // 256 is a multiple of 32, so `% 32` is unbiased
+        code = Array.from(crypto.getRandomValues(new Uint8Array(8)), b => chars[b % chars.length]).join('');
+        if (!used.has(code)) return code;
+    }
+    return code;
+}
+
+// A code nobody is using — ours or anyone else's. The database is the only place
+// that knows the second half of that question, since RLS hides other accounts'
+// campaigns, and a shared code means two tables on the same Ably channels.
+//
+// Falls back to a locally-unique code after a few refusals: the unique constraint
+// on campaigns.join_code is the real guarantee, and refusing to create a campaign
+// because Supabase is unreachable would be a worse failure than a duplicate that
+// cannot actually be stored.
+// `used` holds the codes the caller already knows of (the GM's own campaigns).
+async function freeJoinCode(used = new Set()) {
+    used = new Set(used);
+    for (let attempt = 0; attempt < 8; attempt++) {
+        const code = generateJoinCode(used);
+        if (!await sbJoinCodeTaken(code)) return code;
+        used.add(code);
+    }
+    console.warn('freeJoinCode: aucune réponse exploitable, code local retenu');
+    return generateJoinCode(used);
+}
+
+// Blank character sheets, one per ARIA variant. The player panel creates from them
+// and back-fills skills a template gained later; the Hub creates from them when a
+// player joins a table.
+const DEFAULT_CHAR_ANCIENT = {
+    name: "", class: "", ariaType: 'ancient',
+    stats: { FOR: 0, DEX: 0, END: 0, INT: 0, CHA: 0, PV: 0 },
+    physical: { age: "", taille: "", poids: "", yeux: "", cheveux: "", signes: "", histoire: "" },
+    inventory: [], weapons: [{ nom: '', degats: '' }, { nom: '', degats: '' }, { nom: '', degats: '' }],
+    protection: { nom: '', valeur: 0 },
+    skills: [
+        { name: "Artisanat, construire", link: "DEX/INT", pct: 0 },
+        { name: "Combat rapproché",      link: "FOR/DEX", pct: 0 },
+        { name: "Combat à distance",     link: "FOR/DEX", pct: 0 },
+        { name: "Connaissance de la nature", link: "DEX/INT", pct: 0 },
+        { name: "Connaissance des secrets",  link: "INT/CHA", pct: 0 },
+        { name: "Courir, sauter",        link: "DEX/END", pct: 0 },
+        { name: "Discrétion",            link: "DEX/CHA", pct: 0 },
+        { name: "Droit",                 link: "INT/CHA", pct: 0 },
+        { name: "Esquiver",              link: "DEX/INT", pct: 0 },
+        { name: "Intimider",             link: "FOR/CHA", pct: 0 },
+        { name: "Lire, écrire",          link: "INT/CHA", pct: 0 },
+        { name: "Mentir, convaincre",    link: "INT/CHA", pct: 0 },
+        { name: "Perception",            link: "INT/CHA", pct: 0 },
+        { name: "Piloter",               link: "DEX/END", pct: 0 },
+        { name: "Psychologie",           link: "END/INT", pct: 0 },
+        { name: "Réflexes",              link: "DEX/INT", pct: 0 },
+        { name: "Serrures et pièges",    link: "DEX/END", pct: 0 },
+        { name: "Soigner",               link: "INT/CHA", pct: 0 },
+        { name: "Survie",                link: "END/INT", pct: 0 },
+        { name: "Voler",                 link: "DEX/INT", pct: 0 },
+    ],
+    specials: [], campaignKey: '',
+    money: { couronne: 0, orbe: 0, sceptre: 0, sou: 0 },
+    vials: 0, potionRecipes: [], potions: [], substances: [], karma: 0,
+};
+
+const DEFAULT_CHAR_CONTEMPORARY = {
+    name: "", class: "", ariaType: 'contemporary',
+    stats: { PV: 0 },
+    physical: { age: "", taille: "", poids: "", yeux: "", cheveux: "", signes: "", histoire: "" },
+    inventory: [], weapons: [{ nom: '', degats: '' }, { nom: '', degats: '' }, { nom: '', degats: '' }],
+    protection: { nom: '', valeur: 0 },
+    skills: [
+        { name: "Courir, sauter",          link: "", pct: 0 },
+        { name: "Discrétion",              link: "", pct: 0 },
+        { name: "Intimider",               link: "", pct: 0 },
+        { name: "Mentir, convaincre",      link: "", pct: 0 },
+        { name: "Perception",              link: "", pct: 0 },
+        { name: "Psychologie",             link: "", pct: 0 },
+        { name: "Réflexes",               link: "", pct: 0 },
+        { name: "Soigner",                 link: "", pct: 0 },
+        { name: "Armes à feu",             link: "", pct: 0 },
+        { name: "Bidouiller",              link: "", pct: 0 },
+        { name: "Conduire un véhicule",    link: "", pct: 0 },
+        { name: "Connaissance de la ville",link: "", pct: 0 },
+        { name: "Être sympathique",        link: "", pct: 0 },
+        { name: "Intuition",               link: "", pct: 0 },
+        { name: "Médecine légale",         link: "", pct: 0 },
+        { name: "Relations louches",       link: "", pct: 0 },
+        { name: "Relations respectables",  link: "", pct: 0 },
+        { name: "Tabasser",                link: "", pct: 0 },
+    ],
+    specials: [], campaignKey: '',
+    money: { francs: 0 },
+    vials: 0, potionRecipes: [], potions: [], substances: [], karma: 0,
+};
+
 // Promise that resolves after ms milliseconds.
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-// ARIA result class for a d100 roll against a threshold.
-function classify(roll, threshold, success) {
-    if (roll <= 10 && success) return 'crit-success';
-    if (roll >= 91 && !success) return 'crit-fail';
-    return success ? 'success' : 'fail';
-}
 
 // Does one roll entry pass the Succès / Échec / Critique / Dés pill filter? An empty
 // filter set passes everything, and Succès / Échec include their critical variants —
@@ -88,7 +189,7 @@ function classify(roll, threshold, success) {
 function rollPassesFilter(entry, filter) {
     if (!filter.size) return true;
     if (entry.threshold === null) return filter.has('die');
-    const type = classify(entry.roll, entry.threshold, entry.success);
+    const type = rollType(entry.roll, entry.threshold);
     if (filter.has('crit')    && (type === 'crit-success' || type === 'crit-fail')) return true;
     if (filter.has('success') && (type === 'success'      || type === 'crit-success')) return true;
     if (filter.has('fail')    && (type === 'fail'         || type === 'crit-fail')) return true;
@@ -202,11 +303,25 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 // see-through fog from the player's opaque black. aria-overlay.js does not load this file
 // and builds its own string-based equivalent (_owZones) — that is a different rendering
 // model, not a duplicate of this one.
-function _mapZoneLayer(clear, fog) {
+//
+// `vb` is the coordinate space ({ w, h }): 100×100 — percentages — unless a map says
+// otherwise; the tactical maps to come work in image pixels.
+function _mapZoneLayer(clear, fog, vb = { w: 100, h: 100 }) {
     const svg = document.createElementNS(SVG_NS, 'svg');
     svg.setAttribute('class', 'map-zones');
-    svg.setAttribute('viewBox', '0 0 100 100');
+    svg.setAttribute('viewBox', `0 0 ${vb.w} ${vb.h}`);
     svg.setAttribute('preserveAspectRatio', 'none');
+    // Soft edges for the fog: a black polygon with a hard border reads as a hole cut in
+    // the picture. The blur is in viewBox units, so it stays ~0.6% of the map whatever
+    // the display size; the region is widened so the blur is not clipped at the bbox.
+    const defs = document.createElementNS(SVG_NS, 'defs');
+    const filter = document.createElementNS(SVG_NS, 'filter');
+    filter.setAttribute('id', 'map-soft');
+    ['x', 'y'].forEach(k => filter.setAttribute(k, '-10%'));
+    ['width', 'height'].forEach(k => filter.setAttribute(k, '120%'));
+    const blur = document.createElementNS(SVG_NS, 'feGaussianBlur');
+    blur.setAttribute('stdDeviation', String(Math.max(vb.w, vb.h) * .006));
+    filter.appendChild(blur); defs.appendChild(filter); svg.appendChild(defs);
     const add = (z, cls) => {
         // z.zone is remote-controlled: it arrives over Ably ('aria-map' / 'state') with no
         // validation, so anyone holding the Ably key can publish garbage in its place. An
@@ -226,6 +341,324 @@ function _mapZoneLayer(clear, fog) {
     };
     clear.forEach(z => add(z, 'zone-known'));
     fog.forEach(z => add(z, 'zone-fog'));
+    return svg;
+}
+
+// ═══════════════════════════════════════════
+//  MAP VIEW — one renderer for the GM tab and the player tab
+// ═══════════════════════════════════════════
+// The map used to be rebuilt wholesale by fill() on every change, in two hand-written
+// copies: the <img> (up to 20 MB) was destroyed and re-decoded on every pin drop, and on
+// the player's side on every state received; the GM's open card lost its caret whenever a
+// player asked to move. Here the DOM is built once per container and then updated:
+//   - the image is kept, its src only re-assigned when it differs;
+//   - pins go through reconcile();
+//   - the card is created once per POI and updated in place by the caller, who must
+//     leave alone an input that has the focus;
+//   - zones are rebuilt, they hold nothing focusable.
+// Zoom and pan live here too: a transform on .map-world, so the percentage coordinates
+// stay right (getBoundingClientRect() includes the transform). The card is a sibling of
+// the zoomed layer, not a child — a transformed ancestor would scale it and trap it.
+//
+// The view assumes nothing about its container: it fills whatever box it is given.
+//
+// opts: { imageUrl, alt, vb?, title, kicker, empty,
+//         grid: mapGrid(map) | null, zones: [clear, fog], extra: [nodes],
+//         pins: [{ id, x, y, name, cls, tokens: [{ name, cls }] }],
+//         tokens: [{ id, x, y, size, ini, name, cls, hp, markers: [glyph], draggable }],
+//         card: { key, x, y, create(), update(node) } | null,
+//         onBackground(e, {x, y} | null), onPinDown(e, id), onTokenClick(id), onTokenDrop(id, x, y) }
+function mapView(container, opts) {
+    if (!container) return;
+    if (!opts.imageUrl) {
+        container._mapView = null;
+        fill(container, el('div', { className: 'map-empty', textContent: opts.empty || '' }));
+        return;
+    }
+    let v = container._mapView;
+    if (!v || v.root.parentNode !== container) v = container._mapView = _mapViewBuild(container);
+    v.opts = opts;
+    const vb = opts.vb || { w: 100, h: 100 };
+
+    // The URL arrives over Ably on the player's side: only our own public storage.
+    const url = _fileUrl(opts.imageUrl);
+    if (v.img.getAttribute('src') !== url) { v.img.setAttribute('src', url); _mapViewFit(v); }
+    v.img.alt = opts.alt || '';
+    v.title.textContent = opts.title || '';
+    v.kicker.textContent = opts.kicker || '';
+
+    const grid = _mapGridLayer(opts.grid, vb);
+    v.grid.replaceWith(grid);
+    v.grid = grid;
+    const zones = _mapZoneLayer(opts.zones?.[0] || [], opts.zones?.[1] || [], vb);
+    v.zones.replaceWith(zones);
+    v.zones = zones;
+    fill(v.extra, ...(opts.extra || []));
+    reconcile(v.pins, (opts.pins || []).map(p => [p.id, p]),
+        id => el('div', { onpointerdown: e => v.opts.onPinDown?.(e, id) },
+            el('span', { className: 'map-pin-dot' }),
+            el('span', { className: 'map-pin-label' }),
+            el('div', { className: 'map-tokens' })),
+        (node, p) => {
+            node.className = 'map-pin' + (p.cls ? ' ' + p.cls : '');
+            node.style.left = (Number(p.x) || 0) / vb.w * 100 + '%';
+            node.style.top  = (Number(p.y) || 0) / vb.h * 100 + '%';
+            node.children[1].textContent = p.name || '';
+            // A disc with the initial, and the name beside it: who is where must read
+            // without a gesture.
+            fill(node.children[2], (p.tokens || []).map(t =>
+                el('span', { className: 'map-token' + (t.cls ? ' ' + t.cls : '') },
+                    el('b', { className: 'map-token-ini', textContent: (t.name || '?').trim().charAt(0).toUpperCase() }),
+                    el('span', { className: 'map-token-name', textContent: t.name }))));
+        });
+
+    // Tokens are map objects: they scale with the zoom (a 2-cell token covers two cells at
+    // any zoom); only their name label is held at a constant size, in CSS.
+    const cell = opts.grid?.cell || vb.w / 30;
+    reconcile(v.toks, (opts.tokens || []).map(t => [t.id, t]),
+        id => el('div', { onpointerdown: e => _mapViewTokenDown(v, e, id) },
+            el('b', { className: 'map-tok-ini' }),
+            el('div', { className: 'map-tok-hp' }, el('i')),
+            el('div', { className: 'map-tok-marks' }),
+            el('div', { className: 'map-tok-name' })),
+        (node, t) => {
+            const size = Math.max(1, Math.min(4, Number(t.size) || 1));
+            node.className = 'map-tok' + (t.cls ? ' ' + t.cls : '') + (t.draggable ? ' draggable' : '');
+            _mapViewPlaceToken(node, t.x, t.y, size, cell, vb);
+            node.children[0].textContent = t.ini || '';
+            const hp = t.hp == null ? null : Math.max(0, Math.min(1, +t.hp || 0));
+            node.children[1].style.display = hp == null ? 'none' : '';
+            node.children[1].firstChild.style.width = (hp ?? 0) * 100 + '%';
+            node.children[1].dataset.level = hp == null ? '' : hp <= 0 ? 'dead' : hp > .6 ? 'ok' : hp > .3 ? 'mid' : 'low';
+            node.children[2].textContent = (t.markers || []).join('');
+            node.children[3].textContent = t.name || '';
+        });
+
+    const c = opts.card;
+    if (!c) { v.card?.remove(); v.card = null; v.cardKey = null; v.cardAt = null; }
+    else {
+        if (v.cardKey !== c.key || !v.card?.isConnected) {
+            v.card?.remove();
+            v.card = c.create();
+            v.cardKey = c.key;
+            v.root.append(v.card);
+        }
+        c.update?.(v.card);
+        v.cardAt = { x: (Number(c.x) || 0) / vb.w * 100, y: (Number(c.y) || 0) / vb.h * 100 };
+    }
+    _mapViewPlaceCard(v);
+}
+
+// The card node of a container's view, or null.
+function mapViewCard(container) { return container?._mapView?.card || null; }
+
+function _mapViewBuild(container) {
+    const v = { k: 1, tx: 0, ty: 0, card: null, cardKey: null, cardAt: null, opts: {} };
+    v.img = el('img', { className: 'aria-map', draggable: false });
+    v.zones = document.createElementNS(SVG_NS, 'svg');
+    v.grid = document.createElementNS(SVG_NS, 'svg');
+    v.extra = el('div', { className: 'map-extra' });
+    v.pins = el('div', { className: 'map-pins' });
+    v.toks = el('div', { className: 'map-toks' });
+    v.measure = el('div', { className: 'map-measure' });
+    v.frame = el('div', { className: 'aria-frame', id: 'map-frame' }, v.img, v.grid, v.zones, v.extra, v.toks, v.pins, v.measure);
+    v.world = el('div', { className: 'map-world' }, v.frame);
+    v.viewport = el('div', { className: 'map-viewport' }, v.world);
+    v.title = el('div', { className: 'map-cart-title' });
+    v.kicker = el('div', { className: 'map-cart-kicker' });
+    const zoomBtn = (label, title, fn) => el('button', { className: 'map-zoom-btn', textContent: label, title, onclick: fn });
+    v.root = el('div', { className: 'map-view' },
+        v.viewport,
+        el('div', { className: 'map-cartouche' }, v.title, v.kicker),
+        el('div', { className: 'map-zoom' },
+            zoomBtn('+', 'Zoomer', () => _mapViewZoomAt(v, 1.4)),
+            zoomBtn('−', 'Dézoomer', () => _mapViewZoomAt(v, 1 / 1.4)),
+            zoomBtn('⤢', 'Ajuster', () => _mapViewFit(v))));
+    fill(container, v.root);
+    v.img.addEventListener('load', () => _mapViewPlaceCard(v));
+
+    // Wheel zooms around the cursor. Not passive, or preventDefault() is ignored and the
+    // pane scrolls as well.
+    v.viewport.addEventListener('wheel', e => {
+        e.preventDefault();
+        _mapViewZoomAt(v, e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX, e.clientY);
+    }, { passive: false });
+
+    // A press on the background pans once it travels past a few pixels; otherwise it is a
+    // click, handed to the panel. Pins and zone vertices have their own handlers.
+    v.viewport.addEventListener('pointerdown', e => {
+        if (e.button !== 0 || e.target.closest('.map-pin, .zone-vertex, .map-tok')) return;
+        const x0 = e.clientX, y0 = e.clientY, tx0 = v.tx, ty0 = v.ty;
+        let panning = false;
+        v.viewport.setPointerCapture(e.pointerId);
+        const move = ev => {
+            if (!panning && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return;
+            panning = true;
+            v.viewport.classList.add('panning');
+            v.tx = tx0 + ev.clientX - x0; v.ty = ty0 + ev.clientY - y0;
+            _mapViewApply(v);
+        };
+        const end = ev => {
+            v.viewport.removeEventListener('pointermove', move);
+            v.viewport.removeEventListener('pointerup', end);
+            v.viewport.removeEventListener('pointercancel', end);
+            v.viewport.classList.remove('panning');
+            if (panning || ev.type === 'pointercancel' || !v.frame.isConnected) return;
+            // A press that never left the spot is a click. Outside the picture the panel
+            // gets null coordinates: it closes what is open and places nothing.
+            const r = v.frame.getBoundingClientRect();
+            const inside = ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+            const vb = v.opts.vb || { w: 100, h: 100 };
+            v.opts.onBackground?.(ev, inside ? {
+                x: (ev.clientX - r.left) / r.width * vb.w,
+                y: (ev.clientY - r.top) / r.height * vb.h } : null);
+        };
+        v.viewport.addEventListener('pointermove', move);
+        v.viewport.addEventListener('pointerup', end);
+        v.viewport.addEventListener('pointercancel', end);
+    });
+    // The pane engine resizes the box all the time; the card follows its pin.
+    new ResizeObserver(() => _mapViewPlaceCard(v)).observe(v.viewport);
+    return v;
+}
+
+function _mapViewApply(v) {
+    v.world.style.transform = `translate(${v.tx}px, ${v.ty}px) scale(${v.k})`;
+    // Pins, names and tokens keep their size while the map zooms (CSS divides by it).
+    v.world.style.setProperty('--map-k', v.k);
+    _mapViewPlaceCard(v);
+}
+
+function _mapViewFit(v) { v.k = 1; v.tx = 0; v.ty = 0; _mapViewApply(v); }
+
+// Zoom by `f` keeping the point under (cx, cy) still — the centre of the box when no
+// point is given. transform-origin is 0 0, so the world's on-screen rect is (layout +
+// translate) and a local point is (screen − rect) / k.
+function _mapViewZoomAt(v, f, cx, cy) {
+    const k = Math.min(8, Math.max(1, v.k * f));
+    if (k === v.k) return;
+    const vr = v.viewport.getBoundingClientRect();
+    if (cx === undefined) { cx = vr.left + vr.width / 2; cy = vr.top + vr.height / 2; }
+    const r = v.world.getBoundingClientRect();
+    const lx = (cx - r.left) / v.k, ly = (cy - r.top) / v.k;
+    v.tx += (cx - k * lx) - r.left;
+    v.ty += (cy - k * ly) - r.top;
+    v.k = k;
+    if (k === 1) { v.tx = 0; v.ty = 0; }
+    _mapViewApply(v);
+}
+
+// A token's box: `size` cells wide, centred on (x, y), in percentages of the frame.
+function _mapViewPlaceToken(node, x, y, size, cell, vb) {
+    const w = size * cell;
+    node.style.left = ((Number(x) || 0) - w / 2) / vb.w * 100 + '%';
+    node.style.top = ((Number(y) || 0) - w / 2) / vb.h * 100 + '%';
+    node.style.width = w / vb.w * 100 + '%';
+    node.style.height = w / vb.h * 100 + '%';
+}
+
+// Drag a token. It follows the pointer, snaps to the grid as it goes when the grid is
+// magnetic, and shows the distance from where it started — the panel only hears about the
+// drop (or about a click, when the pointer never really moved).
+function _mapViewTokenDown(v, e, id) {
+    const t = (v.opts.tokens || []).find(x => x.id === id);
+    if (!t || e.button !== 0) return;
+    if (!t.draggable) { v.opts.onTokenClick?.(id); return; }
+    e.preventDefault();
+    const node = e.currentTarget;
+    const vb = v.opts.vb || { w: 100, h: 100 }, g = v.opts.grid;
+    const size = Math.max(1, Math.min(4, Number(t.size) || 1)), cell = g?.cell || vb.w / 30;
+    const start = { x: +t.x, y: +t.y };
+    let cur = start, moved = false;
+    node.setPointerCapture(e.pointerId);
+    const move = ev => {
+        if (!v.frame.isConnected) return;
+        if (!moved && Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 4) return;
+        moved = true;
+        const r = v.frame.getBoundingClientRect();
+        const p = { x: Math.min(vb.w, Math.max(0, (ev.clientX - r.left) / r.width * vb.w)),
+                    y: Math.min(vb.h, Math.max(0, (ev.clientY - r.top) / r.height * vb.h)) };
+        cur = g && g.snap ? gridSnap(p.x, p.y, g, size) : p;
+        node.classList.add('dragging');
+        _mapViewPlaceToken(node, cur.x, cur.y, size, cell, vb);
+        _mapViewMeasure(v, start, cur, g, vb);
+    };
+    const end = ev => {
+        node.removeEventListener('pointermove', move);
+        node.removeEventListener('pointerup', end);
+        node.removeEventListener('pointercancel', end);
+        node.classList.remove('dragging');
+        fill(v.measure);
+        if (ev.type === 'pointercancel') { _mapViewPlaceToken(node, start.x, start.y, size, cell, vb); return; }
+        if (moved) v.opts.onTokenDrop?.(id, cur.x, cur.y);
+        else v.opts.onTokenClick?.(id);
+    };
+    node.addEventListener('pointermove', move);
+    node.addEventListener('pointerup', end);
+    node.addEventListener('pointercancel', end);
+}
+
+// The measuring line of a drag: dashed, from the start to the token, with the distance
+// in cells and in the grid's unit. Nothing without a grid (a world map has no scale).
+function _mapViewMeasure(v, a, b, g, vb) {
+    if (!g) { fill(v.measure); return; }
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${vb.w} ${vb.h}`);
+    svg.setAttribute('preserveAspectRatio', 'none');
+    const line = document.createElementNS(SVG_NS, 'line');
+    [['x1', a.x], ['y1', a.y], ['x2', b.x], ['y2', b.y]].forEach(([k, n]) => line.setAttribute(k, n));
+    line.setAttribute('vector-effect', 'non-scaling-stroke');
+    svg.append(line);
+    fill(v.measure, svg, el('div', { className: 'map-measure-label', textContent: gridDistance(a, b, g).text,
+        style: { left: b.x / vb.w * 100 + '%', top: b.y / vb.h * 100 + '%' } }));
+}
+
+// Anchor the card beside its pin, never on it: right of the pin, or left when it would
+// overflow; vertically centred on the pin, then clamped inside the box so it is never cut.
+function _mapViewPlaceCard(v) {
+    if (!v.card || !v.cardAt) return;
+    const box = v.root.getBoundingClientRect();
+    const fr = v.frame.getBoundingClientRect();
+    if (!box.width || !fr.width) return;
+    const px = fr.left + fr.width * v.cardAt.x / 100 - box.left;
+    const py = fr.top + fr.height * v.cardAt.y / 100 - box.top;
+    // The pin's name and tokens hang below it and are wider than the dot: clear their
+    // whole extent, not just the point, or the card hides who is standing there.
+    let left = px, right = px;
+    const pin = keyedNode(v.pins, v.cardKey) || keyedNode(v.toks, v.cardKey);
+    if (pin) for (const n of pin.querySelectorAll('*')) {
+        const r = n.getBoundingClientRect();
+        if (!r.width) continue;
+        left = Math.min(left, r.left - box.left); right = Math.max(right, r.right - box.left);
+    }
+    const w = v.card.offsetWidth, h = v.card.offsetHeight, gap = 12, pad = 8;
+    let x = right + gap;
+    if (x + w > box.width - pad) x = left - gap - w;
+    x = Math.max(pad, Math.min(box.width - w - pad, x));
+    const y = Math.max(pad, Math.min(box.height - h - pad, py - h / 2));
+    v.card.style.left = x + 'px';
+    v.card.style.top = y + 'px';
+}
+
+// The grid of a tactical map: one <pattern>, so it costs the same at any zoom and any
+// number of cells. Under the zones — the fog must hide it too. Each line is drawn twice,
+// dark then light, so it reads on a pale parchment as on a dark dungeon. The width is in
+// image pixels, scaled to the picture so it stays about one screen pixel at fit.
+function _mapGridLayer(g, vb) {
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('class', 'map-grid');
+    if (!g || !g.show) return svg;
+    svg.setAttribute('viewBox', `0 0 ${vb.w} ${vb.h}`);
+    svg.setAttribute('preserveAspectRatio', 'none');
+    const sw = Math.max(vb.w, vb.h) / 900;
+    const at = (n, attrs) => { const e = document.createElementNS(SVG_NS, n); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+    const pat = at('pattern', { id: 'map-grid-cell', patternUnits: 'userSpaceOnUse',
+        x: g.ox, y: g.oy, width: g.cell, height: g.cell });
+    const d = `M ${g.cell} 0 L 0 0 0 ${g.cell}`;
+    pat.append(at('path', { d, class: 'map-grid-dark', fill: 'none', 'stroke-width': sw * 2 }),
+               at('path', { d, class: 'map-grid-line', fill: 'none', 'stroke-width': sw }));
+    const defs = at('defs', {}); defs.append(pat);
+    svg.append(defs, at('rect', { width: vb.w, height: vb.h, fill: 'url(#map-grid-cell)' }));
     return svg;
 }
 
@@ -648,12 +1081,17 @@ function makeNotes({ key, ids, sync, syncSoon, remove }) {
     }
 
     function renderEditor() {
-        const nameInput = $('name'), area = $('area');
+        const nameInput = $('name'), area = $('area'), shareBtn = $('share');
         if (!nameInput || !area) return;
         const note = current();
         nameInput.value = note ? note.name : '';
         area.value = note ? note.content : '';
         nameInput.disabled = area.disabled = !note;
+        if (shareBtn) {
+            shareBtn.disabled = !note;
+            shareBtn.textContent = note && note.shared ? 'Partagée' : 'Privée';
+            shareBtn.classList.toggle('on', !!(note && note.shared));
+        }
     }
 
     function render() { renderList(); renderEditor(); }
@@ -694,6 +1132,16 @@ function makeNotes({ key, ids, sync, syncSoon, remove }) {
         syncSoon?.(note, posOf(note));
     }
 
+    // A shared note shows in every participant's Journal (journal_notes()).
+    function share() {
+        const note = current();
+        if (!note) return;
+        note.shared = !note.shared;
+        persist();
+        renderEditor();
+        sync?.(note, posOf(note));
+    }
+
     function rename() {
         const note = current();
         if (!note) return;
@@ -703,7 +1151,7 @@ function makeNotes({ key, ids, sync, syncSoon, remove }) {
         syncSoon?.(note, posOf(note));
     }
 
-    return { load, add, select, del, save, rename, get list() { return list; } };
+    return { load, add, select, del, save, rename, share, get list() { return list; } };
 }
 
 // Camera logging, off by default. The push/lock/device/stats chatter narrated every
@@ -763,48 +1211,6 @@ function makeCamera({ tag, sidPrefix, lockPrefix, frameId,
     // webcam, several seconds in, and never at all when this tab isn't the pusher.
     let devices = [];
     try { devices = JSON.parse(localStorage.getItem(DEV_LIST_KEY) || '[]'); } catch (_) {}
-
-    // ── Microphone ────────────────────────────────────────────────────────────
-    // 'off' (default) | 'ptt' (hold a key) | 'auto' (VDO.ninja's noise gate opens on
-    // voice). Like the device, a property of this machine and this person rather than
-    // of a character, so it is not scoped.
-    //   ptt  — the push URL carries &mute, and the key posts {mic:true|false} to the
-    //          iframe. Only works while this tab has focus: a web page cannot hear a
-    //          global hotkey.
-    //   auto — &noisegate ducks the mic to 3% below the threshold and holds it open
-    //          1s after speech. VDO.ninja's gate attenuates rather than mutes, and has
-    //          no true voice-activity detector, so this is the closest it offers.
-    // Noise suppression is Chrome's own (VDO.ninja's &denoise, on by default).
-    const MIC_KEY = 'aria-mic-mode', PTT_KEY = 'aria-mic-ptt-key';
-    let micMode = localStorage.getItem(MIC_KEY) || 'off';
-    let pttKey = localStorage.getItem(PTT_KEY) || 'KeyV';   // KeyboardEvent.code: layout-independent
-    let pttBtn = null;                                      // the key button, for the "talking" cue
-    let micIds = {};                                        // remembered by renderMicPick()
-    const micParams = () => micMode === 'ptt' ? '&mute'
-                          : micMode === 'auto' ? '&noisegate&noisegatesettings=3,25,1000'
-                          : '&audiodevice=0';
-    const micSend = on => {
-        pttBtn?.classList.toggle('talking', on);
-        const f = document.getElementById(frameId);
-        if (f?.contentWindow && f.src && f.src !== 'about:blank') f.contentWindow.postMessage({ mic: on }, '*');
-    };
-    let rebinding = false;
-    window.addEventListener('keydown', e => {
-        if (rebinding) {                                    // the next key becomes the talk key
-            rebinding = false;
-            e.preventDefault();
-            if (e.code !== 'Escape') { pttKey = e.code; localStorage.setItem(PTT_KEY, pttKey); }
-            cam.renderMicPick();
-            return;
-        }
-        if (micMode !== 'ptt' || e.code !== pttKey || e.repeat) return;
-        const t = e.target;                                 // never steal a key someone is typing
-        if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
-        micSend(true);
-    });
-    // Released anywhere, and on blur: a keyup lost to another window must not leave the mic open.
-    window.addEventListener('keyup', e => { if (micMode === 'ptt' && e.code === pttKey) micSend(false); });
-    window.addEventListener('blur', () => { if (micMode === 'ptt') micSend(false); });
 
     // Every log line that carries a VDO.ninja URL goes through this: the room
     // password is enough to join the room and watch the whole table, and these logs
@@ -936,15 +1342,16 @@ function makeCamera({ tag, sidPrefix, lockPrefix, frameId,
             // Blank &view: "no streams will play; only publishing will be allowed" —
             // without it the push page joins as a full room client and downloads (and
             // renders) every other guest's video next to the self preview.
-            // Mic off = &audiodevice=0 — NOT &noaudio. &noaudio is a *viewer-side* option:
-            // it silences incoming streams and does nothing to what we publish, so the
+            // &audiodevice=0 — NOT &noaudio. &noaudio is a *viewer-side* option: it
+            // silences incoming streams and does nothing to what we publish, so the
             // push page kept asking for the microphone. Chrome asks for camera AND
             // mic in one prompt, and denying it fails getUserMedia outright — the
             // webcam then never starts and nothing on screen says why. &audiodevice=0
             // disables the mic before capture, so only the camera is requested.
-            // Turning the mic on (micParams) brings that prompt back, which is why it
-            // is opt-in.
-            let src = `https://vdo.ninja/?push=${streamId()}&room=${encodeURIComponent(room())}&view&autostart&webcam${micParams()}&cleanoutput`;
+            // The Accueil's Options › Micro sets 'aria-mic' (per browser, like the
+            // camera device); with it on, the mic is published too — table voice.
+            const mic = localStorage.getItem('aria-mic') === '1' ? '' : '&audiodevice=0';
+            let src = `https://vdo.ninja/?push=${streamId()}&room=${encodeURIComponent(room())}&view&autostart&webcam${mic}&cleanoutput`;
             // Without this VDO.ninja takes whatever Chrome offers first, which on a
             // streaming machine is usually the OBS virtual camera.
             if (videoDevice) src += `&videodevice=${encodeURIComponent(videoDevice)}`;
@@ -1043,44 +1450,10 @@ function makeCamera({ tag, sidPrefix, lockPrefix, frameId,
             if (videoDevice) localStorage.setItem(DEV_KEY, videoDevice);
             else localStorage.removeItem(DEV_KEY);
             camLog(tag, 'camera device →', videoDevice || '(auto)');
-            cam.repush();
-            onChange();
-        },
-
-        // The URL is the only switch for device and mic mode, so re-src the push frame.
-        repush() {
             const frame = document.getElementById(frameId);
             if (frame) frame.src = 'about:blank';   // force syncPushFrame past its "unchanged" check
             cam.syncPushFrame();
-        },
-
-        get micMode() { return micMode; },
-        setMicMode(m) {
-            micMode = ['ptt', 'auto'].includes(m) ? m : 'off';
-            localStorage.setItem(MIC_KEY, micMode);
-            camLog(tag, 'mic →', micMode);
-            cam.repush();
-            cam.renderMicPick();
-        },
-
-        // Fill the mic <select> and the talk-key button (ids remembered from the first
-        // call, since the key handler above re-renders without knowing them). Hidden
-        // with no room — nothing is published then.
-        renderMicPick(selectId, keyBtnId) {
-            if (selectId) micIds = { selectId, keyBtnId };
-            if (!micIds.selectId) return;   // no panel has rendered its picker yet
-            const sel = document.getElementById(micIds.selectId), btn = document.getElementById(micIds.keyBtnId);
-            if (!sel || !btn) return;
-            sel.style.display = room() ? '' : 'none';
-            fill(sel, ...[['off', 'Micro : coupé'], ['ptt', 'Micro : push-to-talk'], ['auto', 'Micro : voix auto']]
-                .map(([v, t]) => el('option', { value: v, textContent: t })));
-            sel.value = micMode;
-            sel.onchange = () => cam.setMicMode(sel.value);
-            pttBtn = btn;
-            btn.style.display = room() && micMode === 'ptt' ? '' : 'none';
-            btn.textContent = rebinding ? 'Appuyez sur une touche…' : 'Touche : ' + pttKey.replace(/^(Key|Digit)/, '');
-            btn.title = 'Maintenir pour parler (onglet actif uniquement) — cliquer pour changer (Échap annule)';
-            btn.onclick = () => { rebinding = true; cam.renderMicPick(); };
+            onChange();
         },
 
         // Fill a <select> with the known cameras. Kept here rather than in each panel
@@ -1160,8 +1533,8 @@ function makeFileViewer({ prefix = '', files }) {
             fill(body);
             // f.type can be missing on a malformed grant or an old row — guard it.
             // The URL is remote-controlled (grants travel over Ably), so a
-            // javascript: src would execute in this origin: _safeUrl or nothing.
-            const url = _safeUrl(f.url);
+            // javascript: src would execute in this origin: _fileUrl or nothing.
+            const url = _fileUrl(f.url);
             const type = f.type || '';
             if (url && type.startsWith('image/')) {
                 const img = el('img', { className: 'fv-image', src: url });
@@ -1204,14 +1577,9 @@ function fileIcon(type) {
 }
 
 // ═══════════════════════════════════════════
-//  THEME / CONFIG MODAL
+//  CONFIG MODAL
 // ═══════════════════════════════════════════
 let config = JSON.parse(localStorage.getItem('aria-config') || '{}');
-if (config.lightMode) document.body.classList.add('light-mode');
-
-function applyTheme(light) {
-    document.body.classList.toggle('light-mode', !!light);
-}
 
 function toggleConfig() {
     document.getElementById('config-modal').classList.toggle('show');
@@ -1252,17 +1620,76 @@ function wireImageZoom(img) {
 let saveKey = localStorage.getItem('aria-save-key') || null;
 let _pendingNewKey = null;
 
-// Check whether Supabase sync is configured and a save key is available.
-function _supabaseReady() { return !!SUPABASE_URL && !!SUPABASE_ANON_KEY && !!saveKey; }
+// Check whether Supabase sync is configured and a save key is available. Every
+// table but overlay_configs is behind RLS now, so a save key without a session
+// reads and writes nothing — being signed in is part of being ready.
+function _supabaseReady() { return !!SUPABASE_URL && !!SUPABASE_ANON_KEY && !!saveKey && sbSignedIn(); }
 
-// Show the two-panel gateway (new key + existing key) with a freshly generated key.
-function showGateway() {
+// Signing in happens on Connexion (index.html) only; without a session the panel
+// sends you there. Signed in, the gateway is the save-key stage — shown only to an
+// account that owns no save yet: a new save, or claiming an old key.
+function showGateway(stage) {
+    const signedIn = sbSignedIn();
+    if (stage === 'auth' || !signedIn) { location.replace('../index.html'); return; }
     _pendingNewKey = uid();
     document.getElementById('gateway-key-display').textContent = _pendingNewKey;
+
+    const who = document.getElementById('gateway-account');
+    if (who) {
+        who.style.display = signedIn ? '' : 'none';
+        const label = document.getElementById('gateway-account-mail');
+        if (label) label.textContent = sbUserEmail();
+    }
     const cancel = document.getElementById('gateway-cancel');
     if (cancel) cancel.style.display = saveKey ? '' : 'none';
     document.getElementById('file-gateway').style.display = 'flex';
-    if (window.ariaDungeonBg) window.ariaDungeonBg.setActive(true);
+    gateBackdrop(true);
+}
+
+// The stone arch behind the gateway and selection screens; torn down in the app.
+let _gateBg = null;
+function gateBackdrop(on) {
+    if (on && !_gateBg) _gateBg = ariaBg.mount('arch', document.getElementById('dungeon-bg-root'));
+    else if (!on && _gateBg) { _gateBg.destroy(); _gateBg = null; }
+}
+
+// Sign out and go back to Connexion. The local data stays: it belongs to the save
+// key, and clearing it here would lose anything not yet synced.
+// "← Seuil": back to the campaign's Accueil (a join code works as well as an id),
+// or to the Hub when the panel sits at no campaign.
+function goSeuil(camp) {
+    location.assign(camp ? 'aria-accueil.html?camp=' + encodeURIComponent(camp) : 'aria-hub.html');
+}
+
+function signOut() {
+    sbSignOut();
+    saveKey = null;
+    localStorage.removeItem('aria-save-key');
+    location.assign('../index.html');
+}
+
+// Adopt the account's own save key, or ask which one to set up. Shared by the
+// sign-in path and by the reload path, so both resolve the key the same way.
+async function enterWithSession() {
+    const owned = await sbOwnedSaves();
+    // sbOwnedSaves() returns [] both for a new account and for a session whose
+    // refresh token died in _sbFetch. Those need different stages, and only the
+    // session says which: offering "new save / claim a key" to a signed-out user
+    // would land on a write nothing can accept.
+    if (!sbSignedIn()) { showGateway('auth'); return; }
+
+    // One account can hold both a player save and a GM save — `type` is what tells
+    // them apart, and only this panel knows which one it is.
+    const mine = owned.find(r => r.type === ARIA.role) || owned[0];
+    if (!mine) { showGateway('keys'); return; }   // nothing yet: new save, or claim an old key
+
+    saveKey = mine.save_key;
+    localStorage.setItem('aria-save-key', saveKey);
+    const ok = await loadFromSupabase();
+    hideGateway();
+    showSelectionScreen();
+    if (ok) ARIA.syncAll();
+    ARIA.afterRestore();
 }
 
 // Hide the file-gateway panel.
@@ -1283,21 +1710,31 @@ async function confirmNewKey() {
     if (!_pendingNewKey) return;
     saveKey = _pendingNewKey;
     localStorage.setItem('aria-save-key', saveKey);
+    // `owner` is not sent: the column defaults to auth.uid(), so the row belongs to
+    // whoever is signed in. Sending it from here would be a second place to get it
+    // wrong, and RLS would reject any value but this one anyway.
     await sbUpsert('saves', { save_key: saveKey, type: ARIA.role });
     await ARIA.syncAll();
     hideGateway();
     showSelectionScreen();
 }
 
-// Load data from Supabase using an existing save key entered by the user.
+// Attach a save key created before accounts existed to the signed-in account.
+//
+// This used to just verify the key existed and adopt it locally, because the key
+// was the whole access control. It no longer is: claim_save_key() writes the
+// ownership row-side, and until it succeeds RLS returns nothing for that key — so
+// adopting it locally without claiming would give a panel that syncs into a void.
 async function submitExistingKey() {
     const input = document.getElementById('gateway-key-input');
     const key = input ? input.value.trim() : '';
     if (!key) return;
-    // Verify the key exists before adopting it — a typo would otherwise push the
-    // previous key's local data under a brand-new key on the next sync.
-    const rows = await sbSelect('saves', 'save_key=eq.' + encodeURIComponent(key) + '&select=save_key');
-    if (!rows.length) { alert('Clé introuvable. Vérifiez la clé saisie.'); return; }
+    if (!sbSignedIn()) { _authError('Connectez-vous avant de rattacher une clé.'); return; }
+
+    if (!await sbClaimSaveKey(key)) {
+        alert('Clé introuvable, ou déjà rattachée à un autre compte.');
+        return;
+    }
     // Switching keys: drop the old key's local data so it never merges into the new one.
     if (saveKey && key !== saveKey) ARIA.clearLocal();
     saveKey = key;
@@ -1305,19 +1742,24 @@ async function submitExistingKey() {
     await loadFromSupabase();
     hideGateway();
     showSelectionScreen();
+    ARIA.afterRestore();
 }
 
 // Update the save-key status label on the selection screen.
+// The account is what the row identifies now, so it shows the address rather than
+// eight characters of a UUID. The key itself is still behind `Copier` — the OBS
+// overlay URL is built from it.
 function updateSaveKeyStatus() {
     const label = document.getElementById('sel-save-label');
     if (!label) return;
-    label.textContent = saveKey ? saveKey.slice(0, 8) + '…' : '—';
+    label.textContent = sbUserEmail() || (saveKey ? saveKey.slice(0, 8) + '…' : '—');
     label.className = 'sel-save-label' + (saveKey ? ' connected' : '');
 }
 
-// Show the gateway and focus the existing-key input so the user can switch keys.
+// Open the claim panel and focus its input. Reachable from the selection screen so
+// a key from before accounts can still be attached after the fact.
 function changeSaveKey() {
-    showGateway();
+    showGateway('keys');
     const input = document.getElementById('gateway-key-input');
     if (input) input.focus();
 }
@@ -1348,10 +1790,6 @@ let _routeCh = null;
 function initRouteChannel(ably) {
     _routeCh = null;
     if (!ably || !saveKey) return;
-    // The overlay URL is only ?s=<save key>, so the Ably key it needs to reach this
-    // channel at all has to come from somewhere the overlay can read with nothing but
-    // that key: the saves row. Written on every entry so a changed key catches up.
-    if (config.ablyKey) sbPatch('saves', { ably_key: config.ablyKey }, 'save_key=eq.' + encodeURIComponent(saveKey));
     _routeCh = ably.channels.get('aria-route-' + saveKey);
     _routeCh.subscribe('hello', () => publishRoute());
     publishRoute();
@@ -1367,18 +1805,15 @@ function cancelGateway() {
     if (saveKey) { hideGateway(); } else { showGateway(); }
 }
 
-// On load: restore from Supabase if a save key exists, otherwise show the gateway.
+// On load: the session decides. Without one, nothing can be read at all, so the
+// gateway comes up on its sign-in stage rather than trying and failing silently.
+//
+// enterWithSession() does the rest — including the push-back sync, which only runs
+// when the load succeeded: after a failed (offline) load, syncing would overwrite
+// newer remote data with stale local state.
 async function tryRestoreSupabase() {
-    if (!saveKey) { showGateway(); return; }
-    const ok = await loadFromSupabase();
-    hideGateway();
-    showSelectionScreen();
-    // Only push local data back up if the load succeeded — after a failed (offline)
-    // load, syncing would overwrite newer remote data with stale local state.
-    if (ok) ARIA.syncAll();
-    // After showSelectionScreen so that screen stays the fallback when nothing is
-    // remembered, and the place "changer de personnage/campagne" returns to.
-    ARIA.afterRestore();
+    if (!sbSignedIn()) { showGateway('auth'); return; }
+    await enterWithSession();
 }
 
 // ═══════════════════════════════════════════
@@ -1803,6 +2238,7 @@ function _ensureYTSlots(cb) {
         let readyCount = 0;
         const onSlotReady = () => { readyCount++; if (readyCount === 2) cb(); };
         _ytSlotA = new YT.Player('yt-player-a', {
+            host: 'https://www.youtube-nocookie.com',   // no YouTube cookies on players' browsers
             width: '1', height: '1',
             playerVars: { autoplay: 0, controls: 0, disablekb: 1, fs: 0 },
             events: {
@@ -1811,6 +2247,7 @@ function _ensureYTSlots(cb) {
             },
         });
         _ytSlotB = new YT.Player('yt-player-b', {
+            host: 'https://www.youtube-nocookie.com',   // no YouTube cookies on players' browsers
             width: '1', height: '1',
             playerVars: { autoplay: 0, controls: 0, disablekb: 1, fs: 0 },
             events: {
@@ -1957,7 +2394,10 @@ function makeChat({ selfId, selfName, contacts }) {
     // Who a thread has to reach: the participants that are not us.
     const recipients = t => t === 'global' ? [] : t.split('|').filter(id => id !== selfId());
     const paneOpen = () => openPanes.includes('tab-chat');
-    const chanFor = id => ably ? ably.channels.get(campaignChannel('aria-chat') + '-' + id) : null;
+    // Inboxes are `aria-chat-CODE:ID`: Ably wildcards only whole ':' segments, and the
+    // token grants "publish to any inbox, read only mine" as `…:*` + `…:<self>`.
+    const inbox = id => campaignChannel('aria-chat') + ':' + id;
+    const chanFor = id => ably ? ably.channels.get(inbox(id)) : null;
 
     function add(m) {
         if (!m || !m.id) return false;
@@ -1993,11 +2433,15 @@ function makeChat({ selfId, selfName, contacts }) {
         ably = client;
         const base = campaignChannel('aria-chat');
         chGlobal = ably.channels.get(base);
-        chInbox  = ably.channels.get(base + '-' + selfId());
+        chInbox  = ably.channels.get(inbox(selfId()));
         // Order by Ably's server timestamp, never the sender's clock: PCs at the table
         // drift by seconds, and a reply from a machine running behind sorted above the
-        // message it answered.
-        const onMsg = m => receive({ ...m.data, ts: m.timestamp || m.data?.ts });
+        // message it answered. The author must be the connection that sent it —
+        // clientIds are bound by the token, so this is what stops writing as someone else.
+        const onMsg = m => {
+            if (!m.data || m.data.authorId !== ablySender(m.clientId)) return;
+            receive({ ...m.data, ts: m.timestamp || m.data.ts });
+        };
         chGlobal.subscribe('msg', onMsg);
         chInbox.subscribe('msg', onMsg);
     }

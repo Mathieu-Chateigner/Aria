@@ -2,6 +2,12 @@
    ARIA PLAYER — Design System
    ═══════════════════════════════════════════════ */
 :root {
+    /* Map colours that mean the same on every side (aria-panel.css never names ember or
+       violet): a player's token is ember and a GM-only thing is violet on both panels and
+       on the overlay, whatever the panel accent. */
+    --map-player: var(--ember); --map-player-rgb: 236,164,86;
+    --map-secret: var(--violet); --map-secret2: var(--violet2);
+    --map-token-bg: #241c12; --map-monster-bg: #2a1414; --map-scrim: rgba(8,10,13,.85); --map-ink-rgb: 5,6,8;
     /* ── New design tokens — cold-ink / single-accent (player = ember) ── */
     --ink:#050608; --bg:#0b0e13; --panel:#10141b; --raise:#161b25;
     --line:rgba(150,168,200,.10); --line2:rgba(150,168,200,.20);
@@ -745,9 +751,6 @@
 .soigner-skill:hover::before { background: rgba(140, 214, 168, .16); }
 .soigner-skill:hover .skill-name,
 .soigner-skill:hover .skill-pct { color: #a8e6c0; }
-body.light-mode .soigner-skill:hover::before { background: rgba(44, 138, 87, .12); }
-body.light-mode .soigner-skill:hover .skill-name,
-body.light-mode .soigner-skill:hover .skill-pct { color: #26714a; }
 
 /* ═══════════════════════════════════════════
    TASK 4 — STATS TAB
@@ -964,7 +967,6 @@ body.light-mode .soigner-skill:hover .skill-pct { color: #26714a; }
 }
 .rh-date:focus { border-color: var(--ember); outline: none; color: var(--text); }
 .rh-date::-webkit-calendar-picker-indicator { filter: invert(.55); cursor: pointer; }
-body.light-mode .rh-date::-webkit-calendar-picker-indicator { filter: none; }
 .rh-date-clear { color: var(--ember); border-color: var(--embersoft); }
 .clear-btn {
     background: none;
@@ -1915,7 +1917,7 @@ body.light-mode .rh-date::-webkit-calendar-picker-indicator { filter: none; }
     border-radius: 8px;
     padding: 24px;
     display: none;
-}.theme-toggle input:checked + .theme-toggle-slider { background: rgba(236,164,86,0.25); border-color: var(--gold-dim); }/* Soigner target modal */
+}/* Soigner target modal */
 .soigner-target-modal {
     position: fixed;
     top: 50%; left: 50%;
@@ -1948,60 +1950,29 @@ body.light-mode .rh-date::-webkit-calendar-picker-indicator { filter: none; }
 .music-unlock-prompt:hover { background: var(--gold-dim); color: var(--bg); }
 
 /* ── CARTE ── */
-/* Geometry and idle appearance are shared (aria-panel.css); only the ".me" token
-   variant is player-specific — the GM has no character of its own to mark. */
-.map-title { font-family: 'Cinzel', serif; color: var(--gold-light); font-size: 14px; }
-.map-token.me { border-color: var(--gold); color: var(--gold-light); }
-/* Opaque for the player: an undiscovered zone hides everything under it, no see-through. */
-.zone-fog { fill: rgb(9,8,4); stroke: none; }
-.map-poi-title { font-family: 'Cinzel', serif; color: var(--gold-light); font-size: 13px; }
-.map-poi-desc  { font-size: 12px; color: var(--parchment); white-space: pre-wrap; }
-.map-drawer { border-top: 1px solid var(--border); padding-top: 6px; }
-.map-drawer > summary { cursor: pointer; color: var(--gold-light); font-family: 'Cinzel', serif; font-size: 12px; }
-.map-note-row { display: flex; gap: 8px; align-items: center; padding: 3px 0; }
-.map-note-name { min-width: 120px; font-size: 12px; color: var(--parchment-dim); }
-.map-note-input { flex: 1; background: var(--bg2); border: 1px solid var(--border); color: var(--parchment);
-                  border-radius: var(--radius); padding: 3px 6px; font-size: 12px; }
-.map-poi-mynote { font-size: 12px; color: var(--parchment-dim); font-style: italic; white-space: pre-wrap; }
-.map-move-btn { background: var(--bg3); border: 1px solid var(--border); color: var(--parchment);
-                border-radius: var(--radius); padding: 4px 8px; font-size: 12px; cursor: pointer; }
-.map-move-btn:disabled { opacity: .55; cursor: default; }
-.map-move-btn.denied   { border-color: var(--fail); color: var(--fail); }
-.sel-type-hint { font-family: 'Cormorant Garamond', serif; font-size: 13px; font-style: italic; color: var(--dim); opacity: .65; }/* ═══════════════════════════════════════════
-   LIGHT MODE
-   ═══════════════════════════════════════════ */
-body.light-mode {
-    --ink:#ddd4c2; --bg:#f4efe4; --panel:#fcf9f1; --raise:#fff;
-    --line:rgba(70,56,30,.13); --line2:rgba(70,56,30,.24);
-    --text:#2c2820; --warm:#1b1710; --dim:#6c6353; --faint:#9c917a;
-    --ember:#a9620f; --ember2:#8a4f0c; --embersoft:rgba(169,98,15,.14);
-    --accent-rgb: 169,98,15;   /* --accent-soft follows --embersoft on its own */
-    --violet:#6a47a3; --violet2:#523784; --violetsoft:rgba(106,71,163,.13);
-    --ok:#2c8a57; --bad:#bd3528; --warn:#9c6c12;
-    --field:rgba(50,38,14,.05); --field2:rgba(50,38,14,.035);
-    --track:rgba(50,38,14,.10); --track2:rgba(50,38,14,.15);
-    --chrome1:#efe7d6; --rail:#ebe2cf; --frameShadow:rgba(70,52,22,.16);
-    --pageGlow:rgba(169,98,15,.05); --hp1:#88c6a0;
-    --feed1:#cdc5b2; --feed2:#c2b9a3;
-    --deck1:#2a3142; --deck2:#1b212e;
-    --cardFace1:#fcf7eb; --cardFace2:#e9dfc9; --cardRed:#b03a3a; --cardInk:#2a2620;
-}
-/* The reskinned components are token-driven, so light mode "just works".
-   Only a few hard-coded colour signals need explicit light-mode handling.
-   The float roll card stays dark glass in both themes (a dramatic reveal). */
-body.light-mode .gm-dmg-toast {
-    background: rgba(189,53,40,0.92);
-    color: #fff;
-    border-color: rgba(150,30,10,0.5);
-}
-body.light-mode .gm-heal-toast {
-    background: rgba(44,138,87,0.92);
-    color: #fff;
-    border-color: rgba(20,100,50,0.5);
-}
-body.light-mode .other-roll-toast .ort-verdict.cs { color: var(--ember); }
-body.light-mode .other-roll-toast .ort-verdict.cf { color: var(--bad); }
-
+/* Shared geometry and look in css/aria-panel.css; this is the player's reading side. */
+/* Opaque for the player: an undiscovered zone hides everything under it, no see-through.
+   The edges are blurred (#map-soft) so it reads as darkness, not as a hole in the map. */
+.zone-fog { fill: var(--ink); stroke: none; }
+.map-poi-title { font-family: 'Cormorant Garamond', serif; font-size: 20px; font-weight: 600; color: var(--warm); line-height: 1.15; }
+.map-poi-desc  { font-family: 'Archivo', sans-serif; font-size: 12.5px; line-height: 1.5; color: var(--text); white-space: pre-wrap; }
+.map-poi-mynote { font-family: 'Cormorant Garamond', serif; font-size: 14px; font-style: italic; color: var(--dim); white-space: pre-wrap; }
+.map-move-btn { margin-top: 6px; align-self: flex-start; font-family: 'Archivo', sans-serif; font-size: 11px; font-weight: 600;
+                letter-spacing: .06em; text-transform: uppercase; padding: 7px 12px; border-radius: 3px; cursor: pointer;
+                background: var(--ember); border: 1px solid var(--ember); color: var(--ink); transition: filter .15s; }
+.map-move-btn:hover:not(:disabled) { filter: brightness(1.08); }
+.map-move-btn:disabled { background: none; border-color: var(--line2); color: var(--dim); cursor: default; }
+.map-move-btn.denied   { background: none; border-color: var(--bad); color: var(--bad); }
+.map-drawer { border-top: 1px solid var(--line); padding-top: 8px; }
+.map-drawer > summary { cursor: pointer; font-family: ui-monospace, Menlo, monospace; font-size: 10px; letter-spacing: .18em;
+                        text-transform: uppercase; color: var(--dim); }
+.map-drawer[open] > summary { color: var(--ember2); margin-bottom: 6px; }
+.map-note-row { display: flex; gap: 10px; align-items: center; padding: 3px 0; }
+.map-note-name { min-width: 130px; font-family: 'Cormorant Garamond', serif; font-size: 15px; font-weight: 600; color: var(--warm); }
+.map-note-input { flex: 1; background: var(--field); border: 1px solid var(--line2); color: var(--text); border-radius: 3px;
+                  padding: 5px 8px; font-family: 'Archivo', sans-serif; font-size: 12px; outline: none; }
+.map-note-input:focus { border-color: var(--ember); }
+.sel-type-hint { font-family: 'Cormorant Garamond', serif; font-size: 13px; font-style: italic; color: var(--dim); opacity: .65; }
 /* ── CAMERAS TAB ─────────────────────────── */
 .cameras-warning {
     font-family: 'Cormorant Garamond', serif;

@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self'; object-src 'none'; base-uri 'self'">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARIA — La taverne</title>
+    <meta name="theme-color" content="#050608">
+    <link rel="stylesheet" href="../css/aria-tokens.css">
+    <link rel="stylesheet" href="../css/aria-chargement.css">
+    <link rel="stylesheet" href="../css/aria-hub.css">
+</head>
+<body>
+<div class="hb-root">
+    <!-- ariaBg.mount('tavern') prepends the painting here -->
+    <div class="hb-veil"></div>
+
+    <header class="hb-head">
+        <div class="hb-head-l">
+            <div class="hb-word">ARIA</div>
+            <nav class="hb-nav" id="hb-nav"></nav>
+        </div>
+        <div class="hb-head-r">
+            <div class="hb-me">
+                <div class="hb-me-av">
+                    <div class="hb-me-frame">
+                        <svg viewBox="0 0 40 40" width="42" height="42" style="display:block;">
+                            <defs><linearGradient id="hoodG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5a3a22"></stop><stop offset="1" stop-color="#1c110a"></stop></linearGradient></defs>
+                            <path d="M1 41 C3 32 10 29 14 28 L26 28 C30 29 37 32 39 41 Z" fill="#24160d" stroke="rgba(236,164,86,.35)" stroke-width=".6"></path>
+                            <path d="M20 5 C13 5 9.5 11 9.5 18 C9.5 23 11.5 27 14 30 L26 30 C28.5 27 30.5 23 30.5 18 C30.5 11 27 5 20 5 Z" fill="url(#hoodG)" stroke="rgba(236,164,86,.55)" stroke-width=".7"></path>
+                            <path d="M20 11.5 C16 11.5 14.5 15.5 14.5 19.5 C14.5 23.5 17 27 20 27 C23 27 25.5 23.5 25.5 19.5 C25.5 15.5 24 11.5 20 11.5 Z" fill="#070403"></path>
+                            <ellipse cx="17.6" cy="19.6" rx="1.3" ry=".8" fill="#ffc46e"></ellipse>
+                            <ellipse cx="22.4" cy="19.6" rx="1.3" ry=".8" fill="#ffc46e"></ellipse>
+                            <path d="M16 32 L20 36 L24 32" fill="none" stroke="#c98a3e" stroke-width="1"></path>
+                        </svg>
+                    </div>
+                    <div class="hb-me-c tl"></div><div class="hb-me-c tr"></div><div class="hb-me-c bl"></div>
+                    <div class="hb-me-dot"></div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:2px;">
+                    <div class="hb-me-name" id="hb-me-name"></div>
+                    <div class="hb-me-status">En ligne</div>
+                </div>
+            </div>
+            <div class="hb-quit" id="hb-quit">Quitter</div>
+        </div>
+    </header>
+
+    <div class="hb-body">
+        <main class="hb-main">
+
+            <!-- ── Mes tables ── -->
+            <div class="hb-section" id="hb-mine">
+                <div class="hb-mine-head" id="hb-mine-head">
+                    <div class="hb-title-block">
+                        <div class="hb-kicker" id="hb-mine-sub"></div>
+                        <div class="hb-h1">Vos tables</div>
+                    </div>
+                    <div class="hb-code-box">
+                        <div class="hb-code-label">Code d'invitation d'un MJ</div>
+                        <div class="hb-code-row">
+                            <input class="hb-code-in" placeholder="Sceau · ex. NOX-4471" spellcheck="false">
+                            <div class="hb-code-btn">Rejoindre</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="hb-section" id="hb-welcome">
+                    <div class="hb-welcome">
+                        <div class="hb-welcome-k">Premiers pas</div>
+                        <div class="hb-welcome-t">Bienvenue à la taverne, voyageur.</div>
+                        <div class="hb-welcome-s">Un maître du jeu (MJ) raconte, les joueurs incarnent les héros. Par où commencer ?</div>
+                    </div>
+                    <div class="hb-paths">
+                        <div class="hb-path lit">
+                            <div class="hb-path-k" style="color:var(--ember);">Je découvre le jeu</div>
+                            <div class="hb-path-t">Trouver une table accueillante</div>
+                            <div class="hb-path-d"><span id="hb-beg-count">0</span> tables ouvertes acceptent les débutants. Aucune règle à connaître : le MJ vous guide.</div>
+                            <div class="hb-btn" id="hb-go-beg">Voir les tables débutants</div>
+                        </div>
+                        <div class="hb-path">
+                            <div class="hb-path-k" style="color:var(--hb-seal);">Un ami m'a invité</div>
+                            <div class="hb-path-t">Entrer un code d'invitation</div>
+                            <div class="hb-path-d">Votre MJ vous a donné un sceau, par exemple NOX-4471.</div>
+                            <div class="hb-path-code">
+                                <input class="hb-code-in" placeholder="NOX-4471" spellcheck="false">
+                                <div class="hb-code-btn">Rejoindre</div>
+                            </div>
+                        </div>
+                        <div class="hb-path">
+                            <div class="hb-path-k" style="color:var(--moss);">Je veux raconter</div>
+                            <div class="hb-path-t">Devenir maître du jeu</div>
+                            <div class="hb-path-d">Créez votre campagne, choisissez qui peut s'asseoir et invitez vos amis.</div>
+                            <div class="hb-path-ghost" id="hb-go-create">Créer une campagne</div>
+                        </div>
+                    </div>
+                    <div class="hb-sug" id="hb-sug" hidden></div>
+                </div>
+
+                <div class="hb-hero" id="hb-hero" hidden></div>
+                <div class="hb-reqs" id="hb-reqs" hidden></div>
+                <div class="hb-label hb-others-label" id="hb-others-label" hidden>Vos autres tables</div>
+                <div class="hb-grid-mine" id="hb-grid-mine"></div>
+                <div class="hb-reqs" id="hb-pending" hidden>
+                    <div class="hb-label" style="color:var(--dim-2);">Demandes en attente</div>
+                    <div class="hb-pend-list" id="hb-pend-list"></div>
+                </div>
+            </div>
+
+            <!-- ── Explorer ── -->
+            <div class="hb-section" id="hb-explore" hidden>
+                <div class="hb-title-block">
+                    <div class="hb-kicker" id="hb-explore-sub"></div>
+                    <div class="hb-h1">Tables ouvertes</div>
+                </div>
+                <div class="hb-search-row">
+                    <input class="hb-input hb-search" id="hb-q" placeholder="Chercher un nom, un MJ, un thème…">
+                    <div class="hb-pills" id="hb-filters"></div>
+                </div>
+                <div class="hb-grid-browse" id="hb-grid-browse"></div>
+                <div class="hb-empty" id="hb-browse-empty" hidden>Aucune table ne répond à cet appel.</div>
+            </div>
+
+            <!-- ── Créer ── -->
+            <div class="hb-section" id="hb-create" hidden>
+                <div class="hb-title-block">
+                    <div class="hb-kicker">Vous serez maître du jeu</div>
+                    <div class="hb-h1">Forger une campagne</div>
+                </div>
+                <div class="hb-create">
+                    <div class="hb-create-form">
+                        <div class="hb-field">
+                            <div class="hb-field-label">Couverture</div>
+                            <div class="hb-drop" id="hb-drop">
+                                <div class="hb-cover" id="hb-drop-img"></div>
+                                <div class="hb-drop-bar">
+                                    <div class="hb-drop-hint" id="hb-drop-hint"></div>
+                                    <div class="hb-drop-btns">
+                                        <div class="hb-drop-btn" id="hb-drop-pick"></div>
+                                        <div class="hb-drop-btn rm" id="hb-drop-rm" hidden>Retirer</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <input type="file" id="hb-file" accept="image/*" hidden>
+                        </div>
+                        <div class="hb-field">
+                            <label class="hb-field-label" for="hb-f-name">Nom</label>
+                            <input class="hb-input hb-name-in" id="hb-f-name" placeholder="Les Cendres de…">
+                        </div>
+                        <div class="hb-field">
+                            <label class="hb-field-label" for="hb-f-pitch">Accroche</label>
+                            <textarea class="hb-input hb-pitch-in" id="hb-f-pitch" rows="3" placeholder="Une phrase pour donner envie de s'asseoir à la table."></textarea>
+                        </div>
+                        <div class="hb-field">
+                            <div class="hb-field-label">Visibilité</div>
+                            <div class="hb-vis" id="hb-vis"></div>
+                        </div>
+                        <div class="hb-two">
+                            <div class="hb-field">
+                                <div class="hb-field-label">Places joueurs</div>
+                                <div class="hb-stepper">
+                                    <div class="hb-step" id="hb-seat-down">−</div>
+                                    <div class="hb-step-val" id="hb-seats">4</div>
+                                    <div class="hb-step" id="hb-seat-up">+</div>
+                                </div>
+                            </div>
+                            <div class="hb-field">
+                                <label class="hb-field-label" for="hb-f-date">Première séance</label>
+                                <input class="hb-input hb-date" id="hb-f-date" type="datetime-local">
+                            </div>
+                        </div>
+                        <div class="hb-field">
+                            <div class="hb-field-label">Rythme</div>
+                            <div class="hb-pills" id="hb-rhythm"></div>
+                        </div>
+                        <div class="hb-field">
+                            <label class="hb-field-label" for="hb-f-tags">Thèmes · séparés par des virgules</label>
+                            <input class="hb-input" id="hb-f-tags" placeholder="Horreur, Enquête, Débutants bienvenus">
+                        </div>
+                        <div class="hb-create-row">
+                            <div class="hb-create-btn" id="hb-create-btn">Forger la campagne</div>
+                            <div class="hb-create-hint" id="hb-create-hint"></div>
+                        </div>
+                    </div>
+
+                    <div class="hb-pv-wrap">
+                        <div class="hb-field-label" style="color:var(--dim-2);">Aperçu dans « Explorer »</div>
+                        <div class="hb-pv">
+                            <div class="hb-pv-img" id="hb-pv-img"></div>
+                            <div class="hb-row-between">
+                                <div class="hb-micro" id="hb-pv-vis"></div>
+                                <div class="hb-micro" id="hb-pv-seats" style="color:var(--moss);"></div>
+                            </div>
+                            <div class="hb-bcard-text">
+                                <div class="hb-pv-name" id="hb-pv-name"></div>
+                                <div class="hb-pitch" id="hb-pv-pitch" style="font-size:16px;"></div>
+                            </div>
+                            <div class="hb-tags" id="hb-pv-tags"></div>
+                            <div class="hb-pv-foot" id="hb-pv-foot"><span id="hb-pv-av"></span><div id="hb-pv-foot-text"></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <aside class="hb-aside">
+            <div id="hb-chat" class="hb-section" hidden>
+                <div class="hb-chat-head">
+                    <div class="hb-chat-back" id="hb-chat-back">←</div>
+                    <div id="hb-chat-av"></div>
+                    <div style="min-width:0;display:flex;flex-direction:column;gap:2px;">
+                        <div class="hb-chat-who" id="hb-chat-who"></div>
+                        <div class="hb-chat-sub" id="hb-chat-sub"></div>
+                    </div>
+                </div>
+                <div class="hb-chat-log" id="hb-chat-log"></div>
+                <div class="hb-chat-form">
+                    <input class="hb-input hb-chat-in" id="hb-chat-in">
+                    <div class="hb-send" id="hb-send">→</div>
+                </div>
+            </div>
+            <div id="hb-lists" class="hb-section">
+                <div class="hb-aside-label" id="hb-msg-label">Messages</div>
+                <div class="hb-note" id="hb-no-convs">Une question sur une table ? Ouvrez-la et écrivez directement à son MJ.</div>
+                <div class="hb-list" id="hb-conv-list"></div>
+                <div class="hb-aside-label second" id="hb-friends-label">Compagnons</div>
+                <div class="hb-note last" id="hb-no-friends">Les joueurs rencontrés à table apparaîtront ici.</div>
+                <div class="hb-list pad" id="hb-friend-list"></div>
+            </div>
+        </aside>
+    </div>
+
+    <div class="hb-modal-scrim" id="hb-modal-scrim" hidden>
+        <div class="hb-modal" id="hb-modal"></div>
+    </div>
+
+    <div class="hb-toast" id="hb-toast" hidden>
+        <div class="hb-toast-gem" id="hb-toast-gem"></div>
+        <div class="hb-toast-text" id="hb-toast-text"></div>
+    </div>
+</div>
+
+<script src="../js/aria-bg.js"></script>
+<script src="../js/aria-chargement.js"></script>
+<script src="../js/aria-supabase.js"></script>
+<script src="../js/aria-shared.js"></script>
+<script src="../js/aria-hub-data.js"></script>
+<script src="../js/aria-hub.js"></script>
+</body>
+</html>

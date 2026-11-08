@@ -1,4 +1,10 @@
 :root {
+    /* Map colours that mean the same on every side (aria-panel.css never names ember or
+       violet): a player's token is ember and a GM-only thing is violet on both panels and
+       on the overlay, whatever the panel accent. */
+    --map-player: var(--ember); --map-player-rgb: 236,164,86;
+    --map-secret: var(--violet); --map-secret2: var(--violet2);
+    --map-token-bg: #241c12; --map-monster-bg: #2a1414; --map-scrim: rgba(8,10,13,.85); --map-ink-rgb: 5,6,8;
     /* New design tokens — overlay stays DARK in both themes (composites over video) */
     --ink:#050608; --bg:#0b0e13; --panel:#10141b; --raise:#161b25;
     --line:rgba(150,168,200,.10); --line2:rgba(150,168,200,.20);
@@ -1051,19 +1057,46 @@ body.shake {
 .ow-map { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
 .ow-map-frame { position: relative; display: inline-block; max-width: 100%; max-height: 100%; }
 .ow-map-img { max-width: 100%; max-height: 100%; width: auto; height: auto; display: block;
-              filter: sepia(.45) saturate(.75) contrast(1.08) brightness(.92); }
-/* Zones sit above the image and below the pins — same order as the two panels. */
+              filter: saturate(.7) brightness(.85) contrast(1.05); }
+/* Tokens of a tactical map — as in the panels (no zoom here, so the name scales with the widget). */
+.ow-map-tok { position: absolute; box-sizing: border-box; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+              container-type: inline-size; background: var(--map-token-bg); border: 2px solid var(--map-player);
+              box-shadow: 0 2px 8px rgba(0,0,0,.7); }
+.ow-map-tok.monster { background: var(--map-monster-bg); border-color: var(--bad); }
+.ow-map-tok.dead { border-color: var(--faint); opacity: .45; }
+.ow-map-tok.me { box-shadow: 0 0 0 4px rgba(var(--map-player-rgb), .25), 0 0 18px rgba(var(--map-player-rgb), .4); }
+.ow-map-tok-ini { font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 46cqw; line-height: 1; color: var(--warm); }
+.ow-map-tok-hp { position: absolute; left: 12%; right: 12%; bottom: -10cqw; height: max(2px, 7cqw); border-radius: 2px;
+                 background: rgba(255,255,255,.07); overflow: hidden; }
+.ow-map-tok-hp i { display: block; height: 100%; background: var(--ok); }
+.ow-map-tok-hp[data-level="mid"] i { background: var(--warn); }
+.ow-map-tok-hp[data-level="low"] i { background: var(--bad); }
+.ow-map-tok-marks { position: absolute; right: -6cqw; top: -6cqw; font-size: 26cqw; line-height: 1; color: var(--warm); text-shadow: 0 0 3px #000; }
+.ow-map-tok-name { position: absolute; left: 50%; top: calc(100% + 12cqw); margin-top: 2px; transform: translateX(-50%); white-space: nowrap;
+                   font-family: 'Archivo', sans-serif; font-size: 11px; font-weight: 500; color: var(--text);
+                   background: var(--map-scrim); border: 1px solid var(--line2); border-radius: 999px; padding: 1px 7px; }
+/* Grid of a tactical map, under the zones — as in the panels. */
+.ow-map-grid { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ow-map-grid-dark { stroke: rgba(var(--map-ink-rgb), .35); }
+.ow-map-grid-line { stroke: rgba(232,235,241,.22); }
+/* Zones sit above the image and below the pins — same order and same look as the panels. */
 .ow-map-zones-wrap { position: absolute; inset: 0; }
-.ow-map-zones  { position: absolute; inset: 0; width: 100%; height: 100%; }
-.ow-zone-known { fill: rgba(201,168,76,.10); stroke: #c9a84c; stroke-width: 1.5; }
-.ow-zone-fog   { fill: rgb(9,8,4); stroke: none; }
+.ow-map-zones  { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.ow-zone-known { fill: rgba(var(--map-player-rgb), .06); stroke: rgba(var(--map-player-rgb), .55); stroke-width: 1.25; }
+.ow-zone-fog   { fill: var(--ink); stroke: none; filter: url(#ow-map-soft); }
+/* Pins: zero-size anchor on the coordinate, name and tokens hanging below (as in the panels). */
 .ow-map-pins { position: absolute; inset: 0; }
-.ow-map-pin { position: absolute; transform: translate(-50%, -50%);
-              display: flex; flex-direction: column; align-items: center; gap: 2px; }
-.ow-map-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--gold);
-              box-shadow: 0 0 10px 3px rgba(201,168,76,.45); }
-.ow-map-label { font-family: 'Cinzel', serif; font-size: 12px; color: var(--parchment);
-                text-shadow: 0 1px 3px rgba(0,0,0,.9); white-space: nowrap; }
-.ow-map-tokens { display: flex; flex-direction: column; align-items: center; gap: 1px; }
-.ow-map-token { background: rgba(9,8,4,.75); border: 1px solid var(--border); border-radius: 10px;
-                padding: 0 6px; font-size: 10px; color: var(--parchment); white-space: nowrap; }
+.ow-map-pin { position: absolute; width: 0; height: 0; }
+.ow-map-dot { position: absolute; left: -5px; top: -5px; width: 10px; height: 10px; border-radius: 50%; background: var(--map-player);
+              box-shadow: 0 0 0 2px rgba(var(--map-ink-rgb), .8), 0 0 12px 3px rgba(var(--map-player-rgb), .45); }
+.ow-map-label { position: absolute; left: 0; top: 8px; transform: translateX(-50%); white-space: nowrap;
+                font-family: 'Cormorant Garamond', serif; font-size: 16px; font-weight: 600; font-style: italic;
+                color: var(--warm); text-shadow: 0 1px 6px rgba(0,0,0,.95), 0 0 2px rgba(0,0,0,.9); }
+.ow-map-tokens { position: absolute; left: 0; top: 31px; transform: translateX(-50%);
+                 display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.ow-map-token { display: flex; align-items: center; gap: 5px; padding: 1px 8px 1px 1px; white-space: nowrap;
+                background: var(--map-scrim); border: 1px solid var(--line2); border-radius: 999px;
+                font-family: 'Archivo', sans-serif; font-size: 11px; font-weight: 500; color: var(--text); }
+.ow-map-token-ini { width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+                    box-sizing: border-box; background: var(--map-token-bg); border: 1.5px solid var(--map-player);
+                    font-family: 'Cormorant Garamond', serif; font-size: 12px; font-weight: 700; color: var(--warm); }

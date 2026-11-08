@@ -2,11 +2,10 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
+    <!-- shortcut: 'unsafe-inline' because the static markup still has ~100 on*= handlers; drop it once they move to addEventListener -->
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' https://www.youtube.com https://s.ytimg.com; object-src 'none'; base-uri 'self'">
     <title>ARIA – Éditeur d'overlay</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Archivo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+    <link rel="stylesheet" href="../css/aria-fonts.css">
     <link rel="stylesheet" href="../css/aria-overlay-editor.css">
 </head>
 <body>
@@ -105,6 +104,7 @@
         </div>
     </div>
 
+    <script src="../js/vendor/ably.min-2.29.0.js"></script>
     <script src="../js/aria-supabase.js"></script>
     <script src="../js/aria-overlay-editor.js"></script>
 </body>

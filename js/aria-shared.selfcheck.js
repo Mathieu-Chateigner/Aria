@@ -20,9 +20,19 @@ global.localStorage = {
     setItem: (k, v) => _store.set(k, String(v)),
     removeItem: k => _store.delete(k),
 };
-const src = fs.readFileSync(__dirname + '/aria-shared.js', 'utf8');
-const { rollDiceFormula, rollPassesFilter, classify, append, makeCamera, makeChat } =
-    new Function(src + '\nreturn { rollDiceFormula, rollPassesFilter, classify, append, makeCamera, makeChat };')();
+const src = fs.readFileSync(__dirname + '/aria-roll.js', 'utf8') + '\n' + fs.readFileSync(__dirname + '/aria-shared.js', 'utf8');
+global.SUPABASE_URL = 'https://proj.supabase.co';
+const { rollDiceFormula, rollPassesFilter, rollType, append, makeCamera, makeChat, _fileUrl, generateJoinCode } =
+    new Function(src + '\nreturn { rollDiceFormula, rollPassesFilter, rollType, append, makeCamera, makeChat, _fileUrl, generateJoinCode };')();
+
+// ── Shared file URLs ─────────────────────────────────────────────────────────
+// Only our own public storage: a file grant is remote-controlled.
+const okFile = 'https://proj.supabase.co/storage/v1/object/public/campaign-files/a.png';
+assert.strictEqual(_fileUrl(okFile), okFile);
+assert.strictEqual(_fileUrl('javascript:alert(1)'), '');
+assert.strictEqual(_fileUrl('https://evil.example/storage/v1/object/public/x.png'), '');
+assert.strictEqual(_fileUrl('https://proj.supabase.co.evil.example/storage/v1/object/public/x'), '');
+assert.strictEqual(_fileUrl(okFile + '" onerror="x'), '');
 
 // ── Dice formulas ─────────────────────────────────────────────────────────────
 // Flat terms are exact, so assert their totals directly.
@@ -49,13 +59,13 @@ assert.match(rollDiceFormula(' 3 D 4 ').breakdown, /^\[\d+\+\d+\+\d+\]$/);
 // ── Roll filter pills ─────────────────────────────────────────────────────────
 // The regression this replaced: the GM's copy ended in `has(type)`, so a critical
 // success vanished while "Succès" was lit. Succès/Échec include their crits.
-const critSuccess = { roll: 5,  threshold: 50, success: true  };   // <=10 and success
-const critFail    = { roll: 95, threshold: 50, success: false };   // >=91 and failure
+const critSuccess = { roll: 5,  threshold: 50, success: true  };   // <= floor(50/10)
+const critFail    = { roll: 97, threshold: 50, success: false };   // >=96
 const plainOk     = { roll: 40, threshold: 50, success: true  };
 const plainFail   = { roll: 60, threshold: 50, success: false };
 const die         = { roll: 4,  threshold: null, success: null };
-assert.strictEqual(classify(5, 50, true), 'crit-success');   // guards the fixtures
-assert.strictEqual(classify(95, 50, false), 'crit-fail');
+assert.strictEqual(rollType(5, 50), 'crit-success');   // guards the fixtures
+assert.strictEqual(rollType(97, 50), 'crit-fail');
 
 const S = (...k) => new Set(k);
 // Empty filter passes everything, dice rolls included.
@@ -92,8 +102,36 @@ assert.deepStrictEqual(fakeParent.kids, ['a', 'b', 'c']);
 // Loaded by all four pages, so both filters are written once. They decide what each
 // spectator sees; a divergence here is a leak on stream.
 const sbSrc = fs.readFileSync(__dirname + '/aria-supabase.js', 'utf8');
-const { visiblePois, fogZones } =
-    new Function(sbSrc + '\nreturn { visiblePois, fogZones };')();
+const { visiblePois, fogZones, mapVB, mapGrid, gridSnap, gridCalib, gridDistance, visibleTokens } =
+    new Function(sbSrc + '\nreturn { visiblePois, fogZones, mapVB, mapGrid, gridSnap, gridCalib, gridDistance, visibleTokens };')();
+
+// ── Tactical map geometry ─────────────────────────────────────────────────────
+// A world map works in percentages, a tactical one in image pixels.
+assert.deepStrictEqual(mapVB({ kind: 'monde', size: { w: 1600, h: 900 } }), { w: 100, h: 100 });
+assert.deepStrictEqual(mapVB({ kind: 'tactique', size: { w: 1600, h: 900 } }), { w: 1600, h: 900 });
+// A tactical map whose size is missing or forged falls back rather than dividing by 0.
+assert.deepStrictEqual(mapVB({ kind: 'tactique', size: { w: 0, h: 'x' } }), { w: 100, h: 100 });
+assert.strictEqual(mapGrid({ kind: 'monde', grid: { cell: 70 } }), null);
+assert.strictEqual(mapGrid({ kind: 'tactique', grid: { cell: 1 } }).cell, 8);   // clamped
+assert.strictEqual(mapGrid({ kind: 'tactique', grid: {} }).snap, true);
+// Snapping lands on the centre of the cell: 70 px cells, a pin dropped at 100 px → cell 2.
+assert.deepStrictEqual(gridSnap(100, 10, { cell: 70, ox: 0, oy: 0 }), { x: 105, y: 35 });
+// …and honours the offset, including a point left of it.
+assert.deepStrictEqual(gridSnap(5, 5, { cell: 70, ox: 10, oy: 10 }), { x: -25, y: -25 });
+// Calibration from the two corners of one drawn cell, in either order.
+assert.deepStrictEqual(gridCalib({ x: 150, y: 80 }, { x: 220, y: 150 }), { cell: 70, ox: 10, oy: 10 });
+assert.deepStrictEqual(gridCalib({ x: 221, y: 151 }, { x: 150, y: 80 }), { cell: 71, ox: 8, oy: 9 });
+assert.strictEqual(gridCalib({ x: 0, y: 0 }, { x: 2, y: 2 }), null);   // too small to be a cell
+// A 2-cell token lands on an intersection, a 3-cell one on a cell centre.
+assert.deepStrictEqual(gridSnap(100, 100, { cell: 70, ox: 0, oy: 0 }, 2), { x: 70, y: 70 });
+assert.deepStrictEqual(gridSnap(100, 100, { cell: 70, ox: 0, oy: 0 }, 3), { x: 105, y: 105 });
+// 210 px at 70 px a cell and 1.5 m a cell: 3 cells, 4.5 m.
+assert.strictEqual(gridDistance({ x: 0, y: 0 }, { x: 210, y: 0 }, { cell: 70, per: 1.5, unit: 'm' }).text, '3 cases · 4,5 m');
+assert.strictEqual(gridDistance({ x: 0, y: 0 }, { x: 70, y: 0 }, { cell: 70, per: 1.5, unit: 'm' }).text, '1 case · 1,5 m');
+// Hidden tokens never reach a spectator, even in a forged state; junk renders as nothing.
+assert.deepStrictEqual(visibleTokens({ tokens: [{ id: 'a', x: 1, y: 1 }, { id: 'b', x: 2, y: 2, hidden: true }] }, 'alice').map(t => t.id), ['a']);
+assert.deepStrictEqual(visibleTokens({ tokens: 'x' }, null), []);
+assert.deepStrictEqual(visibleTokens({ tokens: [null, { id: 'c', x: 'nope', y: 1 }] }, null), []);
 
 const poiA = { id: 'a', name: 'Taverne', x: 10, y: 10, publicDesc: 'ok', discoveredBy: ['alice'], zone: [] };
 const poiB = { id: 'b', name: 'Crypte',  x: 20, y: 20, publicDesc: '',   discoveredBy: ['bob'],   zone: [[0,0],[10,0],[10,10]] };
@@ -214,26 +252,6 @@ assert.strictEqual(dark.advertisedId(), '');
     // Back to automatic clears the param rather than pinning an empty device.
     dcam.setVideoDevice('');
     assert.ok(!frame.src.includes('videodevice'), frame.src);
-
-    // -- Microphone modes ------------------------------------------------------
-    // Off must keep the camera-only prompt (&audiodevice=0); ptt starts muted and the
-    // key drives the iframe; auto leaves it to VDO.ninja's noise gate.
-    assert.ok(frame.src.includes('audiodevice=0'), 'mic is off by default');
-    dcam.setMicMode('auto');
-    assert.ok(frame.src.includes('noisegate') && !frame.src.includes('audiodevice=0'), frame.src);
-    dcam.setMicMode('ptt');
-    assert.ok(frame.src.includes('&mute') && !frame.src.includes('audiodevice=0'), frame.src);
-    // Every makeCamera registers its own listeners; the others sit in mode 'off' and ignore the key.
-    const key = e => _listeners.keydown.forEach(f => f(e)), up = e => _listeners.keyup.forEach(f => f(e));
-    frame.contentWindow.posted.length = 0;
-    key({ code: 'KeyV', repeat: false, target: { tagName: 'INPUT' } });   // typing in a field: ignored
-    key({ code: 'KeyB', repeat: false, target: { tagName: 'BODY' } });    // not the talk key
-    assert.strictEqual(frame.contentWindow.posted.length, 0);
-    key({ code: 'KeyV', repeat: false, target: { tagName: 'BODY' } });
-    up({ code: 'KeyV' });
-    assert.deepStrictEqual(frame.contentWindow.posted, [{ mic: true }, { mic: false }]);
-    dcam.setMicMode('off');
-    assert.ok(frame.src.includes('audiodevice=0'), frame.src);
     delete global.document;
 }
 
@@ -249,6 +267,13 @@ assert.strictEqual(dark.advertisedId(), '');
     // A thread id carries both participants, so the Supabase read filter
     // (thread LIKE %self%) and the inbox routing both find it from either side.
     assert.ok(gm.dmId('abc-123').includes('gm') && player.dmId('gm').includes('abc-123'));
+}
+
+// join codes: 8 characters of the read-aloud alphabet, never one already used
+{
+    for (let i = 0; i < 200; i++) assert.match(generateJoinCode(), /^[A-HJ-NP-Z2-9]{8}$/);
+    const first = generateJoinCode();
+    assert.notStrictEqual(generateJoinCode(new Set([first])), first);
 }
 
 console.log('aria-shared self-check: all assertions passed');

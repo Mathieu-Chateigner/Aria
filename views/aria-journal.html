@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self'; object-src 'none'; base-uri 'self'">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARIA — Journal de campagne</title>
+    <meta name="theme-color" content="#050608">
+    <link rel="stylesheet" href="../css/aria-tokens.css">
+    <link rel="stylesheet" href="../css/aria-journal.css">
+</head>
+<body>
+<div class="jr-root" id="jr-root">
+    <!-- ariaBg.mount('desk') prepends the painting here -->
+    <div class="jr-veil"></div>
+    <div class="jr-bar">
+        <a class="jr-bar-back" id="jr-back" href="aria-accueil.html"></a>
+        <div class="jr-bar-word">ARIA</div>
+        <div class="jr-bar-label">Journal de campagne</div>
+    </div>
+    <div class="jr-body">
+        <div class="jr-index">
+            <div class="jr-search">
+                <div class="jr-search-ico">⌕</div>
+                <input class="jr-search-in" id="jr-q" placeholder="Chercher un nom, un lieu…">
+                <div class="jr-search-x" id="jr-q-x" hidden>&times;</div>
+            </div>
+            <div class="jr-sessions" id="jr-sessions"></div>
+        </div>
+        <div class="jr-read">
+            <div class="jr-page" id="jr-page"></div>
+        </div>
+    </div>
+</div>
+
+<script src="../js/aria-bg.js"></script>
+<script src="../js/aria-supabase.js"></script>
+<script src="../js/aria-shared.js"></script>
+<script src="../js/aria-hub-data.js"></script>
+<script src="../js/aria-journal.js"></script>
+</body>
+</html>

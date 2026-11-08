@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self'; object-src 'none'; base-uri 'self'">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARIA — Le seuil</title>
+    <meta name="theme-color" content="#030405">
+    <link rel="stylesheet" href="../css/aria-tokens.css">
+    <link rel="stylesheet" href="../css/aria-accueil.css">
+</head>
+<body>
+<div class="ac-root" id="ac-root">
+    <!-- ariaBg.mount('arch') prepends the wall here -->
+    <div class="ac-ui" id="ac-ui">
+        <div class="ac-head">
+            <div class="ac-kicker" id="ac-kicker"></div>
+            <div class="ac-name" id="ac-name"></div>
+            <div class="ac-rule"><div class="ac-rule-l"></div><div class="ac-rule-gem"></div><div class="ac-rule-r"></div></div>
+        </div>
+        <div class="ac-party" id="ac-party" hidden>
+            <div class="ac-party-row" id="ac-party-row"></div>
+            <div class="ac-party-label" id="ac-party-label"></div>
+        </div>
+        <div class="ac-menu" id="ac-menu" hidden></div>
+        <div class="ac-panel" id="ac-panel" hidden>
+            <div class="ac-corner tl"></div><div class="ac-corner tr"></div><div class="ac-corner bl"></div><div class="ac-corner br"></div>
+            <div class="ac-panel-head">
+                <div class="ac-panel-title" id="ac-panel-title"></div>
+                <div class="ac-panel-back" id="ac-panel-back">Échap · Retour</div>
+            </div>
+            <div id="ac-panel-body"></div>
+        </div>
+    </div>
+
+    <div class="ac-back" id="ac-back">&larr; Retour à la taverne</div>
+    <div class="ac-brand">
+        <div class="ac-brand-word">ARIA</div>
+        <div class="ac-brand-sep"></div>
+        <div class="ac-brand-v">v2.4</div>
+    </div>
+
+    <div class="ac-load" id="ac-load" hidden>
+        <div class="ac-load-head">
+            <div class="ac-load-kicker" id="ac-load-kicker"></div>
+            <div class="ac-load-title" id="ac-load-title"></div>
+        </div>
+        <div class="ac-load-tip">
+            <div class="ac-load-tip-k">Savoir du seuil</div>
+            <div class="ac-load-tip-t" id="ac-load-tip"></div>
+        </div>
+        <div class="ac-load-bar"><div class="ac-load-fill" id="ac-load-fill"></div></div>
+    </div>
+</div>
+
+<script src="../js/aria-bg.js"></script>
+<script src="../js/vendor/ably.min-2.29.0.js"></script>
+<script src="../js/aria-supabase.js"></script>
+<script src="../js/aria-shared.js"></script>
+<script src="../js/aria-hub-data.js"></script>
+<script src="../js/aria-accueil.js"></script>
+</body>
+</html>

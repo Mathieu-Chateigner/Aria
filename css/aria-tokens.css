@@ -1,0 +1,117 @@
+/* ═══════════════════════════════════════════
+   ARIA — DESIGN TOKENS
+   ═══════════════════════════════════════════
+   The palette and type of the redesign (design_handoff_aria/README.md, "Design
+   tokens"). Loaded first on every redesigned page; stylesheets use these variables,
+   never the hex values. Dark only — light mode was removed.
+
+   Names shared with the old panels (--ember, --text, --warm, --dim, --faint, --ok,
+   --bad, --violet…) carry the same values there. */
+
+@import url('aria-fonts.css');
+
+:root {
+    /* surfaces, deepest first */
+    --ink-0: #030405;               /* page background */
+    --ink: #050608;
+    --ink-2: #0a0b0d;
+    --ink-3: #0b0d11;
+    --ink-field: #0a0b0e;           /* autofilled field */
+    --ink-veil: #020203;            /* full-screen transition */
+
+    /* warm surfaces (Hub tavern) */
+    --wood-0: #0b0806;
+    --wood-1: #120a05;
+    --wood-2: #22150c;
+    --wood-3: #34200f;
+    --wood-4: #3a2616;
+
+    /* text */
+    --warm: #f3ede1;                /* primary, parchment */
+    --text: #e8ebf1;                /* primary, cool */
+    --text-2: #c9ced8;              /* secondary */
+    --text-3: #a9b0bd;
+    --text-4: #a3abb8;
+    --dim: #868f9f;                 /* muted, labels */
+    --dim-2: #77808f;
+    --text-5: #b4bcc9;              /* checkbox labels */
+    --text-6: #d6dde6;              /* confirmation text */
+    --text-7: #d9d3c6;              /* loading tip */
+    --parch-dim: #8a7a62;           /* warm kicker */
+    --parch-num: #bfae8e;           /* warm numbers */
+    --placeholder: #4a5260;
+    --faint: #586273;               /* faint, disabled */
+    --faint-2: #3c4452;
+
+    /* accent and states */
+    --ember: #eca456;               /* links, primary CTA, active */
+    --ember2: #f6c07e;              /* hover, critical success */
+    --ok: #5bc98e;
+    --warn: #e0b454;                /* mid HP */
+    --bad: #e25a4f;                 /* danger, fail */
+    --bad2: #e8776d;                /* danger hover */
+    --bad-soft: #d98f8f;
+    --ember-deep: #5a1e0c;          /* loading bar, coal end */
+    --ember-mid: #a8471a;
+    --spark: #fff1d6;
+    --violet: #a98bdd;              /* arcane: potions, specials */
+    --violet2: #c4aef0;
+    --violet3: #c3aaf0;
+    --moss: #b9c98a;                /* Hub tags */
+    --die: #aeb6c4;                 /* plain die result */
+
+    /* hairlines */
+    --line-1: rgba(150,168,200,.10);
+    --line: rgba(150,168,200,.18);  /* default */
+    --line-hover: rgba(150,168,200,.22);
+    --line-strong: rgba(150,168,200,.25);
+
+    /* accent tints */
+    --ember-line: rgba(236,164,86,.3);
+    --ember-line-strong: rgba(236,164,86,.6);
+    --ember-fill: rgba(236,164,86,.07);
+    --ember-fill-strong: rgba(236,164,86,.11);
+    --ember-mark: rgba(236,164,86,.28);  /* search highlight */
+
+    /* scrims */
+    --scrim-inset: rgba(0,0,0,.35);
+    --scrim: rgba(0,0,0,.5);
+    --scrim-strong: rgba(0,0,0,.62);
+    --scrim-modal: rgba(0,0,0,.8);
+    --scrim-modal-strong: rgba(0,0,0,.9);
+
+    /* HP bars */
+    --hp-dead: #3c4452;
+    --hp-empty: rgba(255,255,255,.07);
+
+    /* shadows */
+    --shadow-float: 0 20px 60px rgba(0,0,0,.6);
+    --shadow-modal: 0 20px 60px rgba(0,0,0,.8);
+
+    /* Hub (taverne) */
+    --hb-bg: #070504;
+    --hb-card: var(--wood-0);
+    --hb-card-hover: #140d08;
+    --hb-pill-on: #1c130b;
+    --hb-vis-on: #1a110a;
+    --hb-ph: #646d7c;
+    --hb-seal: #c4a8e0;
+    --hb-seal-text: #d9c7ec;
+    --hb-seal-text2: #e4d6f2;
+    --hb-seal-dim: #a99bbd;
+    --hb-moss-text: #d6e2b0;
+    --hb-online: #7fbf7a;
+    --hb-offline: #646d7c;
+    --hb-taken: #6b7486;
+    --hb-modal: #07090c;
+    --hb-input-dark: #050403;
+    --hb-create-off: #6a4a2a;
+
+    /* type */
+    --font-display: 'Cormorant Garamond', serif;
+    --font-ui: 'Archivo', sans-serif;
+    --font-mono: ui-monospace, Menlo, monospace;
+}
+
+a { color: var(--ember); }
+a:hover { color: var(--ember2); }

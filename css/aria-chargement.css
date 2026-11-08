@@ -1,0 +1,58 @@
+/* ═══════════════════════════════════════════
+   CHARGEMENT — boot screen (js/aria-chargement.js)
+   ═══════════════════════════════════════════
+   design_handoff_aria/Aria Chargement.dc.html. Full-screen layer over whatever page
+   is booting underneath; the hall painting behind it is ariaBg.mount('hall'). */
+
+.ld-root {
+    position: fixed; inset: 0; z-index: 100; background: var(--ink-0); overflow: hidden;
+    font-family: var(--font-ui); color: var(--text); user-select: none;
+    transition: opacity .45s ease;
+}
+.ld-root.out { opacity: 0; pointer-events: none; }
+.ld-root > canvas { position: absolute !important; }
+.ld-fade {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 42%; pointer-events: none;
+    background: linear-gradient(0deg, rgba(3,4,6,.92) 0%, rgba(3,4,6,.55) 45%, rgba(3,4,6,0) 100%);
+}
+
+.ld-brand { position: absolute; left: 44px; top: 34px; display: flex; flex-direction: column; gap: 6px; }
+.ld-word {
+    font-family: var(--font-display); font-size: 40px; font-weight: 600; line-height: .9; letter-spacing: .3em; color: var(--warm);
+    text-shadow: 0 0 30px rgba(236,164,86,.25), 0 2px 0 rgba(0,0,0,.8);
+}
+.ld-sub { font-family: var(--font-mono); font-size: 10px; letter-spacing: .42em; color: var(--parch-dim); text-transform: uppercase; }
+
+.ld-bottom {
+    position: absolute; left: 50%; bottom: 52px; transform: translateX(-50%);
+    width: min(1080px, calc(100% - 64px));
+    display: flex; flex-direction: column; align-items: center; gap: 22px;
+}
+.ld-tip-box { display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 760px; text-align: center; }
+.ld-tip-head { display: flex; align-items: center; gap: 12px; }
+.ld-tip-l, .ld-tip-r { width: 48px; height: 1px; }
+.ld-tip-l { background: linear-gradient(90deg, rgba(236,164,86,0), var(--ember)); }
+.ld-tip-r { background: linear-gradient(270deg, rgba(236,164,86,0), var(--ember)); }
+.ld-tip-kicker { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .38em; text-indent: .38em; color: var(--ember); text-transform: uppercase; }
+.ld-tip {
+    font-family: var(--font-display); font-size: 24px; font-style: italic; font-weight: 500; line-height: 1.4;
+    color: var(--text-7); text-wrap: pretty; text-shadow: 0 2px 10px rgba(0,0,0,.9);
+}
+
+.ld-progress { width: 100%; display: flex; flex-direction: column; gap: 9px; }
+.ld-labels { display: flex; justify-content: space-between; align-items: baseline; padding: 0 22px; }
+.ld-status { font-family: var(--font-mono); font-size: 11px; letter-spacing: .22em; color: var(--dim); text-transform: uppercase; }
+.ld-pct { font-family: var(--font-mono); font-size: 11px; letter-spacing: .14em; color: var(--parch-num); font-variant-numeric: tabular-nums; }
+.ld-bar-row { display: flex; align-items: center; gap: 8px; }
+.ld-gem { width: 10px; height: 10px; border: 1px solid var(--ember); transform: rotate(45deg); flex-shrink: 0; background: var(--ink-2); }
+.ld-bar {
+    position: relative; flex: 1; height: 14px; border: 1px solid rgba(236,164,86,.5); background: rgba(0,0,0,.72);
+    box-shadow: 0 0 0 3px rgba(3,4,6,.8), 0 0 0 4px rgba(150,168,200,.14);
+}
+.ld-fill {
+    position: absolute; left: 2px; top: 2px; bottom: 2px; width: calc(0% - 4px);
+    background: linear-gradient(90deg, var(--ember-deep) 0%, var(--ember-mid) 55%, var(--ember) 100%);
+    box-shadow: 0 0 14px rgba(236,140,60,.45);
+}
+.ld-spark { position: absolute; right: -1px; top: -3px; bottom: -3px; width: 3px; background: var(--spark); box-shadow: 0 0 10px 3px rgba(255,200,120,.8); }
+.ld-ticks { position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 59px, rgba(0,0,0,.45) 59px 60px); }

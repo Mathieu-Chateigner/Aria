@@ -2,47 +2,56 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
+    <!-- shortcut: 'unsafe-inline' because the static markup still has ~100 on*= handlers; drop it once they move to addEventListener -->
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' https://www.youtube.com https://s.ytimg.com; object-src 'none'; base-uri 'self'">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ARIA – Joueur</title>
     <script>const VERSION = '0.1.6';</script>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHRleHQgeD0iMTYiIHk9IjI4IiBmb250LXNpemU9IjMwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjYzlhODRjIj7imZs8L3RleHQ+PC9zdmc+">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Archivo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+    <link rel="stylesheet" href="../css/aria-fonts.css">
     <link rel="stylesheet" href="../css/aria-panel.css">
     <link rel="stylesheet" href="../css/aria-player.css">
 </head>
 <body>
 
-    <!-- Dungeon-entrance background — behind the gateway/selection screens only.
-         Paused (setActive(false)) once the app panel is shown; see aria-shared.js. -->
-    <div id="dungeon-bg-root" style="position:fixed;inset:0;z-index:9998;"></div>
+    <!-- Stone arch (ariaBg 'arch') behind the gateway/selection screens only;
+         gateBackdrop() mounts it and tears it down in the app. -->
+    <!-- Holds the gateway backdrop (gateBackdrop). Never takes a click: it stays full-screen
+         at z-index 9998 after the scene is torn down, and would cover the whole app. -->
+    <div id="dungeon-bg-root" style="position:fixed;inset:0;z-index:9998;pointer-events:none;"></div>
 
-    <!-- SAVE KEY GATEWAY (two-panel: Nouvelle clé | Clé existante — design frame 01) -->
+    <!-- GATEWAY : compte sans sauvegarde : nouvelle clé ou rattachement -->
     <div id="file-gateway" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:10000;padding:24px;overflow-y:auto;">
         <div class="gateway-shell">
             <div class="gateway-brand">ARIA</div>
             <div class="gateway-brand-rule"></div>
-            <div class="gateway-cols">
-                <!-- New key panel -->
-                <div class="gateway-card" id="gateway-new">
-                    <div class="gateway-eyebrow ember">Nouvelle clé</div>
-                    <div class="gateway-card-title">Clé de sauvegarde</div>
-                    <p class="gateway-desc">Votre clé identifie votre progression. Notez-la précieusement — elle sera nécessaire sur un autre appareil.</p>
-                    <div class="gateway-key-box" id="gateway-key-display"></div>
-                    <div class="gateway-btn-row">
-                        <button class="gateway-btn-secondary" id="gateway-copy-btn" onclick="copyGatewayKey()">Copier</button>
-                        <button class="gateway-btn" onclick="confirmNewKey()">Continuer →</button>
-                    </div>
+            <!-- Uniquement pour un compte qui ne possède encore aucune sauvegarde
+                 (la connexion se fait sur index.html). Nouvelle clé, ou rattachement d'une clé d'avant les comptes. -->
+            <div id="gateway-keys">
+                <div class="gateway-account" id="gateway-account" style="display:none;">
+                    <span id="gateway-account-mail"></span>
+                    <button class="gateway-account-btn" onclick="signOut()">Déconnexion</button>
                 </div>
-                <!-- Existing key panel -->
-                <div class="gateway-card" id="gateway-existing">
-                    <div class="gateway-eyebrow">Clé existante</div>
-                    <div class="gateway-card-title">Retrouver une partie</div>
-                    <p class="gateway-desc">Saisissez votre clé pour retrouver votre progression sur cet appareil.</p>
-                    <input class="gateway-key-input" id="gateway-key-input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" onkeydown="if(event.key==='Enter')submitExistingKey()" />
-                    <button class="gateway-btn-secondary gateway-btn-full" onclick="submitExistingKey()">Charger →</button>
+                <div class="gateway-cols">
+                    <!-- New key panel -->
+                    <div class="gateway-card" id="gateway-new">
+                        <div class="gateway-eyebrow ember">Nouvelle clé</div>
+                        <div class="gateway-card-title">Clé de sauvegarde</div>
+                        <p class="gateway-desc">Votre clé identifie votre progression. Notez-la précieusement — elle sera nécessaire sur un autre appareil.</p>
+                        <div class="gateway-key-box" id="gateway-key-display"></div>
+                        <div class="gateway-btn-row">
+                            <button class="gateway-btn-secondary" id="gateway-copy-btn" onclick="copyGatewayKey()">Copier</button>
+                            <button class="gateway-btn" onclick="confirmNewKey()">Continuer →</button>
+                        </div>
+                    </div>
+                    <!-- Existing key panel -->
+                    <div class="gateway-card" id="gateway-existing">
+                        <div class="gateway-eyebrow">Clé existante</div>
+                        <div class="gateway-card-title">Retrouver une partie</div>
+                        <p class="gateway-desc">Saisissez la clé d’une sauvegarde créée avant les comptes : elle sera rattachée définitivement à celui-ci.</p>
+                        <input class="gateway-key-input" id="gateway-key-input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" onkeydown="if(event.key==='Enter')submitExistingKey()" />
+                        <button class="gateway-btn-secondary gateway-btn-full" onclick="submitExistingKey()">Rattacher →</button>
+                    </div>
                 </div>
             </div>
             <button class="gateway-cancel" id="gateway-cancel" onclick="cancelGateway()" style="display:none;">Annuler</button>
@@ -72,10 +81,11 @@
             </div>
             <button class="sel-add-btn" onclick="createCharacter()">+ Nouveau personnage</button>
             <div class="sel-save-row">
-                <span class="sel-save-icon">Clé</span>
+                <span class="sel-save-icon">Compte</span>
                 <span class="sel-save-label" id="sel-save-label">—</span>
                 <button class="sel-save-btn" onclick="copySaveKey()">Copier</button>
-                <button class="sel-save-btn" onclick="changeSaveKey()">Changer…</button>
+                <button class="sel-save-btn" onclick="changeSaveKey()">Rattacher…</button>
+                <button class="sel-save-btn" onclick="signOut()">Déconnexion</button>
             </div>
         </div>
     </div>
@@ -89,6 +99,7 @@
 
     <!-- UNIFIED COMMAND BAR (topbar + bonus/malus + music merged) -->
     <div class="topbar">
+        <div class="topbar-seuil" onclick="goSeuil(character && character.campaignKey)" title="Retour au seuil de la campagne">&larr; Seuil</div>
         <div class="topbar-title" onclick="switchCharacter()" title="Changer de personnage" style="cursor:pointer;">ARIA</div>
         <div class="tb-sep"></div>
         <div class="topbar-char" id="char-display">
@@ -328,7 +339,10 @@
                         <div class="notes-list" id="notes-list"></div>
                     </div>
                     <div class="notes-editor">
-                        <input class="notes-name-input" id="notes-name-input" placeholder="Nom de la note…" oninput="notes.rename()" />
+                        <div class="notes-head">
+                            <input class="notes-name-input" id="notes-name-input" placeholder="Nom de la note…" oninput="notes.rename()" />
+                            <button class="notes-share" id="notes-share" onclick="notes.share()" title="Partagée : visible dans le Journal de toute la table">Privée</button>
+                        </div>
                         <textarea class="notes-area" id="notes-area" placeholder="Contenu…" oninput="notes.save()"></textarea>
                     </div>
                 </div>
@@ -395,6 +409,13 @@
                 </div>
                 <div id="potion-list"></div>
                 <div class="alchemy-empty" id="alchemy-empty">Aucune potion. Le MJ vous accordera accès aux potions découvertes.</div>
+                <div class="alchemy-section-hdr">Substances identifiées</div>
+                <div class="custom-potion-form" style="display:flex;gap:6px;">
+                    <input class="free-input" id="sub-name" placeholder="Substance" style="flex:1;" />
+                    <input class="free-input" id="sub-note" placeholder="Propriétés, où la trouver…" style="flex:2;" />
+                    <button class="roll-btn" style="font-size:13px;padding:7px 18px;" onclick="addSubstance()">Ajouter</button>
+                </div>
+                <div id="substance-list" class="potion-grid"></div>
             </div>
 
             <!-- DOCUMENTS -->
@@ -405,7 +426,6 @@
 
             <!-- CARTE -->
             <div class="tab-content map-tab" id="tab-map">
-                <div class="map-title" id="map-title"></div>
                 <div class="map-stage" id="map-stage"></div>
                 <details class="map-drawer" id="map-notes-drawer">
                     <summary>Mes notes de carte</summary>
@@ -419,8 +439,6 @@
                 <div class="cameras-warning" id="cameras-warning" style="display:none;"></div>
                 <div class="cameras-toolbar">
                     <select id="cam-device-pick" class="cam-device-pick" title="Caméra à diffuser"></select>
-                    <select id="cam-mic-pick" class="cam-device-pick" title="Microphone"></select>
-                    <button id="cam-ptt-key" class="cam-size-reset" style="display:none;"></button>
                     <span class="cam-size-label">Taille</span>
                     <input type="range" id="cam-size" class="cam-size" min="160" max="640" step="10" oninput="setCamSize(this.value, true)">
                     <button class="cam-size-reset" id="cam-size-reset" title="Revenir à la taille par défaut et annuler les tailles individuelles" onclick="resetCamSize()">Réinit.</button>
@@ -608,13 +626,6 @@
         <label class="config-label">Code campagne</label>
         <input class="config-input" id="cfg-campaign-key" placeholder="ex: X7K2M" oninput="this.value=this.value.toUpperCase()" />
         <div style="margin-top:12px;" class="status-row"><div class="status-dot" id="cfg-ably-dot2"></div><span id="cfg-ably-status2">Ably non connecté</span></div>
-        <div class="config-theme-row">
-            <span class="config-label" style="margin-bottom:0;">Mode clair</span>
-            <label class="theme-toggle">
-                <input type="checkbox" id="cfg-light-mode" onchange="applyTheme(this.checked)">
-                <span class="theme-toggle-slider"></span>
-            </label>
-        </div>
         <button class="config-save-btn" onclick="saveConfig()">Reconnecter</button>
         <button class="config-save-btn" style="margin-top:8px;background:rgba(236,164,86,.08);" onclick="copyOverlayUrl()">Copier URL Overlay (OBS)</button>
     </div>
@@ -624,8 +635,10 @@
 
     </div><!-- /#app-wrapper -->
 
-    <script src="../js/aria-dungeon-bg.js"></script>
+    <script src="../js/aria-bg.js"></script>
+    <script src="../js/vendor/ably.min-2.29.0.js"></script>
     <script src="../js/aria-supabase.js"></script>
+    <script src="../js/aria-roll.js"></script>
     <script src="../js/aria-shared.js"></script>
     <script src="../js/aria-player.js"></script>
 

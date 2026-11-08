@@ -79,6 +79,10 @@ let gmMaps = [];          // [{ id, name, imageUrl, imagePath, sourceUrl, pois, 
 let activeMapId = null;   // map shown to the table (local: campaign_maps has no flag for it)
 let mapSelectedPoiId = null;   // POI whose floating card is open (GM tab only)
 let mapTableView = false;      // preview what the table sees, through the very same filter
+let mapTool = null;           // 'pin' while the ＋ Lieu tool is armed, 'calib' while calibrating the grid
+let calibPts = [];            // corners clicked so far by the grid calibration (map units)
+let mapSelectedTokenId = null; // token whose card is open
+let mapTokenRef = null;        // charId / monster id being placed while mapTool === 'token'
 let moveRequests = [];   // [{ charId, charName, poiId }] — persistent badge, not a toast:
                          // the GM may be looking elsewhere for ten minutes.
 let zoneEditPoiId = null;   // POI whose zone is being traced
@@ -334,13 +338,8 @@ function _clearLocalGMData() {
 // ═══════════════════════════════════════════
 //  CAMPAIGN MANAGEMENT
 // ═══════════════════════════════════════════
-// Generate a random 5-character alphanumeric join code for a campaign.
-function generateJoinCode() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let code = '';
-    for (let i = 0; i < 5; i++) code += chars[Math.floor(Math.random() * chars.length)];
-    return code;
-}
+// Codes this GM already uses — the local half of "is this code free?".
+function ownJoinCodes() { return new Set(getCampaigns().map(c => c.joinCode).filter(Boolean)); }
 
 // Return the campaign-scoped localStorage key for monsters.
 function monstersKey()      { return campKey('monsters'); }
@@ -390,7 +389,7 @@ function migrateGMIfNeeded() {
     const oldCards    = localStorage.getItem('aria-gm-card-history');
     if (!oldMonsters && !oldRolls && !oldCards) return;
     const id = uid();
-    saveCampaigns([{ id, name: 'Campagne 1', joinCode: generateJoinCode() }]);
+    saveCampaigns([{ id, name: 'Campagne 1', joinCode: generateJoinCode(ownJoinCodes()) }]);
     if (oldMonsters) localStorage.setItem(campKey('monsters', id), oldMonsters);
     if (oldRolls)    localStorage.setItem(campKey('rolls', id), oldRolls);
     if (oldCards)    localStorage.setItem(campKey('cardHist', id), oldCards);
@@ -401,7 +400,11 @@ function loadCampaignState(id) {
     const campaigns = getCampaigns();
     const camp = campaigns.find(c => c.id === id);
     if (!camp) { console.warn('[GM] loadCampaignState: campaign not found', id); return false; }
-    if (!camp.joinCode) { camp.joinCode = generateJoinCode(); saveCampaigns(campaigns); }
+    // Back-fill for a campaign saved before join codes existed. Locally unique only:
+    // loadCampaignState is synchronous and called from a dozen places, and this path
+    // fires once per legacy campaign. The unique constraint still catches a global
+    // duplicate — it would refuse the row rather than merge two tables' channels.
+    if (!camp.joinCode) { camp.joinCode = generateJoinCode(ownJoinCodes()); saveCampaigns(campaigns); }
     currentCampaignId = id;
     currentJoinCode = camp.joinCode;
     currentCampaignType = camp.ariaType || 'ancient';
@@ -474,7 +477,7 @@ function showSelectionScreen() {
     document.getElementById('new-campaign-form').style.display = 'none';
     renderCampaignScreen();
     updateSaveKeyStatus();
-    if (window.ariaDungeonBg) window.ariaDungeonBg.setActive(true);
+    gateBackdrop(true);
 }
 
 // Copy a join code to the clipboard from a campaign card element, showing feedback.
@@ -490,7 +493,7 @@ function copyJoinCodeFromCard(node, code) {
 function showApp() {
     document.getElementById('selection-screen').style.display = 'none';
     document.getElementById('app-wrapper').style.display = 'flex';
-    if (window.ariaDungeonBg) window.ariaDungeonBg.setActive(false);
+    gateBackdrop(false);
 }
 
 // Remembered across reloads so a refresh comes straight back into the campaign.
@@ -558,12 +561,15 @@ function createCampaign() {
 }
 
 // Create a new campaign from the form and immediately select it.
-function confirmCreateCampaign() {
+async function confirmCreateCampaign() {
     const name = document.getElementById('new-campaign-name').value.trim() || 'Nouvelle campagne';
     const ariaType = document.querySelector('input[name="new-campaign-type"]:checked')?.value || 'ancient';
     const id = uid();
+    // Awaited before the push: this is the one path that runs on every campaign
+    // ever created, so it is the one that has to ask the database.
+    const joinCode = await freeJoinCode(ownJoinCodes());
     const campaigns = getCampaigns();
-    campaigns.push({ id, name, joinCode: generateJoinCode(), ariaType });
+    campaigns.push({ id, name, joinCode, ariaType });
     saveCampaigns(campaigns);
     document.getElementById('new-campaign-form').style.display = 'none';
     selectCampaign(id);
@@ -664,7 +670,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
 // Initialize the full GM app after a campaign is selected.
 function initApp() {
-    console.log('[GM] initApp: campaign:', currentCampaignId, '| joinCode:', currentJoinCode, '| ablyKey:', config.ablyKey ? 'set' : 'MISSING');
+    console.log('[GM] initApp: campaign:', currentCampaignId, '| joinCode:', currentJoinCode);
     renderPlayerCards();
     renderMonsters();
     renderMapTab();
@@ -677,7 +683,7 @@ function initApp() {
     initGmDeck();
     renderTabLayout(); // apply the restored multi-pane layout
     loadConfigInputs();
-    if (config.ablyKey) initAbly();   // enters presence with the room + spotlight
+    initAbly();   // enters presence with the room + spotlight
     cam.acquireLock();
     updateGMPushIframe();   // drives the topbar button, the push frame and the preview
     applyReadTable();
@@ -687,7 +693,7 @@ function initApp() {
         // here, once, alongside the click handler above — not inside renderMapTab(), which
         // runs on every map mutation and would stack a new listener each time.
         document.addEventListener('keydown', e => {
-            if (e.key !== 'Delete' || !zoneEditPoiId) return;
+            if (e.key !== 'Delete' || !zoneEditPoiId || e.target.closest('input, textarea')) return;
             zoneDraft.pop();
             renderMapTab();
         });
@@ -785,17 +791,12 @@ function renderTabLayout() {
 
 function copyOverlayUrl() {
     const base = window.location.href.replace(/aria-gm\.html.*$/, 'aria-overlay.html');
-    // Just the save key — not even the role: the overlay reads the Ably key off the
-    // saves row, and learns which campaign is open (and that it is a GM overlay) from
-    // whichever panel answers on the route channel. So this URL survives every switch.
-    // The long form is the fallback for a browser with no save key.
-    const params = saveKey
-        ? new URLSearchParams({ s: saveKey })
-        : new URLSearchParams({ mode: 'gm', ably: config.ablyKey || '' });
-    if (!saveKey) {
-        if (currentCampaignId) params.set('overlay', 'gm_' + currentCampaignId);
-        if (currentJoinCode)   params.set('campaign', currentJoinCode);
-    }
+    // Just the save key — not even the role: the overlay gets its Ably token from the
+    // ably-token function against that key, and learns which campaign is open (and
+    // that it is a GM overlay) from whichever panel answers on the route channel. So
+    // this URL survives every switch. No form carries the Ably key: no page has it.
+    if (!saveKey) return;
+    const params = new URLSearchParams({ s: saveKey });
     const url = `${base}?${params}`;
     navigator.clipboard.writeText(url).then(() => {
         const btn = document.querySelector('.config-modal button[onclick="copyOverlayUrl()"]');
@@ -807,11 +808,13 @@ function copyOverlayUrl() {
 }
 // Initialize Ably channels and subscribe to all game events (rolls, cards, presence).
 function initAbly() {
-    console.log('[GM] initAbly: connecting with key', config.ablyKey?.slice(0, 8) + '...', '| campaign channel suffix:', currentJoinCode || '(global)');
+    console.log('[GM] initAbly | campaign channel suffix:', currentJoinCode || '(global)');
     try {
         // clientId identifies the GM in the presence set. Two GM tabs on one campaign
         // share it and are told apart by the connectionId Ably assigns each connection.
-        ablyInstance = new Ably.Realtime({ key: config.ablyKey, clientId: 'gm-' + currentCampaignId, transports: ['web_socket'] });
+        // The token binds it: 'gm-<id>' is only signed for the account owning the campaign,
+        // and the join code (the channel suffix) is read from the database, not from us.
+        ablyInstance = ablyConnect(() => ({ kind: 'gm', campaignId: currentCampaignId }));
         ablyRolls = ablyInstance.channels.get(campaignChannel('aria-rolls'));
         ablyRollsHidden = ablyInstance.channels.get(campaignChannel('aria-rolls-hidden'));
         ablyCards = ablyInstance.channels.get(campaignChannel('aria-cards'));
@@ -821,7 +824,7 @@ function initAbly() {
         initRouteChannel(ablyInstance);   // tells this save key's OBS overlay which campaign to show
         // A late joiner — a player connecting an hour in, or an OBS browser source
         // restarted mid-session — asks, and gets the whole state back.
-        ablyMap.subscribe('request', () => publishMapState());
+        ablyMap.subscribe('request', () => publishMapState(true));
         // Same handshake for monster HP: it is only published when a monster changes,
         // so without this an overlay that started after the last edit shows nothing.
         ablyDamage.subscribe('monster-request', () => publishMonsterStateToOverlay());
@@ -829,19 +832,46 @@ function initAbly() {
         // publish one — so charId is validated the same way handlePresence() validates it.
         ablyMap.subscribe('move-request', msg => {
             const d = msg.data || {};
-            if (!_isIdToken(d.charId) || !d.poiId) return;
+            // A player moves their own token only: the clientId is bound by the token.
+            if (!_isIdToken(d.charId) || !d.poiId || d.charId !== msg.clientId) return;
+            // Only a place this player can see. The ids of undiscovered zones travel in
+            // state.fog, so a forged request could otherwise put a secret place's real
+            // name in the GM's queue, one click away from revealing it.
+            if (!visiblePois(buildMapState(), d.charId).some(p => p.id === d.poiId)) return;
             // One pending request per player: asking twice replaces, it doesn't queue.
             moveRequests = moveRequests.filter(r => r.charId !== d.charId);
             moveRequests.push({ charId: d.charId, charName: String(d.charName || ''), poiId: d.poiId });
-            renderMapTab();
-            _renderMapTabBadge();
+            renderMapQueue();
+        });
+        // A player dragged their token. Validated like move-request: the token must be on the
+        // active map and reference the sender — msg.clientId is bound by the Ably token, the
+        // payload's word is worth nothing. Coordinates are clamped to the picture and
+        // snapped; a free map applies at once, a validated one queues.
+        ablyMap.subscribe('token-move', msg => {
+            const d = msg.data || {};
+            const m = _activeMap();
+            const t = m?.kind === 'tactique' && (m.tokens || []).find(x => x.id === d.tokenId);
+            if (!t || t.ref !== msg.clientId || !players.has(t.ref)) return;
+            const vb = mapVB(m), g = mapGrid(m);
+            const x = Math.min(vb.w, Math.max(0, +d.x)), y = Math.min(vb.h, Math.max(0, +d.y));
+            if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+            const p = g && g.snap ? gridSnap(x, y, g, t.size || 1) : { x, y };
+            if ((m.moves || 'libre') === 'libre') { t.x = p.x; t.y = p.y; saveMaps(); renderMapStage(); return; }
+            moveRequests = moveRequests.filter(r => r.charId !== t.ref);
+            moveRequests.push({ charId: t.ref, charName: players.get(t.ref)?.name || '', tokenId: t.id,
+                                x: p.x, y: p.y, from: { x: t.x, y: t.y } });
+            renderMapQueue();
         });
         ablyInstance.connection.on('connected', () => { console.log('[GM] Ably connected'); setAblyStatus(true); });
         ablyInstance.connection.on('failed',    () => { console.error('[GM] Ably connection FAILED'); setAblyStatus(false); });
         ablyInstance.connection.on('disconnected', () => console.warn('[GM] Ably disconnected'));
         ablyInstance.connection.on('suspended',    () => console.warn('[GM] Ably suspended'));
-        ablyRolls.subscribe('roll', msg => { console.log('[GM] received roll from', msg.data?.char, '| skill:', msg.data?.skillName, '| roll:', msg.data?.roll, '| threshold:', msg.data?.threshold, '| success:', msg.data?.success); handleIncomingRoll(msg.data); });
-        ablyRollsHidden.subscribe('roll', msg => { console.log('[GM] received HIDDEN roll from', msg.data?.char, '| skill:', msg.data?.skillName, '| roll:', msg.data?.roll); handleIncomingRoll(msg.data); });
+        // The name on a roll is the sender's, not whatever the payload says: a player
+        // cannot roll under someone else's name. Unknown sender (roster not in yet) keeps
+        // the claimed name — it is display, and presence fills the roster within a second.
+        const rolledBy = msg => ({ ...msg.data, char: players.get(msg.clientId)?.name || msg.data?.char });
+        ablyRolls.subscribe('roll', msg => { if (!msg.data) return; console.log('[GM] received roll from', msg.data.char, '| skill:', msg.data.skillName, '| roll:', msg.data.roll, '| threshold:', msg.data.threshold, '| success:', msg.data.success); handleIncomingRoll(rolledBy(msg)); });
+        ablyRollsHidden.subscribe('roll', msg => { if (!msg.data) return; console.log('[GM] received HIDDEN roll from', msg.data.char, '| skill:', msg.data.skillName, '| roll:', msg.data.roll); handleIncomingRoll(rolledBy(msg)); });
         ablyCards.subscribe('draw',     msg => { console.log('[GM] received card draw:', msg.data?.cardId, 'by player'); handlePlayerCard(msg.data); });
         ablyCards.subscribe('reshuffle', () => { console.log('[GM] received card reshuffle'); handlePlayerReshuffle(); });
         // The roster. Any change to the set is re-read in full rather than patched,
@@ -852,7 +882,7 @@ function initAbly() {
         chat.attach(ablyInstance);
         chat.load();
         publishGMPresence();
-        publishMapState();
+        publishMapState(true);
         console.log('[GM] initAbly: subscribed to all channels');
     } catch (e) { console.error('[GM] initAbly error:', e); setAblyStatus(false); }
 }
@@ -963,12 +993,15 @@ function applyPresenceSet(members) {
     // event, and gating on the real signal (not "an event happened") is what keeps a
     // player's map-notes drawer input and the GM's own open POI card (below) from losing
     // their caret to someone else's HP tick.
+    // Tokens carry HP, so any presence change may change the projection: publishMapState()
+    // only sends when it actually did. The tactical stage redraws for the same reason.
+    publishMapState();
+    if (_activeMap()?.kind === 'tactique') renderMapStage();
     const names = {};
     players.forEach((p, charId) => { names[charId] = p.name || ''; });
     const namesSig = JSON.stringify(names);
     if (namesSig !== _lastMapPlayerNames) {
         _lastMapPlayerNames = namesSig;
-        publishMapState();
         // The open card's "Découvert par" / "Amener ici" lists are built from `players`
         // too (_poiCard) — refresh on the same signal so a player who connects after the
         // card was opened gets a button without waiting on the next map edit. An
@@ -1035,7 +1068,6 @@ function updateGMPushIframe() {
     // is exactly the case where the preview is black or hidden. It hides itself when
     // no room is set.
     cam.renderDevicePick('gm-cam-device-pick');
-    cam.renderMicPick('gm-cam-mic-pick', 'gm-cam-ptt-key');
     const wrap = document.getElementById('gm-self-view-wrap');
     const section = document.getElementById('gm-self-view-section');
     if (!wrap || !section) return;
@@ -1467,7 +1499,12 @@ function applyPlayerHeal(charId) {
 //  MONSTERS
 // ═══════════════════════════════════════════
 // Persist monsters to localStorage, debounce Supabase sync, and push state to overlay.
-function saveMonsters() { localStorage.setItem(monstersKey(), JSON.stringify(monsters)); debouncedSyncMonsters(); publishMonsterStateToOverlay(); }
+function saveMonsters() {
+    localStorage.setItem(monstersKey(), JSON.stringify(monsters)); debouncedSyncMonsters(); publishMonsterStateToOverlay();
+    // Monster tokens show HP and names: republish (deduped) and redraw a tactical map.
+    publishMapState();
+    if (_activeMap()?.kind === 'tactique') renderMapStage();
+}
 
 // Persist maps and push them to Supabase. Every map mutation goes through here, so the
 // broadcast added in Task 7 has exactly one place to hang off.
@@ -1990,7 +2027,7 @@ function renderRollFeed() {
         firstDay = false;
         entries.forEach(d => {
             const isDie = d.threshold === null;
-            const type = isDie ? 'die' : classify(d.roll, d.threshold, d.success);
+            const type = isDie ? 'die' : rollType(d.roll, d.threshold);
             // Coerce here too — entries persisted in localStorage before the ingest
             // normalization existed can still hold arbitrary values.
             const roll = _finiteNum(d.roll) ?? 0;
@@ -2059,8 +2096,8 @@ function doGMFreeRoll() {
     const name = document.getElementById('gm-free-name').value.trim() || 'Jet MJ';
     const t = parseInt(document.getElementById('gm-free-threshold').value);
     if (isNaN(t) || t < 1 || t > 100) { alert('Seuil invalide.'); return; }
-    const roll = Math.floor(Math.random() * 100) + 1;
-    showGMRollResult(name, t, roll, roll <= t);
+    const r = resolveRoll(t);
+    showGMRollResult(name, r.threshold, r.roll, r.success);
 }
 // Roll an attack for the selected monster, optionally rolling damage on success.
 function doGMMonsterRoll() {
@@ -2071,17 +2108,16 @@ function doGMMonsterRoll() {
     const atkIdx = getSelectValue('gm-attack-select');
     const atk = (m && atkIdx !== '') ? m.attacks[parseInt(atkIdx)] : null;
     const name = atk ? `${m.name} — ${atk.name}` : m ? `${m.name} (${t}%)` : `Jet MJ (${t}%)`;
-    const roll = Math.floor(Math.random() * 100) + 1;
-    const success = roll <= t;
-    const dmgResult = (success && atk?.dmg?.trim()) ? rollDiceFormula(atk.dmg) : null;
-    showGMRollResult(name, t, roll, success, dmgResult);
+    const r = resolveRoll(t);
+    const dmgResult = (r.success && atk?.dmg?.trim()) ? rollDiceFormula(atk.dmg) : null;
+    showGMRollResult(name, r.threshold, r.roll, r.success, dmgResult);
 }
 // Display a GM roll result in the result panel with optional damage and player target buttons.
 function showGMRollResult(name, threshold, roll, success, dmgResult) {
     // Add to the roll feed
     handleIncomingRoll({ skillName: name, threshold, roll, success, char: 'MJ', bonusMalus: 0, playerId: 'gm' });
     if (dmgResult) handleIncomingRoll({ skillName: `${name} — Dégâts`, threshold: null, roll: dmgResult.total, success: null, char: 'MJ', bonusMalus: 0, playerId: 'gm' });
-    const type = classify(roll, threshold, success);
+    const type = rollType(roll, threshold);
     const verdicts = { success: 'SUCCÈS', fail: 'ÉCHEC', 'crit-success': 'SUCCÈS CRITIQUE', 'crit-fail': 'ÉCHEC CRITIQUE' };
     const colors = { success: 'var(--success)', fail: 'var(--fail)', 'crit-success': '#a8ff78', 'crit-fail': '#ff4444' };
     const online = dmgResult ? [...players.entries()].filter(([, p]) => p.online !== false) : [];
@@ -2201,7 +2237,6 @@ window.addEventListener('storage', e => {
     if (e.key === 'aria-config') {
         const newCfg = JSON.parse(e.newValue || '{}');
         config = { ...config, ...newCfg };
-        applyTheme(!!config.lightMode);
         return;
     }
     // Keep every GM tab agreeing on the kill switch: cam.live() reads it, so two
@@ -2212,19 +2247,17 @@ window.addEventListener('storage', e => {
 });
 // Populate the config modal inputs from the current config and campaign.
 function loadConfigInputs() {
-    document.getElementById('cfg-light-mode').checked = !!config.lightMode;
     document.getElementById('cfg-vdo-room').value = currentVdoRoom;
     document.getElementById('cfg-vdo-room-password').value = currentVdoRoomPassword;
+    document.getElementById('cfg-youtube-key').value = config.youtubeApiKey || '';
 }
-// Save config modal changes: VDO room and theme. Republishes presence; it does
+// Save config modal changes: VDO room and YouTube key. Republishes presence; it does
 // not reconnect Ably unless the connection is actually gone — see below.
 function saveConfig() {
     const newVdoRoom = document.getElementById('cfg-vdo-room').value.trim();
     const newVdoRoomPassword = document.getElementById('cfg-vdo-room-password').value.trim();
-    config = {
-        ...config,
-        lightMode: document.getElementById('cfg-light-mode').checked,
-    };
+    // per browser, not per campaign: the key is the GM's, used for playlist import
+    config = { ...config, youtubeApiKey: document.getElementById('cfg-youtube-key').value.trim() };
     localStorage.setItem('aria-config', JSON.stringify(config));
     if (newVdoRoom !== currentVdoRoom || newVdoRoomPassword !== currentVdoRoomPassword) {
         currentVdoRoom = newVdoRoom;
@@ -2234,7 +2267,7 @@ function saveConfig() {
         if (camp) { camp.vdoRoom = newVdoRoom; camp.vdoRoomPassword = newVdoRoomPassword; saveCampaigns(campaigns); }
     }
     // The Ably connection is NOT torn down here. Nothing in this modal can change it:
-    // the key comes from index.html and the channel suffix from the join code, which
+    // the token comes from ably-token and the channel suffix from the join code, which
     // this modal only displays. Closing it left the presence set, and the GM leaving
     // the set is the session-over signal — every player dropped the room, blanked
     // their push iframe and rebuilt every tile, so one "Reconnecter" restarted the
@@ -2242,7 +2275,7 @@ function saveConfig() {
     // an update() is all they need. Reconnecting is still the fallback when the
     // connection is actually gone.
     if (ablyInstance) publishGMPresence();
-    else if (config.ablyKey) initAbly();
+    else initAbly();
     // No cam.acquireLock() here. The lock is named after currentCampaignId, which
     // this modal cannot change, so we already hold it — and acquireLock() *releases*
     // first, which dropped lockHeld to false for the round-trip of the re-grant. The
@@ -2856,7 +2889,7 @@ async function deleteMusicFileFromStorage(path) {
     try {
         await fetch(`${SUPABASE_URL}/storage/v1/object/campaign-music/${path}`, {
             method: 'DELETE',
-            headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+            headers: sbAuthHeaders(),
         });
     } catch(e) { console.warn('[ARIA] Music storage delete failed:', e); }
 }
@@ -2974,8 +3007,7 @@ async function musicUploadFile(input) {
         const res  = await fetch(`${SUPABASE_URL}/storage/v1/object/campaign-music/${path}`, {
             method: 'POST',
             headers: {
-                'apikey': SUPABASE_ANON_KEY,
-                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                ...sbAuthHeaders(),
                 'Content-Type': file.type || 'audio/mpeg',
                 'x-upsert': 'false',
             },
@@ -3001,7 +3033,7 @@ async function musicUploadFile(input) {
 // wiring. The HTML calls gmNotes.add() / gmNotes.save() / gmNotes.rename() directly.
 const gmNotes = makeNotes({
     key: gmNotesKey,
-    ids: { list: 'gm-notes-list', name: 'gm-notes-name-input', area: 'gm-notes-area' },
+    ids: { list: 'gm-notes-list', name: 'gm-notes-name-input', area: 'gm-notes-area', share: 'gm-notes-share' },
     sync:     (note, pos) => syncGMNote(note, pos),
     syncSoon: (note, pos) => debouncedSyncGMNote(note, pos),
     remove:   id => deleteGMNoteFromDB(id),
@@ -3029,8 +3061,7 @@ async function uploadFileToStorage(file) {
     const res = await fetch(`${SUPABASE_URL}/storage/v1/object/campaign-files/${path}`, {
         method: 'POST',
         headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            ...sbAuthHeaders(),
             'Content-Type': file.type || 'application/octet-stream',
             'x-upsert': 'false',
         },
@@ -3048,7 +3079,7 @@ async function deleteFileFromStorage(path) {
     try {
         await fetch(`${SUPABASE_URL}/storage/v1/object/campaign-files/${path}`, {
             method: 'DELETE',
-            headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+            headers: sbAuthHeaders(),
         });
     } catch(e) { console.warn('[ARIA] Storage delete failed:', e); }
 }
@@ -3220,19 +3251,47 @@ function openMapGenerator(gen) {
 // Upload a map background. It goes to the campaign-files bucket like any GM file but is
 // NOT added to gmFiles, so it never shows up in the Fichiers tab. Replacing an image
 // deletes the previous object rather than leaking it in storage.
+// Every player and the OBS overlay download the map image. A raw 20 MB PNG export becomes
+// a WebP of a tenth of that, capped at 4096 px on the long side, with no visible loss at
+// the sizes a map is shown. Vector and animated formats pass through untouched, and so
+// does anything the re-encode would not make smaller.
+async function _shrinkMapImage(file, max = 4096) {
+    if (!/^image\/(png|jpeg|webp|bmp)$/.test(file.type)) return file;
+    const bmp = await createImageBitmap(file);
+    const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    bmp.close();
+    const blob = await new Promise(r => c.toBlob(r, 'image/webp', .9));
+    if (!blob || (k === 1 && blob.size >= file.size)) return file;
+    // uploadFileToStorage() takes the extension from the name.
+    return new File([blob], file.name.replace(/\.[^.]*$/, '') + '.webp', { type: 'image/webp' });
+}
+
 async function handleMapImageUpload(input) {
-    const file = input.files[0];
+    const picked = input.files[0];
     input.value = '';
     const m = _activeMap();
-    if (!file || !m) return;
-    if (file.size > 20 * 1024 * 1024) { alert('Image trop volumineuse (max 20 Mo).'); return; }
+    if (!picked || !m) return;
     const status = document.getElementById('map-upload-status');
-    if (status) status.textContent = 'Envoi en cours…';
+    if (status) status.textContent = 'Préparation de l’image…';
     try {
+        const file = await _shrinkMapImage(picked);
+        if (file.size > 20 * 1024 * 1024) { if (status) status.textContent = ''; alert('Image trop volumineuse (max 20 Mo).'); return; }
+        if (status) status.textContent = 'Envoi en cours…';
         const old = m.imagePath;
         const { path, url } = await uploadFileToStorage(file);
+        const size = await _imageSize(url).catch(() => null);
         m.imagePath = path;
         m.imageUrl  = url;
+        if (size) {
+            // A tactical map is in image pixels: a new picture of another size moves every
+            // point and the grid with it, so the places stay on the same spot of the map.
+            const from = mapVB(m);
+            m.size = size;
+            _rescaleMap(m, from, mapVB(m));
+        }
         saveMaps();
         renderMapTab();
         if (old) deleteFileFromStorage(old);
@@ -3243,35 +3302,163 @@ async function handleMapImageUpload(input) {
     }
 }
 
-// The map frame: a shrink-wrapping container around the image, plus whatever layers the
-// caller passes. Frame and image both cap at 100% of the stage, so the frame is exactly the
-// rendered image — which is what makes the percentage coordinates land on the right pixel
-// whatever the pane's aspect ratio.
-function _mapFrame(m, ...layers) {
-    return el('div', { className: 'aria-frame', id: 'map-frame' },
-        el('img', { className: 'aria-map', src: m.imageUrl, alt: m.name, draggable: false }),
-        ...layers);
+// Natural size of a picture, SVG included (its intrinsic size, as the browser lays it out).
+function _imageSize(url) {
+    return new Promise((ok, ko) => {
+        const img = new Image();
+        img.onload = () => img.naturalWidth && img.naturalHeight
+            ? ok({ w: img.naturalWidth, h: img.naturalHeight }) : ko(new Error('taille inconnue'));
+        img.onerror = () => ko(new Error('image illisible'));
+        img.src = url;
+    });
 }
 
-function addMap() {
-    const name = prompt('Nom de la nouvelle carte :', 'Carte ' + (gmMaps.length + 1));
-    if (name === null) return;
-    const m = { id: uid(), name: name.trim() || ('Carte ' + (gmMaps.length + 1)),
-                imageUrl: '', imagePath: '', sourceUrl: '', pois: [], positions: {} };
-    gmMaps.push(m);
-    activeMapId = m.id;
+// Move every point of a map (places, zones, grid) from one coordinate space to another:
+// percentages ↔ pixels when the kind changes, old pixels → new pixels when the picture does.
+function _rescaleMap(m, from, to) {
+    const sx = to.w / from.w, sy = to.h / from.h;
+    if (sx === 1 && sy === 1) return;
+    (m.tokens || []).forEach(t => { t.x *= sx; t.y *= sy; });
+    (m.pois || []).forEach(p => {
+        p.x *= sx; p.y *= sy;
+        p.zone = (p.zone || []).map(([x, y]) => [x * sx, y * sy]);
+    });
+    // The grid is only ever in pixels: it follows a picture that changed size, and is
+    // left alone when a map merely switches between world and tactical.
+    if (m.grid && from.w !== 100 && to.w !== 100) {
+        m.grid.cell *= sx; m.grid.ox *= sx; m.grid.oy *= sy;
+    }
+}
+
+// World map (percentages, places only) or tactical board (image pixels, grid). Switching
+// converts every coordinate, so nothing moves on screen.
+async function mapSetKind(kind) {
+    const m = _activeMap();
+    if (!m || (m.kind || 'monde') === kind) return;
+    if (kind === 'tactique') {
+        if (!m.imageUrl) return;
+        if (!m.size) m.size = await _imageSize(m.imageUrl).catch(() => null);
+        if (!m.size) { alert('Impossible de lire la taille de l’image.'); return; }
+    }
+    zoneEditPoiId = null; zoneDraft = []; mapTool = null; calibPts = [];
+    const from = mapVB(m);
+    m.kind = kind;
+    _rescaleMap(m, from, mapVB(m));
+    // A first guess of about thirty cells across; "Caler sur une case" sets it for real.
+    if (kind === 'tactique' && !m.grid)
+        m.grid = { cell: Math.round(Math.max(m.size.w, m.size.h) / 30), ox: 0, oy: 0,
+                   unit: 'm', per: 1.5, snap: true, show: true };
     saveMaps();
     renderMapTab();
 }
 
+function mapSetMoves(v) {
+    const m = _activeMap(); if (!m) return;
+    m.moves = v === 'validation' ? 'validation' : 'libre';
+    saveMaps();
+    renderMapGridBar();
+}
+
+// One grid setting from the grid bar. Numbers accept a comma; anything unreadable is
+// ignored rather than stored, so a half-typed "1," does not wipe the scale.
+function mapSetGrid(key, raw) {
+    const m = _activeMap();
+    if (!m?.grid) return;
+    if (key === 'show' || key === 'snap') m.grid[key] = !!raw;
+    else if (key === 'unit') m.grid.unit = String(raw).trim().slice(0, 8);
+    else {
+        const n = parseFloat(String(raw).replace(',', '.'));
+        if (!Number.isFinite(n) || (key === 'cell' && n < 8) || (key === 'per' && n <= 0)) return;
+        m.grid[key] = n;
+    }
+    saveMaps();
+    renderMapStage();
+}
+
+// The grid bar, tactical maps only. Built once per map and then only its values are
+// refreshed — an input being typed in is never rewritten.
+let _gridBarKey = null;
+function renderMapGridBar() {
+    const bar = document.getElementById('map-grid-bar');
+    if (!bar) return;
+    const m = _activeMap();
+    const g = m && mapGrid(m);
+    bar.style.display = g ? '' : 'none';
+    if (!g) { _gridBarKey = null; fill(bar); return; }
+    if (_gridBarKey !== m.id) {
+        _gridBarKey = m.id;
+        const num = (k, w, title) => el('input', { className: 'map-grid-num', type: 'text', inputMode: 'decimal', title,
+            style: { width: w + 'px' }, dataset: { g: k },
+            oninput: e => { e.target.value = e.target.value.replace(/[^0-9.,]/g, ''); mapSetGrid(k, e.target.value); } });
+        const check = (k, label) => el('label', { className: 'map-grid-check' },
+            el('input', { type: 'checkbox', dataset: { g: k }, onchange: e => mapSetGrid(k, e.target.checked) }),
+            el('span', { textContent: label }));
+        fill(bar,
+            el('span', { className: 'map-gen-label', textContent: 'Grille' }),
+            el('label', { className: 'map-grid-field' }, el('span', { textContent: 'Case' }), num('cell', 52, 'Taille d’une case, en pixels de l’image'), el('span', { textContent: 'px' })),
+            el('label', { className: 'map-grid-field' }, el('span', { textContent: 'Décalage' }), num('ox', 44, 'Décalage horizontal'), num('oy', 44, 'Décalage vertical')),
+            el('label', { className: 'map-grid-field' }, el('span', { textContent: '1 case =' }), num('per', 40, 'Distance représentée par une case'),
+                el('input', { className: 'map-grid-num', type: 'text', style: { width: '36px' }, dataset: { g: 'unit' },
+                    oninput: e => mapSetGrid('unit', e.target.value) })),
+            check('show', 'Visible'),
+            check('snap', 'Magnétisme'),
+            el('span', { className: 'map-seg', id: 'map-moves-seg' },
+                el('button', { className: 'map-chip', dataset: { moves: 'libre' }, textContent: 'Déplacements libres',
+                    title: 'Un joueur déplace son jeton lui-même', onclick: () => mapSetMoves('libre') }),
+                el('button', { className: 'map-chip', dataset: { moves: 'validation' }, textContent: 'Sur validation',
+                    title: 'Chaque déplacement de joueur attend votre accord', onclick: () => mapSetMoves('validation') })),
+            el('button', { className: 'map-chip', id: 'map-calib-btn', textContent: 'Caler sur une case',
+                title: 'Cliquez deux coins opposés d’une case dessinée sur la carte',
+                onclick: () => { mapTool = mapTool === 'calib' ? null : 'calib'; calibPts = []; renderMapTab(); } }));
+    }
+    bar.querySelectorAll('[data-g]').forEach(f => {
+        if (f === document.activeElement) return;
+        const v = g[f.dataset.g];
+        if (f.type === 'checkbox') f.checked = !!v; else f.value = String(v);
+    });
+    document.getElementById('map-calib-btn')?.classList.toggle('on', mapTool === 'calib');
+    bar.querySelectorAll('[data-moves]').forEach(b => b.classList.toggle('on', (m.moves || 'libre') === b.dataset.moves));
+}
+
+// No prompt(): the map gets a default name and the name field takes the focus.
+function addMap() {
+    const m = { id: uid(), name: 'Carte ' + (gmMaps.length + 1),
+                imageUrl: '', imagePath: '', sourceUrl: '', pois: [], positions: {},
+                kind: 'monde', size: null, grid: null };
+    gmMaps.push(m);
+    activeMapId = m.id;
+    saveMaps();
+    renderMapTab();
+    _focusMapName();
+}
+
 function selectMap(id) { activeMapId = id; saveMaps(); renderMapTab(); }
 
+// The chip's rename opens the map and puts the caret in its name field.
 function renameMap(id) {
-    const m = gmMaps.find(x => x.id === id); if (!m) return;
-    const name = prompt('Nouveau nom de la carte :', m.name);
-    if (name === null) return;
-    const t = name.trim(); if (!t || t === m.name) return;
-    m.name = t; saveMaps(); renderMapTab();
+    if (activeMapId !== id) selectMap(id);
+    _focusMapName();
+}
+
+function _focusMapName() {
+    const n = document.getElementById('map-name-input');
+    if (n) { n.focus(); n.select(); }
+}
+
+function mapSetName(v) {
+    const m = _activeMap(); if (!m) return;
+    m.name = v;
+    saveMaps();
+    _renderGroupBar('map');
+    renderMapStage();
+}
+
+function mapSetSource(v) {
+    const m = _activeMap(); if (!m) return;
+    // Editable on purpose: options changed inside the generator land on a URL Aria
+    // never saw, and pasting the address bar back is the only way to fix that.
+    m.sourceUrl = v.trim();
+    saveMaps();
 }
 
 // Delete a map, its Supabase row and its stored image. The image lives in the
@@ -3287,29 +3474,119 @@ async function deleteMap(id) {
     renderMapTab();
 }
 
-// Percentage coordinates of a pointer event inside the map frame. Percentages, not pixels:
-// the frame is exactly the rendered image, so these survive any pane size.
-function _mapPct(e, frame) {
+// In the map's own units (mapVB): percentages on a world map, image pixels on a tactical
+// one. The rect includes the zoom transform, so this stays right at any zoom.
+function _mapPt(e, frame) {
     const r = frame.getBoundingClientRect();
+    const vb = mapVB(_activeMap());
     return {
-        x: Math.min(100, Math.max(0, ((e.clientX - r.left) / r.width)  * 100)),
-        y: Math.min(100, Math.max(0, ((e.clientY - r.top)  / r.height) * 100)),
+        x: Math.min(vb.w, Math.max(0, ((e.clientX - r.left) / r.width)  * vb.w)),
+        y: Math.min(vb.h, Math.max(0, ((e.clientY - r.top)  / r.height) * vb.h)),
     };
 }
 
+// A point snapped to the centre of its cell when the map has a magnetic grid.
+function _mapSnap(x, y) {
+    const g = mapGrid(_activeMap());
+    return g && g.snap ? gridSnap(x, y, g) : { x, y };
+}
+
+// Placed by the armed "＋ Lieu" tool, never by a bare click on the map. No prompt(): the
+// place opens with its card, name field focused and selected.
 function mapAddPoi(x, y) {
     const m = _activeMap(); if (!m) return;
-    const name = prompt('Nom du point d’intérêt :', 'Nouveau lieu');
-    if (name === null) return;
-    const poi = { id: uid(), name: name.trim() || 'Nouveau lieu', x, y,
+    ({ x, y } = _mapSnap(x, y));
+    const poi = { id: uid(), name: 'Nouveau lieu', x, y,
                   publicDesc: '', gmNote: '', discoveredBy: [], zone: [] };
     m.pois.push(poi);
     mapSelectedPoiId = poi.id;
     saveMaps();
     renderMapTab();
+    const n = mapViewCard(document.getElementById('map-stage'))?.querySelector('.map-poi-name');
+    if (n) { n.focus(); n.select(); }
 }
 
-function mapSelectPoi(id) { mapSelectedPoiId = mapSelectedPoiId === id ? null : id; renderMapTab(); }
+function mapSelectPoi(id) { mapSelectedPoiId = mapSelectedPoiId === id ? null : id; mapSelectedTokenId = null; renderMapTab(); }
+
+// ── Tokens (tactical maps) ──
+// A token references a character or a monster and copies nothing: name and HP are read
+// from `players` (presence) and `monsters` every time, so they cannot go stale. A token
+// whose reference is gone (monster deleted, character left the campaign) is not drawn.
+function _mapTokenInfo(t) {
+    const pl = players.get(t.ref);
+    if (pl) return { kind: 'pj', name: pl.name || '?', own: t.ref,
+                     hp: pl.maxHP ? (pl.hp ?? pl.maxHP) / pl.maxHP : null };
+    const mo = monsters.find(x => x.id === t.ref);
+    if (mo) return { kind: 'monstre', name: mo.name || '?', own: null,
+                     hp: mo.maxPV ? (mo.pv ?? mo.maxPV) / mo.maxPV : null };
+    return null;
+}
+
+function mapAddToken(ref, x, y) {
+    const m = _activeMap(); if (!m) return;
+    m.tokens = m.tokens || [];
+    const g = mapGrid(m);
+    const p = g && g.snap ? gridSnap(x, y, g, 1) : { x, y };
+    // A monster comes in hidden: the GM places the ambush before revealing it.
+    const isMonster = !players.has(ref);
+    const t = { id: uid(), ref, x: p.x, y: p.y, size: 1, hidden: isMonster, markers: [] };
+    m.tokens.push(t);
+    mapSelectedTokenId = t.id; mapSelectedPoiId = null;
+    saveMaps();
+    renderMapTab();
+}
+
+function mapSetToken(id, key, value) {
+    const t = _activeMap()?.tokens?.find(x => x.id === id); if (!t) return;
+    if (key === 'size') {
+        t.size = value;
+        // A size change moves the anchor between a cell centre and an intersection.
+        const g = mapGrid(_activeMap());
+        if (g && g.snap) Object.assign(t, gridSnap(t.x, t.y, g, value));
+    } else if (key === 'marker') {
+        t.markers = (t.markers || []).includes(value) ? t.markers.filter(x => x !== value) : [...(t.markers || []), value];
+    } else t[key] = value;
+    saveMaps();
+    renderMapStage();
+}
+
+function mapDeleteToken(id) {
+    const m = _activeMap(); if (!m) return;
+    m.tokens = (m.tokens || []).filter(t => t.id !== id);
+    if (mapSelectedTokenId === id) mapSelectedTokenId = null;
+    moveRequests = moveRequests.filter(r => r.tokenId !== id);
+    saveMaps();
+    renderMapTab();
+}
+
+function _tokenCard(id) {
+    return el('div', { className: 'map-poi-card map-tok-card' },
+        el('div', { className: 'map-poi-head' },
+            el('div', { className: 'map-tok-card-name' }),
+            el('button', { className: 'map-poi-del', title: 'Retirer de la carte', textContent: '×', onclick: () => mapDeleteToken(id) })),
+        el('div', { className: 'map-tok-card-kind' }),
+        el('label', { className: 'map-poi-label', textContent: 'Taille' }),
+        el('div', { className: 'map-poi-bring map-tok-size' }),
+        el('label', { className: 'map-poi-label secret', textContent: 'Visibilité' }),
+        el('div', { className: 'map-poi-bring map-tok-vis' }),
+        el('label', { className: 'map-poi-label', textContent: 'États' }),
+        el('div', { className: 'map-poi-bring map-tok-mark' }));
+}
+
+function _tokenCardUpdate(node, t) {
+    const info = _mapTokenInfo(t);
+    node.querySelector('.map-tok-card-name').textContent = info?.name || '?';
+    node.querySelector('.map-tok-card-kind').textContent = info?.kind === 'pj' ? 'Personnage joueur' : 'Monstre';
+    fill(node.querySelector('.map-tok-size'), [1, 2, 3, 4].map(n => el('button', {
+        className: 'map-chip' + ((t.size || 1) === n ? ' on' : ''), textContent: n + '×' + n,
+        onclick: () => mapSetToken(t.id, 'size', n) })));
+    fill(node.querySelector('.map-tok-vis'), el('button', {
+        className: 'map-chip' + (t.hidden ? ' on' : ''), textContent: t.hidden ? 'Caché aux joueurs' : 'Visible',
+        title: 'Un jeton caché n’est visible que du MJ', onclick: () => mapSetToken(t.id, 'hidden', !t.hidden) }));
+    fill(node.querySelector('.map-tok-mark'), MAP_MARKERS.map(mk => el('button', {
+        className: 'map-chip' + ((t.markers || []).includes(mk.id) ? ' on' : ''), textContent: `${mk.g} ${mk.label}`,
+        onclick: () => mapSetToken(t.id, 'marker', mk.id) })));
+}
 
 function mapDeletePoi(id) {
     const m = _activeMap(); if (!m) return;
@@ -3385,44 +3662,21 @@ function clearZone(poiId) {
 function acceptMove(i) {
     const r = moveRequests[i]; if (!r) return;
     moveRequests.splice(i, 1);
+    if (r.tokenId) {
+        const t = _activeMap()?.tokens?.find(x => x.id === r.tokenId);
+        if (t) { t.x = r.x; t.y = r.y; saveMaps(); }
+        renderMapTab();
+        return;
+    }
     mapBringHere(r.charId, r.poiId);   // saveMaps → publishMapState: the moved token IS the answer
-    _renderMapTabBadge();
 }
 
 function denyMove(i) {
     const r = moveRequests[i]; if (!r) return;
     moveRequests.splice(i, 1);
-    if (ablyMap) ablyMap.publish('move-denied', { charId: r.charId, poiId: r.poiId });
-    renderMapTab();
-    _renderMapTabBadge();
-}
-
-// The pin layer: one element per POI, positioned in percentages. Names arrive from the GM
-// but tokens carry player names taken from presence, so everything is built with el() and
-// textContent — never a string template.
-function _mapPinLayer(m) {
-    const layer = el('div', { className: 'map-pins' });
-    // Table view goes through the very same filter the overlay uses, so the preview
-    // cannot lie about what the table sees.
-    const list = mapTableView ? visiblePois(buildMapState(), null) : m.pois;
-    list.forEach(p => {
-        const discovered = (p.discoveredBy || []).length > 0;
-        const pin = el('div', {
-            className: 'map-pin' + (discovered ? ' discovered' : '') + (p.id === mapSelectedPoiId ? ' selected' : ''),
-            style: { left: p.x + '%', top: p.y + '%' },
-            onpointerdown: e => _mapDragPin(e, p),
-        },
-            el('span', { className: 'map-pin-dot' }),
-            el('span', { className: 'map-pin-label', textContent: p.name }),
-            el('div', { className: 'map-tokens' },
-                Object.keys(m.positions)
-                    // A charId left in positions after the character left the campaign is not
-                    // in `players`, so no token is drawn for it — nothing to clean up.
-                    .filter(cid => m.positions[cid] === p.id && players.has(cid))
-                    .map(cid => el('span', { className: 'map-token', textContent: players.get(cid).name || '?' }))));
-        layer.append(pin);
-    });
-    return layer;
+    if (ablyMap) ablyMap.publish('move-denied', r.tokenId ? { charId: r.charId, tokenId: r.tokenId }
+                                                         : { charId: r.charId, poiId: r.poiId });
+    renderMapQueue();
 }
 
 // Drag a pin, or select it when the pointer never really moved. One handler for both, so a
@@ -3439,6 +3693,7 @@ function _mapDragPin(e, poi) {
     const frame = document.getElementById('map-frame');
     const pin = e.currentTarget;
     const x0 = poi.x, y0 = poi.y;
+    const vb = mapVB(_activeMap());
     let moved = false;
     pin.setPointerCapture(e.pointerId);
     const onMove = ev => {
@@ -3446,16 +3701,16 @@ function _mapDragPin(e, poi) {
         // Ably state receive path will make it so. A detached frame's rect is zero-sized, and
         // dividing by that writes NaN into poi.x/poi.y.
         if (!pin.isConnected) return;
-        const { x, y } = _mapPct(ev, frame);
-        if (Math.abs(x - x0) > .5 || Math.abs(y - y0) > .5) moved = true;
+        const { x, y } = _mapPt(ev, frame);
+        if (Math.abs(x - x0) > vb.w * .005 || Math.abs(y - y0) > vb.h * .005) moved = true;
         poi.x = x; poi.y = y;
-        pin.style.left = x + '%'; pin.style.top = y + '%';
+        pin.style.left = x / vb.w * 100 + '%'; pin.style.top = y / vb.h * 100 + '%';
     };
     const end = () => {
         pin.removeEventListener('pointermove', onMove);
         pin.removeEventListener('pointerup', end);
         pin.removeEventListener('pointercancel', end);
-        if (moved) { saveMaps(); renderMapTab(); }
+        if (moved) { Object.assign(poi, _mapSnap(poi.x, poi.y)); saveMaps(); renderMapTab(); }
         else mapSelectPoi(poi.id);
     };
     pin.addEventListener('pointermove', onMove);
@@ -3467,10 +3722,11 @@ function _mapDragPin(e, poi) {
 // vertex to correct it, Suppr to remove the last one.
 function _zoneEditLayer() {
     const layer = el('div', { className: 'map-zone-edit' });
+    const vb = mapVB(_activeMap());
     zoneDraft.forEach(([x, y], i) => {
         layer.append(el('div', {
             className: 'zone-vertex' + (i === 0 ? ' first' : ''),
-            style: { left: x + '%', top: y + '%' },
+            style: { left: x / vb.w * 100 + '%', top: y / vb.h * 100 + '%' },
             onpointerdown: e => {
                 e.stopPropagation();
                 if (i === 0 && zoneDraft.length >= 3) { closeZone(); return; }
@@ -3490,12 +3746,13 @@ function _zoneDragVertex(e, i) {
     e.preventDefault();
     const frame = document.getElementById('map-frame');
     const node = e.currentTarget;
+    const vb = mapVB(_activeMap());
     node.setPointerCapture(e.pointerId);
     const onMove = ev => {
         if (!node.isConnected) return;
-        const { x, y } = _mapPct(ev, frame);
+        const { x, y } = _mapPt(ev, frame);
         zoneDraft[i] = [x, y];
-        node.style.left = x + '%'; node.style.top = y + '%';
+        node.style.left = x / vb.w * 100 + '%'; node.style.top = y / vb.h * 100 + '%';
     };
     const end = () => {
         node.removeEventListener('pointermove', onMove);
@@ -3508,48 +3765,60 @@ function _zoneDragVertex(e, i) {
     node.addEventListener('pointercancel', end);
 }
 
-// The floating POI card. It anchors beside the selected pin and never on top of it: past
-// 55% of the width it flips to the left side. The three text layers are the whole point —
-// gmNote is the one that must never leave this panel.
-function _poiCard(m, poi) {
-    const side = poi.x > 55 ? ' left' : '';
-    return el('div', { className: 'map-poi-card' + side, style: { left: poi.x + '%', top: poi.y + '%' } },
+// The floating POI card, created once per POI and updated in place: an input the GM is
+// typing in is never rewritten, so neither a player's move request nor a presence change
+// can take the caret away. The three text layers are the whole point — gmNote is the one
+// that must never leave this panel.
+function _poiCard(poiId) {
+    const poi = () => _activeMap()?.pois.find(p => p.id === poiId);
+    const edit = (key, value) => { const p = poi(); if (p) { p[key] = value; saveMaps(); if (key === 'name') renderMapStage(); } };
+    return el('div', { className: 'map-poi-card' },
         el('div', { className: 'map-poi-head' },
-            el('input', { className: 'map-poi-name', value: poi.name,
-                oninput: e => { poi.name = e.target.value; saveMaps(); } }),
-            el('button', { className: 'map-poi-del', title: 'Supprimer', textContent: '✕',
-                onclick: () => mapDeletePoi(poi.id) })),
+            el('input', { className: 'map-poi-name', dataset: { k: 'name' }, placeholder: 'Nom du lieu',
+                oninput: e => edit('name', e.target.value) }),
+            el('button', { className: 'map-poi-del', title: 'Supprimer le lieu', textContent: '×',
+                onclick: () => mapDeletePoi(poiId) })),
         el('label', { className: 'map-poi-label', textContent: 'Description publique' }),
-        el('textarea', { className: 'map-poi-text', value: poi.publicDesc || '',
+        el('textarea', { className: 'map-poi-text', dataset: { k: 'publicDesc' },
             placeholder: 'Ce que lisent les joueurs qui ont découvert le lieu',
-            oninput: e => { poi.publicDesc = e.target.value; saveMaps(); } }),
-        el('label', { className: 'map-poi-label', textContent: 'Note MJ (privée)' }),
-        el('textarea', { className: 'map-poi-text gm', value: poi.gmNote || '',
+            oninput: e => edit('publicDesc', e.target.value) }),
+        el('label', { className: 'map-poi-label secret', textContent: 'Note MJ · privée' }),
+        el('textarea', { className: 'map-poi-text gm', dataset: { k: 'gmNote' },
             placeholder: 'Ne quitte jamais ce panneau',
-            oninput: e => { poi.gmNote = e.target.value; saveMaps(); } }),
+            oninput: e => edit('gmNote', e.target.value) }),
         el('label', { className: 'map-poi-label', textContent: 'Découvert par' }),
-        el('div', { className: 'map-poi-disc' },
-            [...players.values()].map(pl => el('label', { className: 'map-poi-check' },
-                el('input', { type: 'checkbox', checked: poi.discoveredBy.includes(pl.charId),
-                    onchange: () => mapToggleDiscovered(pl.charId, poi.id) }),
-                el('span', { textContent: pl.name || pl.charId })))),
+        el('div', { className: 'map-poi-disc' }),
         el('label', { className: 'map-poi-label', textContent: 'Amener ici' }),
-        el('div', { className: 'map-poi-bring' },
-            [...players.values()].map(pl => el('button', { className: 'gm-btn ghost',
-                textContent: pl.name || pl.charId,
-                // One button per player, no drag and drop: this is the most frequent action
-                // in play, it has to be one click and no aiming.
-                onclick: () => mapBringHere(pl.charId, poi.id) }))),
-        el('div', { className: 'map-poi-zone' },
-            el('button', { className: 'gm-btn ghost',
-                textContent: (poi.zone || []).length ? 'Modifier la zone' : 'Tracer une zone',
-                onclick: () => startZoneEdit(poi.id) }),
-            (poi.zone || []).length > 0 && el('button', { className: 'gm-btn ghost', textContent: 'Effacer la zone',
-                onclick: () => clearZone(poi.id) })));
+        el('div', { className: 'map-poi-bring' }),
+        el('div', { className: 'map-poi-zone' }));
 }
 
-// Render the whole Carte tab. Every map mutation calls this; there is no partial render,
-// the tab holds at most one image and a handful of pins.
+function _poiCardUpdate(node, poi) {
+    node.querySelectorAll('[data-k]').forEach(f => {
+        if (f !== document.activeElement) f.value = poi[f.dataset.k] || '';
+    });
+    const pls = [...players.values()];
+    fill(node.querySelector('.map-poi-disc'), pls.length ? pls.map(pl => el('label', { className: 'map-poi-check' },
+        el('input', { type: 'checkbox', checked: poi.discoveredBy.includes(pl.charId),
+            onchange: () => mapToggleDiscovered(pl.charId, poi.id) }),
+        el('span', { textContent: pl.name || pl.charId })))
+        : el('span', { className: 'map-poi-none', textContent: 'Aucun joueur à la table' }));
+    fill(node.querySelector('.map-poi-bring'), pls.map(pl => el('button', {
+        className: 'map-chip' + (_activeMap()?.positions[pl.charId] === poi.id ? ' on' : ''),
+        textContent: pl.name || pl.charId,
+        // One button per player, no drag and drop: this is the most frequent action in
+        // play, it has to be one click and no aiming.
+        onclick: () => mapBringHere(pl.charId, poi.id) })));
+    fill(node.querySelector('.map-poi-zone'),
+        el('button', { className: 'map-chip',
+            textContent: (poi.zone || []).length ? 'Modifier la zone' : 'Tracer une zone',
+            onclick: () => startZoneEdit(poi.id) }),
+        (poi.zone || []).length > 0 && el('button', { className: 'map-chip', textContent: 'Effacer la zone',
+            onclick: () => clearZone(poi.id) }));
+}
+
+// Render the whole Carte tab. The parts are separate on purpose: the move-request queue
+// changes on its own (renderMapQueue), and the stage is updated in place by mapView().
 function renderMapTab() {
     // Drop a stale active id (map deleted on another device), then render the chips.
     if (activeMapId && !_activeMap()) activeMapId = gmMaps[0] ? gmMaps[0].id : null;
@@ -3560,89 +3829,170 @@ function renderMapTab() {
     // and any future path that could make zoneEditPoiId dangle.
     if (zoneEditPoiId && !_activeMap()?.pois.some(p => p.id === zoneEditPoiId)) { zoneEditPoiId = null; zoneDraft = []; }
     _renderGroupBar('map');
-    const stage = document.getElementById('map-stage');
-    const bar   = document.getElementById('map-toolbar');
-    if (!stage || !bar) return;
-    const m = _activeMap();
-    if (!m) {
-        fill(bar);
-        fill(stage, el('div', { className: 'map-empty', textContent: 'Aucune carte. Créez-en une avec ＋.' }));
-        return;
-    }
-    fill(bar,
-        el('button', { className: 'gm-btn', textContent: m.imageUrl ? 'Remplacer l’image' : 'Importer une image',
-            onclick: () => document.getElementById('map-image-input').click() }),
-        el('span', { className: 'map-gen-label', textContent: 'Générer :' }),
-        MAP_GENERATORS.map(g => el('button', { className: 'gm-btn ghost', textContent: g.label,
-            onclick: () => openMapGenerator(g) })),
-        el('input', { className: 'map-source-input', value: m.sourceUrl || '', placeholder: 'URL source (optionnel)',
-            // Editable on purpose: options changed inside the generator land on a URL Aria
-            // never saw, and pasting the address bar back is the only way to fix that.
-            oninput: e => { m.sourceUrl = e.target.value; saveMaps(); } }),
-        m.sourceUrl && el('button', { className: 'gm-btn ghost', textContent: 'Rouvrir la source',
-            onclick: () => window.open(m.sourceUrl, '_blank', 'noopener') }),
-        el('button', { className: 'gm-btn ghost' + (mapTableView ? ' active' : ''), textContent: 'Vue table',
-            onclick: () => { mapTableView = !mapTableView; renderMapTab(); } }),
-        zoneEditPoiId && el('span', { className: 'map-zone-hint',
-            textContent: `Tracé en cours (${zoneDraft.length} sommets) — cliquez le premier sommet pour fermer, Suppr pour annuler le dernier` }),
-        zoneEditPoiId && el('button', { className: 'gm-btn', textContent: 'Fermer la zone', onclick: closeZone }),
-        zoneEditPoiId && el('button', { className: 'gm-btn ghost', textContent: 'Annuler', onclick: cancelZoneEdit }),
-        moveRequests.length > 0 && el('details', { className: 'map-queue' },
-            el('summary', { textContent: `⚑ ${moveRequests.length}` }),
-            el('div', { className: 'map-queue-list' },
-                moveRequests.map((r, i) => el('div', { className: 'map-queue-row' },
-                    el('span', { textContent: `${r.charName || r.charId} → ${(_activeMap()?.pois.find(p => p.id === r.poiId)?.name) || '?'}` }),
-                    el('button', { className: 'gm-btn', textContent: '✓', onclick: () => acceptMove(i) }),
-                    el('button', { className: 'gm-btn ghost', textContent: '✕', onclick: () => denyMove(i) }))))));
+    renderMapToolbar();
+    renderMapGridBar();
+    renderMapQueue();
+    renderMapStage();
+}
 
-    if (!m.imageUrl) {
-        fill(stage, el('div', { className: 'map-empty', textContent: 'Aucune image. Importez-en une ou générez-en une.' }));
+// "＋ Jeton": the characters of the campaign and the monsters not on this map yet. Picking
+// one arms the tool; the next click on the map places it.
+function _tokenPicker(m) {
+    const on = new Set((m.tokens || []).map(t => t.ref));
+    const pcs = [...players.values()].filter(p => !on.has(p.charId));
+    const mos = monsters.filter(x => !on.has(x.id));
+    const sel = el('select', { className: 'map-tok-pick' + (mapTool === 'token' ? ' on' : ''),
+        onchange: e => { mapTokenRef = e.target.value || null; mapTool = mapTokenRef ? 'token' : null; renderMapTab(); } },
+        el('option', { value: '', textContent: mapTool === 'token' ? 'Cliquez sur la carte…' : '＋ Jeton' }),
+        pcs.length > 0 && el('optgroup', { label: 'Personnages' }, pcs.map(p => el('option', { value: p.charId, textContent: p.name || p.charId }))),
+        mos.length > 0 && el('optgroup', { label: 'Monstres' }, mos.map(x => el('option', { value: x.id, textContent: x.name || '?' }))));
+    sel.value = mapTool === 'token' ? (mapTokenRef || '') : '';
+    return sel;
+}
+
+function renderMapToolbar() {
+    const m = _activeMap();
+    const bar = document.getElementById('map-toolbar');
+    if (!bar) return;
+    bar.style.visibility = m ? 'visible' : 'hidden';
+    // Static inputs, written only when not being typed in.
+    const name = document.getElementById('map-name-input');
+    const src  = document.getElementById('map-source-input');
+    if (name && name !== document.activeElement) name.value = m?.name || '';
+    if (src && src !== document.activeElement) src.value = m?.sourceUrl || '';
+    const tools = document.getElementById('map-tools');
+    if (!tools) return;
+    if (!m) { fill(tools); return; }
+    fill(tools,
+        el('button', { className: 'map-chip', textContent: m.imageUrl ? 'Remplacer l’image' : 'Importer une image',
+            onclick: () => document.getElementById('map-image-input').click() }),
+        m.imageUrl && el('span', { className: 'map-seg' },
+            el('button', { className: 'map-chip' + ((m.kind || 'monde') === 'monde' ? ' on' : ''), textContent: 'Monde',
+                title: 'Carte de lieux, en pourcentages', onclick: () => mapSetKind('monde') }),
+            el('button', { className: 'map-chip' + (m.kind === 'tactique' ? ' on' : ''), textContent: 'Tactique',
+                title: 'Plateau en pixels de l’image, avec grille', onclick: () => mapSetKind('tactique') })),
+        m.imageUrl && el('button', { className: 'map-chip' + (mapTool === 'pin' ? ' on' : ''), textContent: '＋ Lieu',
+            title: 'Puis cliquez sur la carte pour poser le lieu',
+            onclick: () => { mapTool = mapTool === 'pin' ? null : 'pin'; renderMapTab(); } }),
+        m.kind === 'tactique' && m.imageUrl && _tokenPicker(m),
+        m.imageUrl && el('button', { className: 'map-chip' + (mapTableView ? ' on' : ''), textContent: 'Vue table',
+            onclick: () => { mapTableView = !mapTableView; renderMapTab(); } }),
+        zoneEditPoiId && el('button', { className: 'map-chip on', textContent: 'Fermer la zone', onclick: closeZone }),
+        zoneEditPoiId && el('button', { className: 'map-chip', textContent: 'Annuler', onclick: cancelZoneEdit }),
+        el('span', { className: 'map-tools-sep' }),
+        el('span', { className: 'map-gen-label', textContent: 'Générer' }),
+        MAP_GENERATORS.map(g => el('button', { className: 'map-chip ghost', textContent: g.label,
+            onclick: () => openMapGenerator(g) })),
+        m.sourceUrl && el('button', { className: 'map-chip ghost', textContent: 'Rouvrir la source',
+            onclick: () => window.open(m.sourceUrl, '_blank', 'noopener') }));
+}
+
+// The move-request queue. Its own render, so a request arriving while the GM types in a
+// card or in the toolbar touches nothing else.
+function renderMapQueue() {
+    const q = document.getElementById('map-queue');
+    if (!q) return;
+    const m = _activeMap();
+    fill(q, moveRequests.length > 0 && el('details', { className: 'map-queue' },
+        el('summary', { textContent: `⚑ ${moveRequests.length} demande${moveRequests.length > 1 ? 's' : ''}` }),
+        el('div', { className: 'map-queue-list' },
+            moveRequests.map((r, i) => el('div', { className: 'map-queue-row' },
+                el('span', { textContent: `${players.get(r.charId)?.name || r.charName || r.charId} → ${
+                    r.tokenId ? (mapGrid(m) ? gridDistance(r.from, r, mapGrid(m)).text : 'déplacement')
+                              : m?.pois.find(p => p.id === r.poiId)?.name || '?'}` }),
+                el('button', { className: 'map-chip on', textContent: '✓', title: 'Accepter', onclick: () => acceptMove(i) }),
+                el('button', { className: 'map-chip', textContent: '×', title: 'Refuser', onclick: () => denyMove(i) }))))));
+    _renderMapTabBadge();
+}
+
+function renderMapStage() {
+    const stage = document.getElementById('map-stage');
+    const m = _activeMap();
+    if (!stage) return;
+    if (!m || !m.imageUrl) {
+        mapView(stage, { empty: m ? 'Aucune image. Importez-en une, ou générez-en une puis importez-la.'
+                                  : 'Aucune carte. Créez-en une avec ＋.' });
         return;
     }
     // Table view previews exactly what the table sees — fogZones()/visiblePois() through the
     // null charId, same filter the overlay uses. Edit view shows every POI with a drawn zone,
-    // since the MJ is editing geometry rather than checking what's revealed.
+    // since the GM is editing geometry rather than checking what's revealed.
     const st = buildMapState();
-    const clear = mapTableView ? visiblePois(st, null) : m.pois.filter(p => (p.zone || []).length);
-    const fog   = mapTableView ? fogZones(st, null) : [];
-    // The floating card must not lie either: in table view it only opens for a POI the
-    // table can actually see — same visiblePois() ids as `clear` above, matched against the
-    // real m.pois object (not buildMapState()'s stripped clone) so the card can still edit
-    // gmNote and the rest.
-    const visibleIds = mapTableView ? new Set(visiblePois(st, null).map(p => p.id)) : null;
-    const sel = m.pois.find(p => p.id === mapSelectedPoiId && (!visibleIds || visibleIds.has(p.id))) || null;
-    const frame = _mapFrame(m,
-        _mapZoneLayer(clear, fog),
-        zoneEditPoiId && _mapZoneLayer([{ id: 'draft', zone: zoneDraft }], []),
-        _mapPinLayer(m),
-        zoneEditPoiId && _zoneEditLayer(),
-        sel && _poiCard(m, sel));
-    // A click on the background places a POI; a click on a pin or the card must not.
-    frame.addEventListener('click', e => {
-        // Third connectivity guard in this file (see _mapDragPin/_zoneDragVertex above): a
-        // click that starts a trace (or any other card action) re-renders synchronously via
-        // renderMapTab() -> fill(stage, frame), detaching THIS frame — but the event path was
-        // fixed at dispatch, so this same click still bubbles to the now-detached listener.
-        // A detached frame's getBoundingClientRect() is zero-sized, so _mapPct() below would
-        // divide by zero and the clamp would turn the result into a bogus [100, 100] vertex.
-        if (!frame.isConnected) return;
-        // The card must stay usable while tracing — its name input and textareas are inside
-        // it, and without this a click there falls through to the vertex-placing branch below.
-        if (e.target.closest('.map-poi-card')) return;
-        // While tracing a zone, a background click places a vertex instead — and never a POI.
-        if (zoneEditPoiId) {
-            if (e.target.closest('.zone-vertex')) return;   // handled by the vertex itself
-            const { x, y } = _mapPct(e, frame);
-            zoneDraft.push([x, y]);
-            renderMapTab();
-            return;
-        }
-        if (e.target.closest('.map-pin') || e.target.closest('.map-poi-card')) return;
-        if (mapSelectedPoiId) { mapSelectedPoiId = null; renderMapTab(); return; }
-        const { x, y } = _mapPct(e, frame);
-        mapAddPoi(x, y);
+    const visibleIds = new Set(visiblePois(st, null).map(p => p.id));
+    const list = mapTableView ? m.pois.filter(p => visibleIds.has(p.id)) : m.pois;
+    // The card must not lie either: in table view it only opens for a POI the table sees.
+    const sel = list.find(p => p.id === mapSelectedPoiId) || null;
+    const toks = m.kind === 'tactique' ? (m.tokens || [])
+        .map(t => ({ t, info: _mapTokenInfo(t) }))
+        .filter(({ t, info }) => info && !(mapTableView && t.hidden)) : [];
+    const selTok = toks.find(({ t }) => t.id === mapSelectedTokenId)?.t || null;
+    const vb = mapVB(m), grid = mapGrid(m);
+    mapView(stage, {
+        imageUrl: m.imageUrl, alt: m.name, vb, grid,
+        title: m.name,
+        kicker: zoneEditPoiId ? `Tracé de zone · ${zoneDraft.length} sommet${zoneDraft.length > 1 ? 's' : ''} · Suppr annule le dernier`
+              : mapTool === 'pin' ? 'Cliquez sur la carte pour poser le lieu'
+              : mapTool === 'token' ? `Cliquez sur la carte pour poser ${_mapTokenInfo({ ref: mapTokenRef })?.name || 'le jeton'}`
+              : mapTool === 'calib' ? (calibPts.length ? 'Calage · cliquez le coin opposé de la même case'
+                                                       : 'Calage · cliquez un coin d’une case dessinée sur la carte')
+              : (mapTableView ? 'Vue table · ce que voient les joueurs' : 'Vue MJ · tout est visible')
+                + (grid ? ` · 1 case = ${String(grid.per).replace('.', ',')} ${grid.unit}` : ''),
+        zones: mapTableView ? [visiblePois(st, null).filter(p => (p.zone || []).length), fogZones(st, null)]
+                            : [m.pois.filter(p => (p.zone || []).length && visibleIds.has(p.id)),
+                               m.pois.filter(p => (p.zone || []).length && !visibleIds.has(p.id))],
+        extra: zoneEditPoiId ? [_mapZoneLayer([{ id: 'draft', zone: zoneDraft }], [], vb), _zoneEditLayer()]
+             : mapTool === 'calib' ? [el('div', { className: 'map-zone-edit' }, calibPts.map(p => el('div', {
+                   className: 'zone-vertex first', style: { left: p.x / vb.w * 100 + '%', top: p.y / vb.h * 100 + '%' } })))]
+             : [],
+        pins: list.map(p => ({
+            id: p.id, x: p.x, y: p.y, name: p.name,
+            cls: [visibleIds.has(p.id) ? 'discovered' : 'secret', p.id === mapSelectedPoiId && 'selected']
+                .filter(Boolean).join(' '),
+            // A charId left in positions after the character left the campaign is not in
+            // `players`, so no token is drawn for it — nothing to clean up.
+            tokens: Object.keys(m.positions)
+                .filter(cid => m.positions[cid] === p.id && players.has(cid))
+                .map(cid => ({ name: players.get(cid).name || '?' })),
+        })),
+        tokens: toks.map(({ t, info }) => ({
+            id: t.id, x: t.x, y: t.y, size: t.size || 1, name: info.name,
+            ini: info.name.trim().charAt(0).toUpperCase(), hp: info.hp, markers: markerGlyphs(t.markers),
+            cls: [info.kind === 'monstre' && 'monster', info.hp === 0 && 'dead', t.hidden && 'hidden',
+                  t.id === mapSelectedTokenId && 'selected'].filter(Boolean).join(' '),
+            draggable: true })),
+        card: selTok ? { key: selTok.id, x: selTok.x, y: selTok.y,
+                         create: () => _tokenCard(selTok.id), update: node => _tokenCardUpdate(node, selTok) }
+            : sel && { key: sel.id, x: sel.x, y: sel.y,
+                       create: () => _poiCard(sel.id), update: node => _poiCardUpdate(node, sel) },
+        onTokenClick: id => { mapSelectedTokenId = mapSelectedTokenId === id ? null : id; mapSelectedPoiId = null; renderMapTab(); },
+        onTokenDrop: (id, x, y) => {
+            const t = m.tokens.find(z => z.id === id); if (!t) return;
+            t.x = x; t.y = y;
+            // The GM moving a token answers any pending request for it.
+            moveRequests = moveRequests.filter(r => r.tokenId !== id);
+            saveMaps(); renderMapTab();
+        },
+        onPinDown: (e, id) => { const p = m.pois.find(x => x.id === id); if (p) _mapDragPin(e, p); },
+        onBackground: (e, pt) => {
+            // While tracing a zone, a click places a vertex — and never a POI.
+            if (zoneEditPoiId) { if (pt) { zoneDraft.push([pt.x, pt.y]); renderMapTab(); } return; }
+            if (mapTool === 'calib') {
+                if (!pt) return;
+                calibPts.push(pt);
+                if (calibPts.length === 2) {
+                    const r = gridCalib(calibPts[0], calibPts[1]);
+                    calibPts = []; mapTool = null;
+                    if (r) { Object.assign(m.grid, r); saveMaps(); }
+                    else alert('Case trop petite : cliquez deux coins opposés d’une même case.');
+                }
+                renderMapTab();
+                return;
+            }
+            if (mapTool === 'pin' && pt) { mapTool = null; mapAddPoi(pt.x, pt.y); return; }
+            if (mapTool === 'token' && pt) { const ref = mapTokenRef; mapTool = null; mapTokenRef = null; mapAddToken(ref, pt.x, pt.y); return; }
+            if (mapSelectedPoiId || mapSelectedTokenId) { mapSelectedPoiId = null; mapSelectedTokenId = null; renderMapTab(); }
+        },
     });
-    fill(stage, frame);
 }
 
 // Mirror the queue count onto the Carte tab button — the tab may not even be open.
@@ -3663,6 +4013,19 @@ function buildMapState() {
     players.forEach((p, charId) => { names[charId] = p.name || ''; });
     return {
         mapId: m.id, name: m.name, imageUrl: m.imageUrl || '',
+        // Coordinates below are in this map's units (mapVB): receivers need the kind and
+        // the size to place them, and the grid to draw it.
+        kind: m.kind || 'monde', size: m.kind === 'tactique' ? m.size : null, grid: mapGrid(m),
+        // Tokens: a hidden one never leaves this panel. Names and HP are resolved here, so
+        // the receivers need nothing but this message; `own` is the charId allowed to drag.
+        moves: m.moves || 'libre',
+        tokens: m.kind !== 'tactique' ? [] : (m.tokens || []).filter(t => !t.hidden).flatMap(t => {
+            const info = _mapTokenInfo(t);
+            return info ? [{ id: t.id, x: Math.round(t.x * 10) / 10, y: Math.round(t.y * 10) / 10, size: t.size || 1,
+                             name: info.name, kind: info.kind, own: info.own,
+                             hp: info.hp == null ? null : Math.round(Math.max(0, Math.min(1, info.hp)) * 100) / 100,
+                             markers: t.markers || [] }] : [];
+        }),
         pois: (m.pois || [])
             .filter(p => (p.discoveredBy || []).length > 0)
             .map(p => ({ id: p.id, name: p.name, x: p.x, y: p.y,
@@ -3680,16 +4043,40 @@ function buildMapState() {
 }
 
 let _mapPubTimer = null;
+let _mapPubSig = null;   // last projection actually sent — see the dedupe below
+let _mapPubForce = false;
+// Ably's free tier refuses messages over 16 KB; warn well before, while the GM can still
+// act on it, rather than let the publish fail silently.
+const MAP_STATE_WARN_BYTES = 15000;
 // Broadcast the map, debounced: a drag fires a mutation per pointer move. `state` replaces
 // wholesale on both receivers (mapState = msg.data || null, in both aria-player.js and
 // aria-overlay.js) — so publishing null when there is no active map (deleting the last one)
 // is how a map gets taken OFF the table, not a special case: withholding the publish here
 // left players/overlay holding the last map forever, including across a reload via the
 // aria-map-{charId} cache.
-function publishMapState() {
+//
+// Only a projection that changed goes out. saveMaps() runs on every keystroke in the
+// private gmNote, which is not in the projection: publishing anyway closed every player's
+// open card ten times a second. `force` is for whoever needs the state whatever it is — a
+// late joiner's `request`, a fresh connection.
+function publishMapState(force) {
+    if (force) _mapPubForce = true;
     clearTimeout(_mapPubTimer);
     _mapPubTimer = setTimeout(() => {
-        if (!ablyMap) return;
-        ablyMap.publish('state', buildMapState());
+        if (!ablyMap) return;   // the signature is only recorded for a publish that happened
+        const st = buildMapState();
+        const sig = JSON.stringify(st);
+        if (sig === _mapPubSig && !_mapPubForce) return;
+        _mapPubSig = sig; _mapPubForce = false;
+        const bytes = new TextEncoder().encode(sig).length;
+        _renderMapSizeWarn(bytes);
+        ablyMap.publish('state', st);
     }, 150);
+}
+
+function _renderMapSizeWarn(bytes) {
+    const node = document.getElementById('map-size-warn');
+    if (node) node.textContent = bytes > MAP_STATE_WARN_BYTES
+        ? `Carte trop chargée pour la diffusion (${Math.round(bytes / 1024)} Ko sur 16) : les joueurs risquent de ne plus la recevoir.`
+        : '';
 }

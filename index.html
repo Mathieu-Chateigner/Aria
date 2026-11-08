@@ -2,26 +2,26 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self'; object-src 'none'; base-uri 'self'">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <!-- ── SEO : remplacez aria-jdr.fr par votre domaine dans TOUTES les URL absolues ── -->
+    <!-- ── SEO : si le site change d'adresse, remplacez-la dans TOUTES les URL absolues ── -->
     <title>ARIA Table — feuille de personnage, écran de MJ et overlay OBS</title>
     <meta name="description" content="Table virtuelle gratuite pour le jeu de rôle ARIA : feuille de personnage, écran de Maître de Jeu, jets de dés partagés, webcams et overlay OBS. Sans installation.">
-    <link rel="canonical" href="https://aria-jdr.fr/">
+    <link rel="canonical" href="https://mathieu-chateigner.github.io/Aria/">
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
     <meta name="author" content="Mathieu Chateigner">
-    <meta name="theme-color" content="#050608" media="(prefers-color-scheme: dark)">
-    <meta name="theme-color" content="#f7f4ee" media="(prefers-color-scheme: light)">
-    <link rel="alternate" hreflang="fr" href="https://aria-jdr.fr/">
-    <link rel="alternate" hreflang="x-default" href="https://aria-jdr.fr/">
+    <meta name="theme-color" content="#050608">
+    <link rel="alternate" hreflang="fr" href="https://mathieu-chateigner.github.io/Aria/">
+    <link rel="alternate" hreflang="x-default" href="https://mathieu-chateigner.github.io/Aria/">
 
     <meta property="og:type" content="website">
     <meta property="og:locale" content="fr_FR">
     <meta property="og:site_name" content="ARIA Table">
     <meta property="og:title" content="ARIA Table — la table virtuelle du jeu de rôle ARIA">
     <meta property="og:description" content="Feuille de personnage, écran de MJ, jets de dés en direct, webcams et overlay OBS. Gratuit, sans installation, dans le navigateur.">
-    <meta property="og:url" content="https://aria-jdr.fr/">
-    <meta property="og:image" content="https://aria-jdr.fr/og-image.png">
+    <meta property="og:url" content="https://mathieu-chateigner.github.io/Aria/">
+    <meta property="og:image" content="https://mathieu-chateigner.github.io/Aria/og-image.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="L'écran de Maître de Jeu d'ARIA Table avec les fiches des joueurs et leurs webcams.">
@@ -29,292 +29,10 @@
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="ARIA Table — la table virtuelle du jeu de rôle ARIA">
     <meta name="twitter:description" content="Feuille de personnage, écran de MJ, jets de dés en direct, webcams et overlay OBS. Gratuit, sans installation.">
-    <meta name="twitter:image" content="https://aria-jdr.fr/og-image.png">
+    <meta name="twitter:image" content="https://mathieu-chateigner.github.io/Aria/og-image.png">
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHRleHQgeD0iMTYiIHk9IjI4IiBmb250LXNpemU9IjMwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjYzlhODRjIj7imZs8L3RleHQ+PC9zdmc+">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Archivo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <style>
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-        :root {
-            --ink:#050608; --bg:#0b0e13; --panel:#10141b; --raise:#161b25;
-            --line:rgba(150,168,200,.10); --line2:rgba(150,168,200,.20);
-            --text:#e8ebf1; --warm:#f3ede1; --dim:#868f9f; --faint:#586273;
-            --ember:#eca456; --ember2:#f6c07e; --embersoft:rgba(236,164,86,.12);
-            --violet:#a98bdd; --violet2:#c4aef0; --violetsoft:rgba(169,139,221,.12);
-            --field:rgba(0,0,0,.30);
-            --frameShadow:rgba(0,0,0,.9);
-            --pageGlow:rgba(236,164,86,.04);
-            --radius: 4px;
-        }
-
-        html, body {
-            height: 100%;
-            background:
-                radial-gradient(120% 60% at 50% -10%, var(--pageGlow), transparent 55%),
-                var(--ink);
-            color: var(--text);
-        }
-
-        body {
-            font-family: 'Archivo', sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            padding: 32px 16px;
-            gap: 48px;
-            -webkit-font-smoothing: antialiased;
-        }
-
-        /* Film-grain material overlay */
-        body::after {
-            content: '';
-            position: fixed;
-            inset: 0;
-            z-index: 9999;
-            pointer-events: none;
-            opacity: .05;
-            mix-blend-mode: soft-light;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-        }
-
-        /* ── Header ── */
-        .header {
-            position: relative;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 12px;
-            text-align: center;
-        }
-
-        .brand {
-            font-family: 'Cormorant Garamond', serif;
-            font-weight: 600;
-            font-size: clamp(40px, 8vw, 68px);
-            color: var(--warm);
-            letter-spacing: .2em;
-            text-indent: .2em;
-            line-height: 1;
-        }
-
-        .tagline {
-            font-family: ui-monospace, Menlo, monospace;
-            font-size: 11px;
-            letter-spacing: .3em;
-            text-transform: uppercase;
-            color: var(--faint);
-        }
-
-        .divider {
-            width: 54px;
-            height: 1px;
-            background: linear-gradient(to right, transparent, var(--ember), transparent);
-            margin-top: 6px;
-        }
-
-        /* ── Cards ── */
-        .cards {
-            position: relative;
-            display: flex;
-            gap: 22px;
-            flex-wrap: wrap;
-            justify-content: center;
-            width: 100%;
-            max-width: 680px;
-        }
-
-        .card {
-            flex: 1;
-            min-width: 240px;
-            max-width: 300px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 14px;
-            padding: 34px 28px;
-            background: var(--panel);
-            border: 1px solid var(--line);
-            border-radius: var(--radius);
-            text-decoration: none;
-            transition: transform .2s, border-color .2s;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .card:hover { transform: translateY(-3px); }
-        .card-player:hover { border-color: rgba(236,164,86,.4); }
-        .card-gm:hover     { border-color: rgba(169,139,221,.4); }
-
-        /* diamond mark (replaces emoji) */
-        .card-icon {
-            width: 16px;
-            height: 16px;
-            transform: rotate(45deg);
-            border: 1.5px solid var(--ember);
-            line-height: 0;
-            font-size: 0;
-        }
-        .card-gm .card-icon { border-color: var(--violet); }
-
-        .card-title {
-            font-family: 'Cormorant Garamond', serif;
-            font-size: 23px;
-            font-weight: 600;
-            letter-spacing: .02em;
-            color: var(--warm);
-        }
-
-        .card-desc {
-            font-family: 'Cormorant Garamond', serif;
-            font-style: italic;
-            font-size: 15px;
-            color: var(--dim);
-            text-align: center;
-            line-height: 1.5;
-        }
-
-        .card-badge {
-            font-family: ui-monospace, Menlo, monospace;
-            font-size: 10px;
-            letter-spacing: .2em;
-            text-transform: uppercase;
-            margin-top: 4px;
-        }
-        .card-player .card-badge { color: var(--ember); }
-        .card-gm     .card-badge { color: var(--violet); }
-
-        /* ── Footer ── */
-        .footer {
-            position: relative;
-            font-family: ui-monospace, Menlo, monospace;
-            font-size: 10px;
-            letter-spacing: .18em;
-            text-transform: uppercase;
-            color: var(--faint);
-            opacity: .6;
-            text-align: center;
-        }
-
-        /* ── Config button ── */
-        .config-btn {
-            position: relative;
-            background: none;
-            border: 1px solid var(--line2);
-            border-radius: var(--radius);
-            color: var(--dim);
-            font-family: 'Archivo', sans-serif;
-            font-size: 11px;
-            font-weight: 600;
-            letter-spacing: .12em;
-            text-transform: uppercase;
-            padding: 9px 18px;
-            cursor: pointer;
-            transition: border-color .2s, color .2s;
-        }
-        .config-btn:hover { border-color: var(--ember); color: var(--ember2); }
-
-        /* ── Modal ── */
-        .modal-scrim {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,.6);
-            z-index: 100;
-            align-items: center;
-            justify-content: center;
-        }
-        .modal-scrim.show { display: flex; }
-        .config-modal {
-            width: 100%;
-            max-width: 420px;
-            margin: 16px;
-            border: 1px solid var(--line2);
-            border-radius: 6px;
-            background: var(--panel);
-            padding: 26px;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            box-shadow: 0 30px 80px -30px var(--frameShadow);
-        }
-        .modal-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 10px;
-        }
-        .config-panel-title {
-            font-family: ui-monospace, Menlo, monospace;
-            font-size: 10px;
-            letter-spacing: .22em;
-            text-transform: uppercase;
-            color: var(--faint);
-        }
-        .modal-close {
-            background: none;
-            border: none;
-            color: var(--dim);
-            font-size: 16px;
-            cursor: pointer;
-            padding: 0 4px;
-            line-height: 1;
-            transition: color .15s;
-        }
-        .modal-close:hover { color: var(--text); }
-        .config-label {
-            font-family: ui-monospace, Menlo, monospace;
-            font-size: 9.5px;
-            letter-spacing: .16em;
-            text-transform: uppercase;
-            color: var(--faint);
-            margin-top: 10px;
-        }
-        .config-input {
-            background: var(--field);
-            border: 1px solid var(--line2);
-            border-radius: 3px;
-            color: var(--text);
-            font-family: 'Archivo', sans-serif;
-            font-size: 14px;
-            padding: 9px 12px;
-            width: 100%;
-            transition: border-color .2s;
-        }
-        .config-input:focus { outline: none; border-color: var(--ember); }
-        .config-save-btn {
-            margin-top: 14px;
-            background: var(--ember);
-            border: none;
-            border-radius: 3px;
-            color: var(--ink);
-            font-family: 'Archivo', sans-serif;
-            font-size: 12px;
-            font-weight: 700;
-            letter-spacing: .1em;
-            text-transform: uppercase;
-            padding: 11px 24px;
-            cursor: pointer;
-            align-self: flex-end;
-            transition: filter .2s;
-        }
-        .config-save-btn:hover { filter: brightness(1.08); }
-
-        /* ── Light mode ── */
-        body.light-mode {
-            --ink:#ddd4c2; --bg:#f4efe4; --panel:#fcf9f1; --raise:#fff;
-            --line:rgba(70,56,30,.13); --line2:rgba(70,56,30,.24);
-            --text:#2c2820; --warm:#1b1710; --dim:#6c6353; --faint:#9c917a;
-            --ember:#a9620f; --ember2:#8a4f0c; --embersoft:rgba(169,98,15,.14);
-            --violet:#6a47a3; --violet2:#523784; --violetsoft:rgba(106,71,163,.13);
-            --field:rgba(50,38,14,.05);
-            --frameShadow:rgba(70,52,22,.16);
-            --pageGlow:rgba(169,98,15,.05);
-        }
-    </style>
+    <link rel="stylesheet" href="css/aria-tokens.css">
+    <link rel="stylesheet" href="css/aria-connexion.css">
 
     <!-- Donnees structurees : l'application -->
     <script type="application/ld+json">
@@ -322,7 +40,7 @@
       "@context": "https://schema.org",
       "@type": "WebApplication",
       "name": "ARIA Table",
-      "url": "https://aria-jdr.fr/",
+      "url": "https://mathieu-chateigner.github.io/Aria/",
       "applicationCategory": "GameApplication",
       "operatingSystem": "Navigateur web (Chrome recommandé)",
       "inLanguage": "fr",
@@ -344,86 +62,120 @@
     </script>
 </head>
 <body>
+<div class="cx-root">
+    <!-- ariaBg.mount('door') prepends the stone scene here -->
+    <div class="cx-ui">
+        <div class="cx-spacer"></div>
 
-    <div id="dungeon-bg-root" style="position:fixed;inset:0;z-index:0;"></div>
-
-    <div class="header">
-        <h1 class="brand">ARIA</h1>
-        <div class="tagline">Système de jeu de rôle sur table</div>
-        <div class="divider"></div>
-    </div>
-
-    <div class="cards">
-        <a class="card card-player" href="views/aria-player.html">
-            <div class="card-icon"></div>
-            <div class="card-title">Joueur</div>
-            <p class="card-desc">Feuille de personnage, compétences, inventaire, cartes et alchimie.</p>
-            <div class="card-badge">Incarner &rarr;</div>
-        </a>
-
-        <a class="card card-gm" href="views/aria-gm.html">
-            <div class="card-icon"></div>
-            <div class="card-title">Maître de Jeu</div>
-            <p class="card-desc">Gestion des campagnes, monstres, joueurs, cartes et alchimie.</p>
-            <div class="card-badge">Diriger &rarr;</div>
-        </a>
-    </div>
-
-    <button class="config-btn" onclick="openConfig()">Configuration</button>
-
-    <div class="footer">ARIA &mdash; Outil de jeu de rôle</div>
-
-    <div class="modal-scrim" id="cfg-scrim" onclick="closeConfigOnScrim(event)">
-        <div class="config-modal">
-            <div class="modal-header">
-                <div class="config-panel-title">Configuration</div>
-                <button class="modal-close" onclick="closeConfig()">✕</button>
-            </div>
-            <label class="config-label">Clé Ably</label>
-            <input class="config-input" id="cfg-ably" type="password" placeholder="xxxxxxxx:xxxxxxxx" />
-            <label class="config-label">Clé API YouTube <span style="font-size:11px;opacity:.6;">(optionnel — pour les playlists)</span></label>
-            <input class="config-input" id="cfg-youtube-key" type="password" placeholder="AIzaSy…" />
-            <button class="config-save-btn" id="cfg-save-btn" onclick="saveConfig()">Sauvegarder</button>
+        <div class="cx-brand">
+            <div class="cx-kicker">Chroniques de table</div>
+            <h1 class="cx-title">ARIA</h1>
+            <div class="cx-rule"><div class="cx-rule-l"></div><div class="cx-rule-gem"></div><div class="cx-rule-r"></div></div>
         </div>
+
+        <form class="cx-card" id="cx-form" novalidate>
+            <div class="cx-corner tl"></div><div class="cx-corner tr"></div>
+            <div class="cx-corner bl"></div><div class="cx-corner br"></div>
+
+            <div class="cx-tabs" id="cx-tabs">
+                <div class="cx-tab" data-mode="login">Connexion</div>
+                <div class="cx-tab" data-mode="signup">Inscription</div>
+            </div>
+
+            <div class="cx-intro" id="cx-intro">
+                <div class="cx-intro-title" id="cx-intro-title"></div>
+                <div class="cx-intro-text" id="cx-intro-text"></div>
+            </div>
+
+            <div class="cx-field" data-field="name">
+                <div class="cx-field-head"><label class="cx-label" for="cx-name">Nom d'aventurier</label></div>
+                <input class="cx-input" id="cx-name" type="text" placeholder="Kaelen Vorr" autocomplete="nickname" spellcheck="false">
+                <div class="cx-err" hidden></div>
+            </div>
+
+            <div class="cx-field" data-field="email">
+                <div class="cx-field-head"><label class="cx-label" for="cx-email">Courriel</label></div>
+                <input class="cx-input" id="cx-email" type="email" placeholder="vous@domaine.fr" autocomplete="email" spellcheck="false">
+                <div class="cx-err" hidden></div>
+            </div>
+
+            <div class="cx-field" data-field="pw">
+                <div class="cx-field-head">
+                    <label class="cx-label" for="cx-pw" id="cx-pw-label">Mot de passe</label>
+                    <button type="button" class="cx-aside" id="cx-show">Afficher</button>
+                </div>
+                <input class="cx-input" id="cx-pw" type="password" spellcheck="false">
+                <div class="cx-meter" id="cx-meter">
+                    <div class="cx-meter-bars"><div class="cx-meter-bar"></div><div class="cx-meter-bar"></div><div class="cx-meter-bar"></div><div class="cx-meter-bar"></div></div>
+                    <div class="cx-meter-label" id="cx-meter-label"></div>
+                </div>
+                <div class="cx-err" hidden></div>
+            </div>
+
+            <div class="cx-check-wrap" id="cx-accept-wrap">
+                <div class="cx-check" id="cx-accept" role="checkbox" tabindex="0" aria-checked="false">
+                    <div class="cx-gem"></div>
+                    <div class="cx-check-label">J'accepte le <a href="views/aria-code.html" target="_blank" rel="noopener" id="cx-code-link">Code de la table</a></div>
+                </div>
+                <div class="cx-err" id="cx-accept-err" hidden>Acceptez le Code de la table pour continuer.</div>
+                <div class="cx-privacy">Vos données sont traitées selon notre <a href="views/aria-confidentialite.html" target="_blank" rel="noopener">politique de confidentialité</a>.</div>
+            </div>
+
+            <div class="cx-row" id="cx-login-row">
+                <div class="cx-check on" id="cx-remember" role="checkbox" tabindex="0" aria-checked="true">
+                    <div class="cx-gem"></div>
+                    <div class="cx-check-label">Se souvenir de moi</div>
+                </div>
+                <a class="cx-link" id="cx-to-forgot" href="#">Mot de passe oublié ?</a>
+            </div>
+
+            <div class="cx-sent" id="cx-sent" hidden></div>
+
+            <button type="submit" class="cx-cta" id="cx-cta"></button>
+
+            <div class="cx-oauth" id="cx-oauth">
+                <div class="cx-or"><div class="cx-or-l"></div><span>ou</span><div class="cx-or-l"></div></div>
+                <div class="cx-oauth-row">
+                    <button type="button" class="cx-oauth-btn discord" data-provider="discord">
+                        <svg class="cx-oauth-logo" viewBox="0 0 127.14 96.36" aria-hidden="true"><path d="M107.7 8.07A105.15 105.15 0 0 0 81.47 0a72.06 72.06 0 0 0-3.36 6.83 97.68 97.68 0 0 0-29.11 0A72.37 72.37 0 0 0 45.64 0a105.89 105.89 0 0 0-26.25 8.09C2.79 32.65-1.71 56.6.54 80.21a105.73 105.73 0 0 0 32.17 16.15 77.7 77.7 0 0 0 6.89-11.11 68.42 68.42 0 0 1-10.85-5.18c.91-.66 1.8-1.34 2.66-2a75.57 75.57 0 0 0 64.32 0c.87.71 1.76 1.39 2.66 2a68.68 68.68 0 0 1-10.87 5.19 77 77 0 0 0 6.89 11.1 105.25 105.25 0 0 0 32.19-16.14c2.64-27.38-4.51-51.11-18.9-72.15zM42.45 65.69C36.18 65.69 31 60 31 53s5-12.74 11.43-12.74S54 46 53.89 53s-5.05 12.69-11.44 12.69zm42.24 0C78.41 65.69 73.25 60 73.25 53s5-12.74 11.44-12.74S96.23 46 96.12 53s-5.04 12.69-11.43 12.69z"/></svg>Discord
+                    </button>
+                </div>
+                <div class="cx-err" id="cx-oauth-err" hidden></div>
+                <div class="cx-privacy" id="cx-oauth-note">Continuer avec Discord vaut acceptation du <a href="views/aria-code.html" target="_blank" rel="noopener">Code de la table</a>.</div>
+            </div>
+
+            <div class="cx-foot" id="cx-foot">
+                <div class="cx-foot-q" id="cx-foot-q"></div>
+                <a class="cx-link" id="cx-foot-a" href="#"></a>
+            </div>
+        </form>
+
+        <div class="cx-spacer"></div>
     </div>
 
-    <script src="js/aria-dungeon-bg.js"></script>
-    <script>
-        (function () {
-            const cfg = JSON.parse(localStorage.getItem('aria-config') || '{}');
-            if (cfg.lightMode) document.body.classList.add('light-mode');
-        })();
+    <div class="cx-version">
+        <div class="cx-version-name">ARIA</div>
+        <div class="cx-version-sep"></div>
+        <div class="cx-version-num">v2.4</div>
+    </div>
+    <div class="cx-legal">
+        <a href="views/aria-code.html">Code de la table</a>
+        <a href="views/aria-confidentialite.html">Confidentialité</a>
+        <a href="views/aria-mentions.html">Mentions légales</a>
+    </div>
+    <div class="cx-status">
+        <div class="cx-status-dot"></div>
+        <div class="cx-status-label">Serveurs en ligne</div>
+    </div>
 
-        function openConfig() {
-            const cfg = JSON.parse(localStorage.getItem('aria-config') || '{}');
-            document.getElementById('cfg-ably').value        = cfg.ablyKey       || '';
-            document.getElementById('cfg-youtube-key').value = cfg.youtubeApiKey || '';
-            document.getElementById('cfg-scrim').classList.add('show');
-        }
+    <div class="cx-enter" id="cx-enter" hidden>
+        <div class="cx-enter-kicker" id="cx-enter-kicker"></div>
+        <div class="cx-enter-title" id="cx-enter-title"></div>
+    </div>
+</div>
 
-        function closeConfig() {
-            document.getElementById('cfg-scrim').classList.remove('show');
-        }
-
-        function closeConfigOnScrim(e) {
-            if (e.target === document.getElementById('cfg-scrim')) closeConfig();
-        }
-
-        function saveConfig() {
-            const cfg = JSON.parse(localStorage.getItem('aria-config') || '{}');
-            cfg.ablyKey       = document.getElementById('cfg-ably').value.trim();
-            cfg.youtubeApiKey = document.getElementById('cfg-youtube-key').value.trim();
-            localStorage.setItem('aria-config', JSON.stringify(cfg));
-            const btn = document.getElementById('cfg-save-btn');
-            btn.textContent = 'Sauvegardé ✓';
-            setTimeout(() => { btn.textContent = 'Sauvegarder'; closeConfig(); }, 1200);
-        }
-
-        window.addEventListener('storage', e => {
-            if (e.key !== 'aria-config') return;
-            const cfg = JSON.parse(e.newValue || '{}');
-            document.body.classList.toggle('light-mode', !!cfg.lightMode);
-        });
-    </script>
+<script src="js/aria-bg.js"></script>
+<script src="js/aria-supabase.js"></script>
+<script src="js/aria-connexion.js"></script>
 </body>
 </html>

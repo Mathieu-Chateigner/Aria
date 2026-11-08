@@ -2,47 +2,56 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
+    <!-- shortcut: 'unsafe-inline' because the static markup still has ~100 on*= handlers; drop it once they move to addEventListener -->
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' https://www.youtube.com https://s.ytimg.com; object-src 'none'; base-uri 'self'">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ARIA – Maître de Jeu</title>
     <script>const VERSION = '0.1.6';</script>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHRleHQgeD0iMTYiIHk9IjI4IiBmb250LXNpemU9IjMwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjYzlhODRjIj7imZs8L3RleHQ+PC9zdmc+">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Archivo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+    <link rel="stylesheet" href="../css/aria-fonts.css">
     <link rel="stylesheet" href="../css/aria-panel.css">
     <link rel="stylesheet" href="../css/aria-gm.css">
 </head>
 <body>
 
-    <!-- Dungeon-entrance background — behind the gateway/selection screens only.
-         Paused (setActive(false)) once the app panel is shown; see aria-shared.js. -->
-    <div id="dungeon-bg-root" style="position:fixed;inset:0;z-index:9998;"></div>
+    <!-- Stone arch (ariaBg 'arch') behind the gateway/selection screens only;
+         gateBackdrop() mounts it and tears it down in the app. -->
+    <!-- Holds the gateway backdrop (gateBackdrop). Never takes a click: it stays full-screen
+         at z-index 9998 after the scene is torn down, and would cover the whole app. -->
+    <div id="dungeon-bg-root" style="position:fixed;inset:0;z-index:9998;pointer-events:none;"></div>
 
-    <!-- SAVE KEY GATEWAY (two-panel: Nouvelle clé | Clé existante — design frame 01) -->
+    <!-- GATEWAY : compte sans sauvegarde : nouvelle clé ou rattachement -->
     <div id="file-gateway" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:10000;padding:24px;overflow-y:auto;">
         <div class="gateway-shell">
             <div class="gateway-brand">ARIA</div>
             <div class="gateway-brand-rule"></div>
-            <div class="gateway-cols">
-                <!-- New key panel -->
-                <div class="gateway-card" id="gateway-new">
-                    <div class="gateway-eyebrow ember">Nouvelle clé</div>
-                    <div class="gateway-card-title">Clé de sauvegarde</div>
-                    <p class="gateway-desc">Votre clé identifie votre progression. Notez-la précieusement — elle sera nécessaire sur un autre appareil.</p>
-                    <div class="gateway-key-box" id="gateway-key-display"></div>
-                    <div class="gateway-btn-row">
-                        <button class="gateway-btn-secondary" id="gateway-copy-btn" onclick="copyGatewayKey()">Copier</button>
-                        <button class="gateway-btn" onclick="confirmNewKey()">Continuer →</button>
-                    </div>
+            <!-- Uniquement pour un compte qui ne possède encore aucune sauvegarde
+                 (la connexion se fait sur index.html). Nouvelle clé, ou rattachement d'une clé d'avant les comptes. -->
+            <div id="gateway-keys">
+                <div class="gateway-account" id="gateway-account" style="display:none;">
+                    <span id="gateway-account-mail"></span>
+                    <button class="gateway-account-btn" onclick="signOut()">Déconnexion</button>
                 </div>
-                <!-- Existing key panel -->
-                <div class="gateway-card" id="gateway-existing">
-                    <div class="gateway-eyebrow">Clé existante</div>
-                    <div class="gateway-card-title">Retrouver une partie</div>
-                    <p class="gateway-desc">Saisissez votre clé pour retrouver votre progression sur cet appareil.</p>
-                    <input class="gateway-key-input" id="gateway-key-input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" onkeydown="if(event.key==='Enter')submitExistingKey()" />
-                    <button class="gateway-btn-secondary gateway-btn-full" onclick="submitExistingKey()">Charger →</button>
+                <div class="gateway-cols">
+                    <!-- New key panel -->
+                    <div class="gateway-card" id="gateway-new">
+                        <div class="gateway-eyebrow ember">Nouvelle clé</div>
+                        <div class="gateway-card-title">Clé de sauvegarde</div>
+                        <p class="gateway-desc">Votre clé identifie votre progression. Notez-la précieusement — elle sera nécessaire sur un autre appareil.</p>
+                        <div class="gateway-key-box" id="gateway-key-display"></div>
+                        <div class="gateway-btn-row">
+                            <button class="gateway-btn-secondary" id="gateway-copy-btn" onclick="copyGatewayKey()">Copier</button>
+                            <button class="gateway-btn" onclick="confirmNewKey()">Continuer →</button>
+                        </div>
+                    </div>
+                    <!-- Existing key panel -->
+                    <div class="gateway-card" id="gateway-existing">
+                        <div class="gateway-eyebrow">Clé existante</div>
+                        <div class="gateway-card-title">Retrouver une partie</div>
+                        <p class="gateway-desc">Saisissez la clé d’une sauvegarde créée avant les comptes : elle sera rattachée définitivement à celui-ci.</p>
+                        <input class="gateway-key-input" id="gateway-key-input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" onkeydown="if(event.key==='Enter')submitExistingKey()" />
+                        <button class="gateway-btn-secondary gateway-btn-full" onclick="submitExistingKey()">Rattacher →</button>
+                    </div>
                 </div>
             </div>
             <button class="gateway-cancel" id="gateway-cancel" onclick="cancelGateway()" style="display:none;">Annuler</button>
@@ -69,10 +78,11 @@
             </div>
             <button class="sel-add-btn" onclick="createCampaign()">+ Nouvelle campagne</button>
             <div class="sel-save-row">
-                <span class="sel-save-icon">Clé</span>
+                <span class="sel-save-icon">Compte</span>
                 <span class="sel-save-label" id="sel-save-label">—</span>
                 <button class="sel-save-btn" onclick="copySaveKey()">Copier</button>
-                <button class="sel-save-btn" onclick="changeSaveKey()">Changer…</button>
+                <button class="sel-save-btn" onclick="changeSaveKey()">Rattacher…</button>
+                <button class="sel-save-btn" onclick="signOut()">Déconnexion</button>
             </div>
         </div>
     </div>
@@ -90,6 +100,7 @@
 
     <!-- TOP BAR -->
     <div class="topbar">
+        <div class="topbar-seuil" onclick="goSeuil(currentCampaignId)" title="Retour au seuil de la campagne">&larr; Seuil</div>
         <div class="topbar-title" onclick="switchCampaign()" title="Changer de campagne" style="cursor:pointer;">ARIA</div>
         <span class="topbar-mj">MJ</span>
         <input class="campaign-name-input" id="campaign-display" value="" placeholder="Campagne" onblur="saveCampaignName(this)" onkeydown="if(event.key==='Enter')this.blur()" />
@@ -142,8 +153,6 @@
                     <button class="gm-action-btn gm-action-heal" onclick="bulkHealAll()">Soigner</button>
                 </div>
                 <select id="gm-cam-device-pick" class="gm-input" style="display:none;margin-top:10px;max-width:280px;" title="Caméra à diffuser"></select>
-                <select id="gm-cam-mic-pick" class="gm-input" style="display:none;margin-top:10px;max-width:280px;" title="Microphone"></select>
-                <button id="gm-cam-ptt-key" class="gm-action-btn" style="display:none;margin-top:10px;"></button>
                 <div id="gm-self-view-section" style="display:none;margin-top:10px;">
                     <div class="section-header">
                         <span class="section-icon">📹</span>
@@ -223,13 +232,22 @@
                 </div><!-- /.gm-two-col -->
             </div>
 
-            <!-- CARTE — POI map shell; image + pins land in tasks 4/5 -->
+            <!-- CARTE — the stage is filled by mapView() (aria-shared.js) -->
             <div class="tab-content map-tab" id="tab-map">
                 <div class="map-bar" id="map-group-bar"></div>
-                <div class="map-toolbar" id="map-toolbar"></div>
+                <div class="map-toolbar" id="map-toolbar">
+                    <input class="map-name-input" id="map-name-input" placeholder="Nom de la carte"
+                           oninput="mapSetName(this.value)">
+                    <span class="map-tools" id="map-tools"></span>
+                    <input class="map-source-input" id="map-source-input" placeholder="URL source (optionnel)"
+                           oninput="mapSetSource(this.value)">
+                    <span id="map-queue"></span>
+                </div>
+                <div class="map-grid-bar" id="map-grid-bar" style="display:none"></div>
                 <input type="file" id="map-image-input" accept="image/*" style="display:none"
                        onchange="handleMapImageUpload(this)">
                 <span class="map-upload-status" id="map-upload-status"></span>
+                <span class="map-size-warn" id="map-size-warn"></span>
                 <div class="map-stage" id="map-stage"></div>
             </div>
 
@@ -425,7 +443,7 @@
                     <div class="section-title" style="margin-bottom:0;">Fichiers de campagne</div>
                     <label class="gm-file-upload-label" id="file-upload-btn">
                         + Ajouter un fichier
-                        <input type="file" id="file-upload-input" style="display:none;" onchange="handleFileUpload(this)">
+                        <input type="file" id="file-upload-input" accept="image/*,.pdf,.txt,.md,.csv" style="display:none;" onchange="handleFileUpload(this)">
                     </label>
                 </div>
                 <div class="gm-files-progress" id="file-upload-progress" style="display:none;"></div>
@@ -518,7 +536,10 @@
                         <div class="notes-list" id="gm-notes-list"></div>
                     </div>
                     <div class="notes-editor">
-                        <input class="notes-name-input" id="gm-notes-name-input" placeholder="Nom de la note…" oninput="gmNotes.rename()" />
+                        <div class="notes-head">
+                            <input class="notes-name-input" id="gm-notes-name-input" placeholder="Nom de la note…" oninput="gmNotes.rename()" />
+                            <button class="notes-share" id="gm-notes-share" onclick="gmNotes.share()" title="Partagée : visible dans le Journal de toute la table">Privée</button>
+                        </div>
                         <textarea class="notes-area" id="gm-notes-area" placeholder="Contenu…" oninput="gmNotes.save()"></textarea>
                     </div>
                 </div>
@@ -553,13 +574,8 @@
         <input class="config-input" id="cfg-vdo-room" placeholder="ex: mon-groupe" />
         <label class="config-label">Mot de passe VDO (optionnel)</label>
         <input class="config-input" id="cfg-vdo-room-password" type="password" autocomplete="off" placeholder="laisser vide si aucun" />
-        <div class="config-theme-row">
-            <span class="config-label" style="margin-bottom:0;">Mode clair</span>
-            <label class="theme-toggle">
-                <input type="checkbox" id="cfg-light-mode" onchange="applyTheme(this.checked)">
-                <span class="theme-toggle-slider"></span>
-            </label>
-        </div>
+        <label class="config-label">Clé API YouTube <span style="font-size:11px;opacity:.6;">(optionnel — pour les playlists)</span></label>
+        <input class="config-input" id="cfg-youtube-key" type="password" autocomplete="off" placeholder="AIzaSy…" />
         <button class="config-save-btn" onclick="saveConfig()">Reconnecter</button>
         <button class="config-save-btn" style="margin-top:8px;background:rgba(169,139,221,.10);" onclick="copyOverlayUrl()">Copier URL Overlay (OBS)</button>
     </div>
@@ -592,8 +608,10 @@
     <div id="yt-player-a" style="position:fixed;top:-2px;left:-2px;width:1px;height:1px;overflow:hidden;pointer-events:none;opacity:0;"></div>
     <div id="yt-player-b" style="position:fixed;top:-2px;left:-4px;width:1px;height:1px;overflow:hidden;pointer-events:none;opacity:0;"></div>
 
-    <script src="../js/aria-dungeon-bg.js"></script>
+    <script src="../js/aria-bg.js"></script>
+    <script src="../js/vendor/ably.min-2.29.0.js"></script>
     <script src="../js/aria-supabase.js"></script>
+    <script src="../js/aria-roll.js"></script>
     <script src="../js/aria-shared.js"></script>
     <script src="../js/aria-gm.js"></script>
 </body>

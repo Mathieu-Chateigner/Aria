@@ -1,8 +1,9 @@
 const params = new URLSearchParams(window.location.search);
 // The URL pasted into OBS is just ?s=<save key>. Everything below is resolved from
-// it at startup — the Ably key and player/gm mode from the saves row, the campaign
-// and the widget layout from the panel over the route channel — so the link never
-// has to be re-copied when the campaign or character changes.
+// it at startup — an Ably token from the ably-token function (the save key is what
+// it is issued against; this page never holds the Ably key), the campaign, the
+// player/gm mode and the widget layout from the panel over the route channel — so
+// the link never has to be re-copied when the campaign or character changes.
 //
 // The resolved values are written back into the address bar on the self-reload, so
 // a page that is already running carries the full set and skips the lookup.
@@ -12,7 +13,6 @@ const SAVE_KEY = params.get('s') || '';
 // role the panel answering on the route channel says it is.
 const WANT_MODE = params.get('mode') || '';
 let MODE = WANT_MODE || 'gm';
-let ABLY_KEY = params.get('ably') || '';
 const OVERLAY_ID = params.get('overlay') || '';
 // Campaign join code (?campaign=XXXXX). Scopes the rolls/cards/damage channels so this
 // overlay only shows events from its campaign. Empty → global channels.
@@ -47,6 +47,9 @@ let layoutFromAbly = false;
 // because the other tab is still a member of the set.
 const presenceCache = new Map();
 const rollHistory = [];
+// Last monster-state from the GM, kept apart from the layout: it can arrive before the
+// layout is loaded, or before a monster_list widget is added in the editor.
+let monsterState = [];
 const ROLL_HISTORY_MAX = 20;
 
 // VDO.ninja room + password, cached from the GM's gm-presence broadcast. Camera
@@ -62,7 +65,7 @@ let vdoRoomPassword = '';
 const sidSafe = s => String(s || '').replace(/\W+/g, '_');
 
 function vdoCamSrc(sid) {
-    let src = `https://vdo.ninja/?view=${encodeURIComponent(sidSafe(sid))}&autoplay&cleanoutput&transparent`;
+    let src = `https://vdo.ninja/?view=${encodeURIComponent(sidSafe(sid))}&autoplay&cleanoutput&transparent&noaudio`;   // table voice stays off the stream
     if (vdoRoom) src += `&solo&room=${encodeURIComponent(vdoRoom)}`;
     if (vdoRoomPassword) src += `&password=${encodeURIComponent(vdoRoomPassword)}`;
     return src;
@@ -117,6 +120,21 @@ function refreshCameraWidgets() {
 }
 
 // Zones first, pins after: a black district must not swallow the tokens standing on it.
+// A tactical map is in image pixels (mapVB), a world map in percentages.
+function _owVB() { return mapVB(mapState); }
+
+// The grid of a tactical map, same look as the panels' _mapGridLayer().
+function _owGrid() {
+    const g = mapGrid(mapState);
+    if (!g || !g.show) return '';
+    const vb = _owVB(), sw = Math.max(vb.w, vb.h) / 900, d = `M ${g.cell} 0 L 0 0 0 ${g.cell}`;
+    return `<svg class="ow-map-grid" viewBox="0 0 ${vb.w} ${vb.h}" preserveAspectRatio="none"><defs>`
+         + `<pattern id="ow-map-grid-cell" patternUnits="userSpaceOnUse" x="${g.ox}" y="${g.oy}" width="${g.cell}" height="${g.cell}">`
+         + `<path d="${d}" class="ow-map-grid-dark" fill="none" stroke-width="${sw * 2}"/>`
+         + `<path d="${d}" class="ow-map-grid-line" fill="none" stroke-width="${sw}"/></pattern></defs>`
+         + `<rect width="${vb.w}" height="${vb.h}" fill="url(#ow-map-grid-cell)"/></svg>`;
+}
+
 function _owZones(charId) {
     // mapState comes straight off Ably ('aria-map' / 'state') with no validation — anyone
     // holding the key can publish a malformed zone. A throw here would blank the whole
@@ -132,7 +150,11 @@ function _owZones(charId) {
         .map(z => poly(z, 'ow-zone-known')).join('');
     const fog = fogZones(mapState, charId)
         .map(z => poly(z, 'ow-zone-fog')).join('');
-    return `<svg class="ow-map-zones" viewBox="0 0 100 100" preserveAspectRatio="none">${clear}${fog}</svg>`;
+    // Soft fog edges, as in the panels (_mapZoneLayer): darkness, not a hole cut in the map.
+    const blur = Math.max(_owVB().w, _owVB().h) * .006;
+    const soft = `<defs><filter id="ow-map-soft" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="${blur}"/></filter></defs>`;
+    const vb = _owVB();
+    return _owGrid() + `<svg class="ow-map-zones" viewBox="0 0 ${vb.w} ${vb.h}" preserveAspectRatio="none">${soft}${clear}${fog}</svg>`;
 }
 
 // Create the <img> once and only re-assign src when it differs — the setFrameSrc guard,
@@ -159,12 +181,29 @@ function syncMapWidget(el, widget) {
     el.querySelector('.ow-map-zones-wrap').innerHTML = _owZones(MAP_CHAR_ID);
     const pos = mapState.positions || {};
     const names = mapState.players || {};
+    const vb = _owVB();
     // This file builds strings and has its own esc(); every interpolated field goes
     // through it. Names arrive over Ably — anyone with the key can publish one.
-    el.querySelector('.ow-map-pins').innerHTML = visiblePois(mapState, MAP_CHAR_ID).map(p => {
+    // Tokens of a tactical map, under the pins — same look as the panels.
+    const g = mapGrid(mapState), cell = g?.cell || vb.w / 30;
+    const toks = visibleTokens(mapState, MAP_CHAR_ID).map(t => {
+        const size = Math.max(1, Math.min(4, Number(t.size) || 1)), w = size * cell;
+        const name = String(t.name || '?'), hp = t.hp == null ? null : Math.max(0, Math.min(1, +t.hp || 0));
+        const cls = ['ow-map-tok', t.kind === 'monstre' && 'monster', hp === 0 && 'dead', t.own && t.own === MAP_CHAR_ID && 'me'].filter(Boolean).join(' ');
+        const level = hp == null ? '' : hp > .6 ? 'ok' : hp > .3 ? 'mid' : 'low';
+        return `<div class="${cls}" style="left:${(+t.x - w / 2) / vb.w * 100}%;top:${(+t.y - w / 2) / vb.h * 100}%;width:${w / vb.w * 100}%;height:${w / vb.h * 100}%">`
+             + `<b class="ow-map-tok-ini">${esc(name.trim().charAt(0).toUpperCase())}</b>`
+             + (hp == null ? '' : `<div class="ow-map-tok-hp" data-level="${level}"><i style="width:${hp * 100}%"></i></div>`)
+             + `<div class="ow-map-tok-marks">${esc(markerGlyphs(t.markers).join(''))}</div>`
+             + `<div class="ow-map-tok-name">${esc(name)}</div></div>`;
+    }).join('');
+    el.querySelector('.ow-map-pins').innerHTML = toks + visiblePois(mapState, MAP_CHAR_ID).map(p => {
         const tokens = Object.keys(pos).filter(cid => pos[cid] === p.id)
-            .map(cid => `<span class="ow-map-token">${esc(names[cid] || '?')}</span>`).join('');
-        return `<div class="ow-map-pin" style="left:${Number(p.x) || 0}%;top:${Number(p.y) || 0}%">`
+            .map(cid => {
+                const n = String(names[cid] || '?');
+                return `<span class="ow-map-token"><b class="ow-map-token-ini">${esc(n.trim().charAt(0).toUpperCase())}</b>${esc(n)}</span>`;
+            }).join('');
+        return `<div class="ow-map-pin" style="left:${(Number(p.x) || 0) / vb.w * 100}%;top:${(Number(p.y) || 0) / vb.h * 100}%">`
              + `<span class="ow-map-dot"></span>`
              + `<span class="ow-map-label">${esc(p.name)}</span>`
              + `<span class="ow-map-tokens">${tokens}</span></div>`;
@@ -179,17 +218,22 @@ let cardDismiss = null;
 // Everything the save key resolves to is known by the time this runs.
 function startAbly() {
     if (MODE === 'gm') document.getElementById('waiting').classList.add('show');
-    const ably = new Ably.Realtime({ key: ABLY_KEY, transports: ['web_socket'] });
+    // The token only opens what this save key holds: its route channel, this layout,
+    // and the channels of a campaign it owns or plays in — all but two read-only.
+    const ably = ablyConnect({ kind: 'overlay', saveKey: SAVE_KEY, code: CAMPAIGN, overlay: OVERLAY_ID });
 
-    // Dice rolls
+    // Dice rolls. The name shown is the sender's (clientId is bound by the token), not
+    // the one the payload claims — nobody rolls on stream under someone else's name.
     const rollCh = ably.channels.get(campaignChannel('aria-rolls'));
     rollCh.subscribe('roll', msg => {
-        rollHistory.push(msg.data);
+        if (!msg.data) return;
+        const data = { ...msg.data, char: presenceCache.get(msg.clientId)?.name || msg.data.char };
+        rollHistory.push(data);
         if (rollHistory.length > ROLL_HISTORY_MAX) rollHistory.shift();
         updateWidgetData();
         // Short delay before the card shows, so the roll lands on stream a beat after
         // the player's own float card rather than simultaneously.
-        setTimeout(() => showRoll(msg.data), 3000);
+        setTimeout(() => showRoll(data), 3000);
     });
 
     // Card draws
@@ -202,8 +246,9 @@ function startAbly() {
     // Player-to-player Soigner events (source:'player') carry only targetId + amount —
     // no hpBefore/hpAfter/maxHP — so the HP bar animation can't be rendered for them.
     // The target's own presence heartbeat updates the HP widgets instead.
-    dmgCh.subscribe('damage', msg => { if (msg.data?.source === 'player') return; showDamage(msg.data); });
-    dmgCh.subscribe('heal', msg => { if (msg.data?.source === 'player') return; showHeal(msg.data); });
+    // Only the GM's carry them — and only the GM may put a damage effect on stream.
+    dmgCh.subscribe('damage', msg => { if (!ablyFromGM(msg) || !msg.data) return; showDamage(msg.data); });
+    dmgCh.subscribe('heal', msg => { if (!ablyFromGM(msg) || !msg.data) return; showHeal(msg.data); });
     // The roster. Re-read whole on any change to the set — a player entering,
     // updating their sheet, or disconnecting. There is no local liveness bookkeeping
     // left to drift, no sweep, and no departure message to interpret.
@@ -224,7 +269,8 @@ function startAbly() {
             const prev = byId.get(m.clientId);
             if (!prev || (d.ts || 0) >= (prev.ts || 0)) byId.set(m.clientId, d);
         });
-        const gm = [...byId.values()].find(d => d.role === 'gm');
+        // The GM is the 'gm-…' clientId (bound by its token), not whoever writes role:'gm'.
+        const gm = [...byId].find(([id, d]) => id.startsWith('gm-') && d.role === 'gm')?.[1];
         // Only the GM's liveness is dropped when it leaves, never vdoRoom: clearing
         // the room changes every player's viewer URL (theirs lose &room) and would
         // re-src live iframes, flickering every camera on the OBS output. Their
@@ -236,7 +282,7 @@ function startAbly() {
         const before = new Map([...presenceCache].map(([id, p]) => [id, p.streamId || '']));
         presenceCache.clear();
         byId.forEach((d, charId) => {
-            if (d.role === 'gm' || !d.charId) return;
+            if (d.role === 'gm' || charId.startsWith('gm-') || !d.charId) return;
             presenceCache.set(charId, d);
         });
         updateWidgetData();
@@ -274,10 +320,8 @@ function startAbly() {
     // Live monster HP — the GM publishes monster-state on the (campaign-scoped) damage
     // channel, so it must be received here, not on aria-overlay-config.
     dmgCh.subscribe('monster-state', msg => {
-        if (!OVERLAY_ID || msg.data.overlayId !== OVERLAY_ID) return;
-        const list = overlayConfig.widgets.filter(w => w.type === 'monster_list');
-        if (!list.length) return;
-        list.forEach(w => { w.config = { ...w.config, monsters: msg.data.monsters }; });
+        if (!ablyFromGM(msg) || !OVERLAY_ID || msg.data?.overlayId !== OVERLAY_ID) return;
+        monsterState = Array.isArray(msg.data.monsters) ? msg.data.monsters : [];
         updateWidgetData();
     });
     // The GM only publishes monster-state when a monster changes, so a browser source
@@ -288,11 +332,12 @@ function startAbly() {
     // Map. `state` replaces wholesale; `request` at connect is what gets a restarted OBS
     // browser source its picture back mid-session.
     const mapCh = ably.channels.get(campaignChannel('aria-map'));
-    mapCh.subscribe('state', msg => { mapState = msg.data || null; renderWidgetLayer(); });
+    mapCh.subscribe('state', msg => { if (!ablyFromGM(msg)) return; mapState = msg.data || null; renderWidgetLayer(); });
     mapCh.publish('request', {});
 
     if (OVERLAY_ID) {
-        const cfgCh = ably.channels.get('aria-overlay-config');
+        // One channel per layout, so the editor's token can publish to its own only.
+        const cfgCh = ably.channels.get('aria-overlay-config:' + OVERLAY_ID);
         cfgCh.subscribe('layout-update', msg => {
             if (msg.data.overlayId !== OVERLAY_ID) return;
             layoutFromAbly = true;
@@ -329,7 +374,7 @@ function subscribeRoute(ably) {
         if (d.overlay === OVERLAY_ID && camp === CAMPAIGN) return;
         const p = new URLSearchParams(window.location.search);
         p.set('mode', d.mode === 'gm' ? 'gm' : 'player');
-        p.set('ably', ABLY_KEY);
+        p.delete('ably');   // old URLs carried the key; nothing reads it any more
         p.set('overlay', d.overlay);
         p.set('campaign', camp);
         location.replace(window.location.pathname + '?' + p);
@@ -337,32 +382,22 @@ function subscribeRoute(ably) {
     routeCh.publish('hello', {});
 }
 
-// Bootstrap from ?s= alone: the saves row holds the Ably key, and the route channel
-// holds everything else. Only that one channel is opened here — the game channels
-// would be on the wrong campaign (or the global fallback) and the reload is a
-// round-trip away, so subscribing them now would just churn.
-async function startFromSaveKey() {
-    const rows = await sbSelect('saves', 'save_key=eq.' + encodeURIComponent(SAVE_KEY) + '&select=ably_key');
-    if (!rows.length) { console.warn('Unknown save key:', SAVE_KEY); return; }
-    if (!rows[0].ably_key) { console.warn('No Ably key stored for this save key — open the panel once to publish it.'); return; }
-    ABLY_KEY = rows[0].ably_key;
-    subscribeRoute(new Ably.Realtime({ key: ABLY_KEY, transports: ['web_socket'] }));
+// Bootstrap from ?s= alone: the route channel holds everything else. Only that one
+// channel is opened here — the game channels would be on the wrong campaign (or the
+// global fallback) and the reload is a round-trip away, so subscribing them now would
+// just churn. An unknown save key is refused by the token function (see the console).
+function startFromSaveKey() {
+    subscribeRoute(ablyConnect({ kind: 'overlay', saveKey: SAVE_KEY }));
 }
 
-if (ABLY_KEY) startAbly();
-else if (SAVE_KEY) startFromSaveKey();
-else console.warn('Nothing to connect with. Pass ?s=YOUR_SAVE_KEY in the URL.');
+// `overlay` is only ever on a resolved URL — the self-reload writes it.
+if (!SAVE_KEY) console.warn('Nothing to connect with. Pass ?s=YOUR_SAVE_KEY in the URL.');
+else if (OVERLAY_ID) startAbly();
+else startFromSaveKey();
 
 // ══════════════════════════════════════════
 //  DICE ROLL DISPLAY
 // ══════════════════════════════════════════
-// Classify a d100 roll as success, fail, crit-success, or crit-fail.
-function classify(roll, threshold, success) {
-    if (roll <= 10 && success) return 'crit-success';
-    if (roll >= 91 && !success) return 'crit-fail';
-    return success ? 'success' : 'fail';
-}
-
 // Display a roll result card on the overlay with verdict and particle effects.
 function showRoll(data) {
     // Hide card overlay if visible
@@ -371,7 +406,7 @@ function showRoll(data) {
     const rollCard = document.getElementById('roll-card');
     const waiting = document.getElementById('waiting');
     const isDie = data.threshold === null;
-    const type = isDie ? 'die' : classify(data.roll, data.threshold, data.success);
+    const type = isDie ? 'die' : rollType(data.roll, data.threshold);
 
     rollCard.className = '';
     stopParticles();
@@ -928,7 +963,7 @@ function renderWidgetContent(widget) {
             return [...presenceCache.values()].map(p => `<div style="margin-bottom:4px"><div style="font-family:'Cormorant Garamond',serif;font-size:0.7em;color:var(--parchment-dim)">${esc(p.name)}</div>${(p.skills || []).slice(0, 5).map(s => `<div class="ow-list-item"><span class="ow-list-name">${esc(s.name)}</span><span class="ow-list-value">${esc(s.pct)}%</span></div>`).join('')}</div>`).join('');
         }
         case 'monster_list': {
-            const monsters = cfg.monsters || [];
+            const monsters = monsterState;
             if (!monsters.length) return '<div class="ow-list">—</div>';
             return monsters.map(m => {
                 const pct = Math.max(0, Math.min(100, (m.pv / (m.maxPV || 1)) * 100));

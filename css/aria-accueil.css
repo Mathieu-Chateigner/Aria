@@ -1,0 +1,147 @@
+/* ═══════════════════════════════════════════
+   ACCUEIL — le seuil (views/aria-accueil.html)
+   ═══════════════════════════════════════════
+   design_handoff_aria/Aria Accueil.dc.html. The wall and the open arch behind it
+   are ariaBg.mount('arch'); .ac-ui shares the stage's cover scale (set in JS), so
+   the menu always sits inside the arch. */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: var(--ink-0); overflow: hidden; height: 100%; }
+input::placeholder { color: var(--faint); }
+[hidden] { display: none !important; }
+
+@keyframes ariaRise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes ariaFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ariaTitleFlicker {
+    0%, 100% { text-shadow: 0 0 34px rgba(236,164,86,.22), 0 2px 0 rgba(0,0,0,.8); }
+    37%      { text-shadow: 0 0 44px rgba(236,164,86,.32), 0 2px 0 rgba(0,0,0,.8); }
+    61%      { text-shadow: 0 0 28px rgba(236,164,86,.18), 0 2px 0 rgba(0,0,0,.8); }
+}
+
+/* the accent follows the role: ember for a player, violet for the GM */
+.ac-root {
+    --acc: var(--ember); --acc2: var(--ember2);
+    --acc-soft: rgba(236,164,86,.35); --acc-tint: rgba(236,164,86,.09);
+    position: fixed; inset: 0; background: var(--ink-0); overflow: hidden;
+    font-family: var(--font-ui); color: var(--text); user-select: none;
+}
+.ac-root.mj { --acc: var(--violet); --acc2: var(--violet2); --acc-soft: rgba(169,139,221,.35); --acc-tint: rgba(169,139,221,.10); }
+
+.ac-ui {
+    position: absolute; left: 50%; top: 50%; width: 1600px; height: 960px;
+    transform: translate(-50%,-50%); transform-origin: 50% 50%;
+}
+
+/* ── title ── */
+.ac-head { position: absolute; left: 0; right: 0; top: 268px; display: flex; flex-direction: column; align-items: center; pointer-events: none; }
+.ac-kicker { font-family: var(--font-mono); font-size: 11px; letter-spacing: .42em; text-indent: .42em; color: var(--parch-num); text-transform: uppercase; margin-bottom: 14px; }
+.ac-name {
+    font-family: var(--font-display); font-size: 74px; font-weight: 600; line-height: 1; letter-spacing: .04em;
+    color: var(--warm); white-space: nowrap; max-width: 1000px; overflow: hidden; text-overflow: ellipsis;
+    animation: ariaTitleFlicker 3.2s ease-in-out infinite;
+}
+.ac-rule { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+.ac-rule-l, .ac-rule-r { width: 90px; height: 1px; }
+.ac-rule-l { background: linear-gradient(90deg, rgba(236,164,86,0), var(--acc)); }
+.ac-rule-r { background: linear-gradient(270deg, rgba(236,164,86,0), var(--acc)); }
+.ac-rule-gem { width: 7px; height: 7px; border: 1px solid var(--acc); transform: rotate(45deg); }
+
+/* ── companions at the door ── */
+.ac-party { position: absolute; left: 0; right: 0; top: 416px; display: flex; flex-direction: column; align-items: center; gap: 9px; pointer-events: none; }
+.ac-party-row { display: flex; gap: 8px; }
+.ac-mate { position: relative; width: 30px; height: 30px; flex-shrink: 0; transition: opacity .8s ease; }
+.ac-mate-frame {
+    position: absolute; inset: 0; border: 1px solid; border-radius: 3px; overflow: hidden;
+    background: radial-gradient(circle at 50% 38%, var(--wood-3) 0%, var(--wood-1) 72%); box-shadow: inset 0 0 8px rgba(0,0,0,.8);
+}
+.ac-mate-frame svg { display: block; }
+.ac-party-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .22em; color: var(--dim); text-transform: uppercase; }
+
+/* ── main menu ── */
+.ac-menu { position: absolute; left: 0; right: 0; top: 500px; display: flex; flex-direction: column; align-items: center; gap: 2px; animation: ariaRise .5s ease both; }
+.ac-item { display: flex; flex-direction: column; align-items: center; cursor: pointer; padding: 8px 40px; }
+.ac-item-row { display: flex; align-items: center; gap: 18px; }
+.ac-item-line { width: 0; height: 1px; transition: width .25s ease; }
+.ac-item-line.l { background: linear-gradient(90deg, rgba(0,0,0,0), var(--acc)); }
+.ac-item-line.r { background: linear-gradient(270deg, rgba(0,0,0,0), var(--acc)); }
+.ac-item-mark { width: 8px; height: 8px; background: var(--acc); transform: rotate(45deg); opacity: 0; transition: opacity .2s; }
+.ac-item-label {
+    font-family: var(--font-display); font-size: 32px; font-weight: 600; letter-spacing: .06em;
+    color: var(--dim); transition: color .2s; text-shadow: 0 2px 12px rgba(0,0,0,.9);
+}
+.ac-item.on .ac-item-line { width: 64px; }
+.ac-item.on .ac-item-mark { opacity: 1; }
+.ac-item.on .ac-item-label { color: var(--warm); }
+
+/* ── side panels ── */
+.ac-panel {
+    position: absolute; left: 50%; top: 430px; width: 600px; margin-left: -300px;
+    background: rgba(6,8,11,.86); border: 1px solid var(--line); border-radius: 3px; padding: 26px 30px 24px;
+    backdrop-filter: blur(6px); box-shadow: 0 30px 80px -20px rgba(0,0,0,.9); animation: ariaRise .35s ease both;
+}
+.ac-corner { position: absolute; width: 14px; height: 14px; border: 0 solid var(--acc); }
+.ac-corner.tl { left: -1px;  top: -1px;    border-left-width: 1px;  border-top-width: 1px; }
+.ac-corner.tr { right: -1px; top: -1px;    border-right-width: 1px; border-top-width: 1px; }
+.ac-corner.bl { left: -1px;  bottom: -1px; border-left-width: 1px;  border-bottom-width: 1px; }
+.ac-corner.br { right: -1px; bottom: -1px; border-right-width: 1px; border-bottom-width: 1px; }
+.ac-panel-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 18px; }
+.ac-panel-title { font-family: var(--font-display); font-size: 28px; font-weight: 600; color: var(--warm); }
+.ac-panel-back { font-family: var(--font-mono); font-size: 10px; letter-spacing: .24em; color: var(--faint); text-transform: uppercase; cursor: pointer; }
+
+.ac-slots { display: flex; flex-direction: column; gap: 8px; }
+.ac-slot {
+    display: grid; grid-template-columns: 28px minmax(0,1fr) auto; align-items: center; gap: 16px; padding: 13px 16px;
+    border: 1px solid var(--line-1); background: rgba(255,255,255,.015); border-radius: 3px; cursor: pointer;
+    transition: background .2s, border-color .2s;
+}
+.ac-slot-num { font-family: var(--font-mono); font-size: 11px; color: var(--faint); letter-spacing: .1em; }
+.ac-slot-body { min-width: 0; }
+.ac-slot-name { font-family: var(--font-display); font-size: 21px; font-weight: 600; color: var(--text); line-height: 1.15; }
+.ac-slot-meta { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .12em; color: var(--dim); text-transform: uppercase; margin-top: 3px; }
+.ac-slot-end { text-align: right; }
+.ac-slot-stat { font-family: var(--font-ui); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
+.ac-slot-when { font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; color: var(--faint); margin-top: 3px; }
+.ac-slot.on { background: var(--acc-tint); border-color: var(--acc-soft); }
+.ac-slot.on .ac-slot-num { color: var(--acc); }
+.ac-slot.on .ac-slot-name { color: var(--warm); }
+
+.ac-opts { display: flex; flex-direction: column; gap: 6px; }
+.ac-opt {
+    display: grid; grid-template-columns: minmax(0,1fr) 30px 190px 30px; align-items: center; gap: 8px; padding: 10px 14px;
+    border-radius: 3px; background: rgba(0,0,0,0); border: 1px solid rgba(0,0,0,0); transition: background .2s;
+}
+.ac-opt-label { font-family: var(--font-display); font-size: 20px; font-weight: 600; color: var(--dim); }
+.ac-opt-arrow { height: 30px; display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: 12px; cursor: pointer; }
+.ac-opt-val { display: flex; align-items: center; justify-content: center; gap: 4px; height: 30px; }
+.ac-tick { width: 12px; height: 12px; transform: skewX(-14deg); background: rgba(255,255,255,.08); }
+.ac-tick.full { background: var(--dim); }
+.ac-opt-text { font-family: var(--font-ui); font-size: 13px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--text); }
+.ac-opt.on { background: var(--acc-tint); border-color: var(--acc-soft); }
+.ac-opt.on .ac-opt-label { color: var(--warm); }
+.ac-opt.on .ac-opt-arrow { color: var(--acc); }
+.ac-opt.on .ac-tick.full { background: var(--acc); }
+
+/* ── screen chrome ── */
+.ac-back {
+    position: absolute; left: 36px; top: 24px; display: flex; align-items: center; gap: 8px; z-index: 5; cursor: pointer;
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--dim);
+}
+.ac-back:hover { color: var(--ember); }
+.ac-brand { position: absolute; left: 36px; bottom: 28px; display: flex; align-items: center; gap: 14px; pointer-events: none; }
+.ac-brand-word { font-family: var(--font-display); font-size: 15px; font-weight: 600; letter-spacing: .24em; color: var(--dim); }
+.ac-brand-sep { width: 1px; height: 12px; background: rgba(150,168,200,.2); }
+.ac-brand-v { font-family: var(--font-mono); font-size: 10px; letter-spacing: .2em; color: var(--faint); text-transform: uppercase; }
+
+/* ── entering the table ── */
+.ac-load {
+    position: absolute; inset: 0; background: var(--ink-veil); display: flex; flex-direction: column; justify-content: flex-end;
+    padding: 0 64px 60px; animation: ariaFade .6s ease both; z-index: 10;
+}
+.ac-load-head { position: absolute; left: 0; right: 0; top: 42%; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.ac-load-kicker { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .4em; color: var(--faint); text-transform: uppercase; }
+.ac-load-title { font-family: var(--font-display); font-size: 44px; font-weight: 600; color: var(--warm); letter-spacing: .04em; }
+.ac-load-tip { max-width: 620px; margin-bottom: 22px; }
+.ac-load-tip-k { font-family: var(--font-mono); font-size: 10px; letter-spacing: .3em; color: var(--acc); text-transform: uppercase; margin-bottom: 8px; }
+.ac-load-tip-t { font-family: var(--font-display); font-size: 19px; font-style: italic; color: var(--dim); line-height: 1.5; text-wrap: pretty; }
+.ac-load-bar { height: 2px; background: rgba(255,255,255,.06); position: relative; overflow: hidden; }
+.ac-load-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--acc); box-shadow: 0 0 12px var(--acc); }

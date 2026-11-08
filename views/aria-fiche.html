@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self'; object-src 'none'; base-uri 'self'">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARIA — Ma fiche</title>
+    <meta name="theme-color" content="#050608">
+    <link rel="stylesheet" href="../css/aria-tokens.css">
+    <link rel="stylesheet" href="../css/aria-fiche.css">
+</head>
+<body>
+<div class="fc-root" id="fc-root">
+    <!-- ariaBg.mount('study') prepends the painting here -->
+    <div class="fc-veil"></div>
+    <div class="fc-bar">
+        <a class="fc-bar-back" id="fc-back" href="aria-accueil.html"></a>
+        <div class="fc-bar-word">ARIA</div>
+        <div class="fc-bar-label" id="fc-bar-label">Ma fiche personnage</div>
+        <div class="fc-bar-fill"></div>
+        <div id="fc-bar-btns"></div>
+    </div>
+    <div class="fc-editbar" id="fc-editbar" hidden>Mode édition — rien n’est visible à la table avant d’enregistrer. Glissez une image sur le fond ou sur l’illustration pour la remplacer.</div>
+    <div id="fc-sheet"></div>
+    <input type="file" accept="image/*" id="fc-file" hidden>
+</div>
+
+<script src="../js/aria-bg.js"></script>
+<script src="../js/aria-supabase.js"></script>
+<script src="../js/aria-shared.js"></script>
+<script src="../js/aria-hub-data.js"></script>
+<script src="../js/aria-fiche.js"></script>
+</body>
+</html>

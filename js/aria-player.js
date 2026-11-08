@@ -19,70 +19,6 @@ ARIA.configure({
 // ═══════════════════════════════════════════
 //  STATE
 // ═══════════════════════════════════════════
-const DEFAULT_CHAR_ANCIENT = {
-    name: "", class: "", ariaType: 'ancient',
-    stats: { FOR: 0, DEX: 0, END: 0, INT: 0, CHA: 0, PV: 0 },
-    physical: { age: "", taille: "", poids: "", yeux: "", cheveux: "", signes: "", histoire: "" },
-    inventory: [], weapons: [{ nom: '', degats: '' }, { nom: '', degats: '' }, { nom: '', degats: '' }],
-    protection: { nom: '', valeur: 0 },
-    skills: [
-        { name: "Artisanat, construire", link: "DEX/INT", pct: 0 },
-        { name: "Combat rapproché",      link: "FOR/DEX", pct: 0 },
-        { name: "Combat à distance",     link: "FOR/DEX", pct: 0 },
-        { name: "Connaissance de la nature", link: "DEX/INT", pct: 0 },
-        { name: "Connaissance des secrets",  link: "INT/CHA", pct: 0 },
-        { name: "Courir, sauter",        link: "DEX/END", pct: 0 },
-        { name: "Discrétion",            link: "DEX/CHA", pct: 0 },
-        { name: "Droit",                 link: "INT/CHA", pct: 0 },
-        { name: "Esquiver",              link: "DEX/INT", pct: 0 },
-        { name: "Intimider",             link: "FOR/CHA", pct: 0 },
-        { name: "Lire, écrire",          link: "INT/CHA", pct: 0 },
-        { name: "Mentir, convaincre",    link: "INT/CHA", pct: 0 },
-        { name: "Perception",            link: "INT/CHA", pct: 0 },
-        { name: "Piloter",               link: "DEX/END", pct: 0 },
-        { name: "Psychologie",           link: "END/INT", pct: 0 },
-        { name: "Réflexes",              link: "DEX/INT", pct: 0 },
-        { name: "Serrures et pièges",    link: "DEX/END", pct: 0 },
-        { name: "Soigner",               link: "INT/CHA", pct: 0 },
-        { name: "Survie",                link: "END/INT", pct: 0 },
-        { name: "Voler",                 link: "DEX/INT", pct: 0 },
-    ],
-    specials: [], campaignKey: '',
-    money: { couronne: 0, orbe: 0, sceptre: 0, sou: 0 },
-    vials: 0, potionRecipes: [], potions: [], karma: 0,
-};
-
-const DEFAULT_CHAR_CONTEMPORARY = {
-    name: "", class: "", ariaType: 'contemporary',
-    stats: { PV: 0 },
-    physical: { age: "", taille: "", poids: "", yeux: "", cheveux: "", signes: "", histoire: "" },
-    inventory: [], weapons: [{ nom: '', degats: '' }, { nom: '', degats: '' }, { nom: '', degats: '' }],
-    protection: { nom: '', valeur: 0 },
-    skills: [
-        { name: "Courir, sauter",          link: "", pct: 0 },
-        { name: "Discrétion",              link: "", pct: 0 },
-        { name: "Intimider",               link: "", pct: 0 },
-        { name: "Mentir, convaincre",      link: "", pct: 0 },
-        { name: "Perception",              link: "", pct: 0 },
-        { name: "Psychologie",             link: "", pct: 0 },
-        { name: "Réflexes",               link: "", pct: 0 },
-        { name: "Soigner",                 link: "", pct: 0 },
-        { name: "Armes à feu",             link: "", pct: 0 },
-        { name: "Bidouiller",              link: "", pct: 0 },
-        { name: "Conduire un véhicule",    link: "", pct: 0 },
-        { name: "Connaissance de la ville",link: "", pct: 0 },
-        { name: "Être sympathique",        link: "", pct: 0 },
-        { name: "Intuition",               link: "", pct: 0 },
-        { name: "Médecine légale",         link: "", pct: 0 },
-        { name: "Relations louches",       link: "", pct: 0 },
-        { name: "Relations respectables",  link: "", pct: 0 },
-        { name: "Tabasser",                link: "", pct: 0 },
-    ],
-    specials: [], campaignKey: '',
-    money: { francs: 0 },
-    vials: 0, potionRecipes: [], potions: [], karma: 0,
-};
-
 // Character will be loaded after selection
 let character = null;
 let currentCharId = null;
@@ -112,6 +48,7 @@ let ablyMap = null;
 let mapState = null;         // last public map state received (or the cached one)
 let mapSelectedPoiId = null;
 let mapPendingPoiId = null;   // request sent, waiting for the token to move
+let mapTokenMove = null;      // { tokenId, x, y, denied } — own token move sent on a validated map
 let mapDeniedPoiId  = null;   // last refusal — holds until the player asks again, with no
                                // timeout: only requestMove() clears it, so a player who never
                                // re-asks keeps seeing this same refusal for the rest of the
@@ -222,10 +159,13 @@ async function _syncAllPlayerData() {
 }
 
 let _charTimer = null;
-// Debounced full character sync: waits 800ms after the last call before writing.
+// Debounced character-rows sync: waits 800ms after the last call, then writes the
+// characters list in one request. State, notes and files have their own syncers
+// (debouncedSyncState, syncCharacterNote, syncCharacterFile); re-writing them on
+// every sheet edit was the full sync's job only (load, migration).
 function debouncedSync() {
     clearTimeout(_charTimer);
-    _charTimer = setTimeout(_syncAllPlayerData, 800);
+    _charTimer = setTimeout(() => { if (_supabaseReady()) sbPutAll(ENT.character, getCharacters(), saveKey); }, 800);
 }
 
 let _stateTimer = null;
@@ -289,6 +229,7 @@ const CHAR_KEYS = {
     camera: 'aria-camera-off-',
     map:    'aria-map-',
     mapNotes: 'aria-map-notes-',
+    streams: 'aria-known-streams-',   // read by the overlay editor's camera picker
 };
 const _CHAR_KEY_PREFIXES = Object.values(CHAR_KEYS);
 
@@ -481,14 +422,14 @@ function showSelectionScreen() {
     document.getElementById('new-char-form').style.display = 'none';
     renderSelectionScreen();
     updateSaveKeyStatus();
-    if (window.ariaDungeonBg) window.ariaDungeonBg.setActive(true);
+    gateBackdrop(true);
 }
 
 // Switch the UI to the main app view.
 function showApp() {
     document.getElementById('selection-screen').style.display = 'none';
     document.getElementById('app-wrapper').style.display = 'flex';
-    if (window.ariaDungeonBg) window.ariaDungeonBg.setActive(false);
+    gateBackdrop(false);
 }
 
 // Remembered across reloads so a refresh comes straight back into the character.
@@ -586,7 +527,7 @@ function switchCharacter() {
     if (ablyInstance) { try { ablyInstance.close(); } catch(_){} ablyInstance = null; }
     ablyRolls = null; ablyRollsHidden = null; ablyCards = null; ablyDamage = null; ablyMusic = null;
     ablyPresence = null; presenceEntered = false;
-    ablyMap = null; mapState = null; mapSelectedPoiId = null; mapPendingPoiId = null; mapDeniedPoiId = null; mapNotes = {};
+    ablyMap = null; mapState = null; mapSelectedPoiId = null; mapPendingPoiId = null; mapDeniedPoiId = null; mapNotes = {}; mapTokenMove = null;
     cam.releaseLock();   // before resetCameraState: it blanks the push iframe
     resetCameraState();
     chat.reset();
@@ -632,7 +573,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
 // Initialize the full player app after a character is selected.
 function initApp() {
-    console.log('[PLAYER] initApp: char:', character.name, '| charId:', currentCharId, '| ablyKey:', config.ablyKey ? 'set' : 'MISSING');
+    console.log('[PLAYER] initApp: char:', character.name, '| charId:', currentCharId);
     currentHP = null;
     cam.loadOff();
     playerTabs = JSON.parse(localStorage.getItem(charKey('tabs')) || '{"cards":false,"alchemy":false}');
@@ -641,7 +582,7 @@ function initApp() {
     renderAll();
     deck.mount();
     loadConfigInputs();
-    if (config.ablyKey) initAbly();
+    initAbly();
     applyTabVisibility();
     document.getElementById('tab-char').addEventListener('input', scheduleAutoSave);
     document.getElementById('tab-inventory').addEventListener('input', scheduleAutoSave);
@@ -687,7 +628,7 @@ function renderTabLayout() {
 // wiring. The HTML calls notes.add() / notes.save() / notes.rename() directly.
 const notes = makeNotes({
     key: notesKey,
-    ids: { list: 'notes-list', name: 'notes-name-input', area: 'notes-area' },
+    ids: { list: 'notes-list', name: 'notes-name-input', area: 'notes-area', share: 'notes-share' },
     sync:     (note, pos) => syncCharacterNote(note, pos),
     syncSoon: (note, pos) => debouncedSyncNote(note, pos),
     remove:   id => deleteCharacterNote(id),
@@ -1211,7 +1152,6 @@ function renderCamerasTab() {
         cell.classList.toggle('spotlit', !!spot && cellSid(cell) === spot));
     if (presenceMode === 'tablee') applyStageMain();
     cam.renderDevicePick('cam-device-pick');
-    cam.renderMicPick('cam-mic-pick', 'cam-ptt-key');
     applyCamSize(false);
     applyCamOrder();
     // What the grid decided to show, and why it might be empty. A tile only exists
@@ -1381,7 +1321,7 @@ let otherRollToastTimer = null;
 // Show a toast when another player makes a roll, displaying their name and result.
 function showOtherRollToast(d) {
     const isDie = d.threshold === null;
-    const type = isDie ? 'die' : classify(d.roll, d.threshold, d.success);
+    const type = isDie ? 'die' : rollType(d.roll, d.threshold);
     const vcls = { success: 's', fail: 'f', 'crit-success': 'cs', 'crit-fail': 'cf' };
     const vlbl = { success: 'SUCCÈS', fail: 'ÉCHEC', 'crit-success': 'SUCCÈS CRITIQUE', 'crit-fail': 'ÉCHEC CRITIQUE' };
     const toast = document.getElementById('other-roll-toast');
@@ -1419,8 +1359,7 @@ function liveBM() { return bonusMalus + bmNextActive(); }
 //   bonus  — per-skill permanent modifier (character.skills[n].bonus)
 //   skipBM — Jet libre: the typed threshold is used raw, no BM, temp or karma
 function rollThreshold(base, { bonus = 0, skipBM = false } = {}) {
-    const n = skipBM ? base : base + bonus + liveBM() + (character?.karma ?? 0);
-    return Math.max(1, Math.min(100, n));
+    return rollSeuil(skipBM ? base : base + bonus + liveBM() + (character?.karma ?? 0));
 }
 // Arm a temporary modifier for the next N threshold rolls from the bar inputs.
 function setBMNext() {
@@ -1801,7 +1740,7 @@ function doRoll(skillName, basePct, skipBM = false) {
         if (bmNextCount === 0) bmNextValue = 0;
         updateBMDisplay();
     }
-    setTimeout(() => handleResult(skillName, threshold, Math.floor(Math.random() * 100) + 1), 600);
+    setTimeout(() => handleResult(skillName, threshold, resolveRoll(threshold).roll), 600);
 }
 // Roll a stat check using the current multiplier.
 function rollStat(key, val) {
@@ -1862,7 +1801,7 @@ function renderRollHistory() {
                     el('span', { className: 'rh-skill', textContent: r.skillName }),
                     el('span', { className: 'rh-roll', textContent: +r.roll || 0 }));
             } else {
-                const type = classify(r.roll, r.threshold, r.success);
+                const type = rollType(r.roll, r.threshold);
                 const cls = { success: 'rh-success', fail: 'rh-fail', 'crit-success': 'rh-crit-success', 'crit-fail': 'rh-crit-fail' }[type] || '';
                 const lbl = { success: 'SUCCÈS', fail: 'ÉCHEC', 'crit-success': 'SUCCÈS CRIT.', 'crit-fail': 'ÉCHEC CRIT.' }[type] || '';
                 row.className = `rh-row ${cls}`;
@@ -1929,8 +1868,7 @@ function toggleRollFilter(key) {
 
 // Process the final dice result: show float card, publish, update history, check side-effects.
 function handleResult(skillName, threshold, roll) {
-    const success = roll <= threshold;
-    console.log('[PLAYER] handleResult:', skillName, '| roll:', roll, '| threshold:', threshold, '|', success ? 'SUCCÈS' : 'ÉCHEC', roll <= 10 && success ? '(CRITIQUE)' : roll >= 91 && !success ? '(CRITIQUE)' : '');
+    const success = rollSucceeded(rollType(roll, threshold));
     const data = { skillName, threshold, roll, success, char: character.name, bonusMalus: _appliedBM, playerId, hidden: hiddenRollMode };
     setRolling(false);
     showFloatCard(data);
@@ -2027,7 +1965,7 @@ let floatCardTimer = null;
 function showFloatCard(data) {
     const card = document.getElementById('float-roll-card');
     const scrim = document.getElementById('roll-scrim');
-    const type = classify(data.roll, data.threshold, data.success);
+    const type = rollType(data.roll, data.threshold);
     card.className = 'float-roll-card';
     clearTimeout(floatCardTimer);
     document.getElementById('fc-char').textContent = data.char || '';
@@ -2160,13 +2098,14 @@ function _updateMusicMuteIcon() {
 
 // Initialize Ably channels and subscribe to all game events (rolls, damage, music, cards).
 function initAbly() {
-    console.log('[PLAYER] initAbly: connecting with key', config.ablyKey?.slice(0, 8) + '...', '| campaign channel suffix:', character.campaignKey || '(global)');
+    console.log('[PLAYER] initAbly | campaign channel suffix:', character.campaignKey || '(global)');
     try {
         // clientId is the character UUID: it is what identifies us in the presence
         // set, and what every consumer keys this participant by. Two tabs share it
         // and are told apart by the connectionId Ably assigns each connection, so
-        // there is no per-tab id to invent, publish, or reconcile.
-        ablyInstance = new Ably.Realtime({ key: config.ablyKey, clientId: currentCharId, transports: ['web_socket'] });
+        // there is no per-tab id to invent, publish, or reconcile. The token binds it:
+        // the ably-token function only signs it for the account that owns the character.
+        ablyInstance = ablyConnect(() => ({ kind: 'player', charId: currentCharId, code: ARIA.joinCode() || '' }));
         ablyRolls = ablyInstance.channels.get(campaignChannel('aria-rolls'));
         ablyRollsHidden = ablyInstance.channels.get(campaignChannel('aria-rolls-hidden'));
         ablyCards = ablyInstance.channels.get(campaignChannel('aria-cards'));
@@ -2175,7 +2114,7 @@ function initAbly() {
         initRouteChannel(ablyInstance);   // tells this save key's OBS overlay which character to show
         ablyMusic.subscribe('music', msg => {
             const d = msg.data;
-            if (!d) return;
+            if (!d || !ablyFromGM(msg)) return;
             if (d.type === 'play' && d.track) {
                 console.log('[PLAYER] music PLAY received:', d.track.name, '| fade:', d.fadeDuration);
                 if (d.fadeDuration) musicFadeDuration = d.fadeDuration;
@@ -2214,6 +2153,7 @@ function initAbly() {
         });
         ablyMap = ablyInstance.channels.get(campaignChannel('aria-map'));
         ablyMap.subscribe('state', msg => {
+            if (!ablyFromGM(msg)) return;
             // `state` replaces, it never patches: drop what we had and take this.
             mapState = msg.data || null;
             // The cache follows the state unconditionally, same as the publisher that
@@ -2224,13 +2164,21 @@ function initAbly() {
             // worse than no picture.
             if (mapState) localStorage.setItem(charKey('map'), JSON.stringify(mapState));
             else localStorage.removeItem(charKey('map'));
-            mapSelectedPoiId = null;
+            // Keep the open card unless its place left our view (GM took the discovery
+            // back, or switched maps): a state arrives on every token move.
+            if (!_mapVisible().some(p => p.id === mapSelectedPoiId)) mapSelectedPoiId = null;
             // An acceptance is recognised by the token having arrived, not by a message.
             if (mapPendingPoiId && mapState?.positions?.[currentCharId] === mapPendingPoiId) mapPendingPoiId = null;
+            // Same for a token: accepted when it stands where we asked.
+            if (mapTokenMove && !mapTokenMove.denied) {
+                const t = visibleTokens(mapState, currentCharId).find(x => x.id === mapTokenMove.tokenId);
+                if (!t || (Math.abs(t.x - mapTokenMove.x) < 1 && Math.abs(t.y - mapTokenMove.y) < 1)) mapTokenMove = null;
+            }
             applyTabVisibility();   // → renderMapTab, and shows the tab on first arrival
         });
         ablyMap.subscribe('move-denied', msg => {
-            if (msg.data?.charId !== currentCharId) return;
+            if (!ablyFromGM(msg) || msg.data?.charId !== currentCharId) return;
+            if (msg.data.tokenId) { mapTokenMove = { tokenId: msg.data.tokenId, denied: true }; renderMapTab(); return; }
             mapPendingPoiId = null;
             mapDeniedPoiId = msg.data.poiId;
             renderMapTab();
@@ -2258,18 +2206,23 @@ function initAbly() {
         ablyDamage.subscribe(msg => {
             const d = msg.data;
             if (!d) return;
-            // Handle player-to-player heal/damage (from another player's Soigner)
-            if (d.source === 'player') {
-                if (d.targetId === myId) {
+            // Everything on this channel but Soigner is the GM's to send. The clientId
+            // is bound by the token, so a player cannot pass for the GM here — and
+            // whatever a player sends is treated as a Soigner, whatever it claims.
+            if (!ablyFromGM(msg)) {
+                if (d.targetId === myId && (msg.name === 'heal' || msg.name === 'damage')) {
+                    // Soigner rolls 1d6 to heal and 1d3 on a failure: nothing larger is legitimate.
+                    const cap = msg.name === 'heal' ? 6 : 3;
+                    const n = Math.max(0, Math.min(cap, Math.floor(+(msg.name === 'heal' ? d.amount : d.damage) || 0)));
                     if (msg.name === 'heal') {
-                        const amount = d.amount || 0;
+                        const amount = n;
                         const max = getMaxHP();
                         const before = currentHP;
                         const after = Math.min(max, before + amount);
                         handleGMHeal({ amount, hpBefore: before, hpAfter: after, maxHP: max });
                         sendPresence();
-                    } else if (msg.name === 'damage') {
-                        const damage = d.damage || 0;
+                    } else {
+                        const damage = n;
                         const max = getMaxHP();
                         const before = currentHP;
                         const after = Math.max(0, before - damage);
@@ -2322,7 +2275,7 @@ function initAbly() {
             }
             if (msg.name === 'file-grant') {
                 if (d.charId !== myId && d.charId !== 'all') return;
-                if (!d.file?.id) return;
+                if (!d.file?.id || !_fileUrl(d.file.url)) return;   // only our own storage
                 console.log('[PLAYER] file-grant received:', d.file.name, '| for:', d.charId === 'all' ? 'all' : 'me');
                 if (!playerFiles.find(f => f.id === d.file.id)) {
                     playerFiles.push(d.file);
@@ -2388,17 +2341,13 @@ function publishRollHidden(data) { if (ablyRollsHidden) ablyRollsHidden.publish(
 // Build and copy the OBS overlay URL for this player to the clipboard.
 function copyOverlayUrl() {
     const base = window.location.href.replace(/aria-player\.html.*$/, 'aria-overlay.html');
-    // Just the save key — not even the role: the overlay reads the Ably key off the
-    // saves row, and learns which character we are playing (and that it is a player
-    // overlay) from whichever panel answers on the route channel. So this URL survives
-    // every switch. The long form is the fallback for a browser with no save key.
-    const params = saveKey
-        ? new URLSearchParams({ s: saveKey })
-        : new URLSearchParams({ mode: 'player', ably: config.ablyKey || '' });
-    if (!saveKey) {
-        if (currentCharId) params.set('overlay', 'player_' + currentCharId);
-        if (character.campaignKey) params.set('campaign', character.campaignKey);
-    }
+    // Just the save key — not even the role: the overlay gets its Ably token from the
+    // ably-token function against that key, and learns which character we are playing
+    // (and that it is a player overlay) from whichever panel answers on the route
+    // channel. So this URL survives every switch. There is no longer a form carrying
+    // the Ably key: no page has it.
+    if (!saveKey) return;
+    const params = new URLSearchParams({ s: saveKey });
     const url = `${base}?${params}`;
     navigator.clipboard.writeText(url).then(() => {
         const btn = document.querySelector('.config-modal button[onclick="copyOverlayUrl()"]');
@@ -2482,7 +2431,10 @@ function applyPresenceSet(members) {
     // no session: the room goes and the push iframe stops. A GM refresh does not
     // reach this state, because the reconnected tab has already entered by the time
     // the dropped connection is reaped.
-    const gm = [...byId.values()].find(d => d.role === 'gm');
+    // The GM is whoever holds a 'gm-…' clientId — the token binds it to the account that
+    // owns the campaign. `role` in the data is only a claim: anyone could write it, and
+    // whoever passed for the GM here would decide which VDO room our webcam pushes into.
+    const gm = [...byId].find(([id, d]) => id.startsWith('gm-') && d.role === 'gm')?.[1];
     const gmWas = gmOnline;
     gmOnline = !!gm;
     if (gmWas !== gmOnline) renderMapTab();   // the move button is gated on it
@@ -2499,10 +2451,18 @@ function applyPresenceSet(members) {
     peerCameras.clear();
     Object.keys(knownPlayers).forEach(k => delete knownPlayers[k]);
     byId.forEach((d, charId) => {
-        if (d.role !== 'player' || charId === currentCharId) return;
+        if (d.role !== 'player' || charId.startsWith('gm-') || charId === currentCharId) return;
         knownPlayers[charId] = { name: d.name };
         if (d.streamId) peerCameras.set(charId, { name: d.name || charId, streamId: d.streamId });
     });
+    // Every stream seen once in this campaign, for the overlay editor's camera picker
+    // (it has no presence of its own). Stream ids are derived from stable UUIDs.
+    try {
+        const seen = JSON.parse(localStorage.getItem(charKey('streams')) || '{}');
+        if (gmStreamId) seen[gmStreamId] = 'MJ';
+        peerCameras.forEach(p => { seen[p.streamId] = p.name; });
+        localStorage.setItem(charKey('streams'), JSON.stringify(seen));
+    } catch (_) {}
     // Everything the camera layer depends on arrives here and nowhere else, so this
     // is the log that says whether the session even has a picture to render: no GM
     // member ⇒ no room ⇒ nothing is published by anybody, and every downstream
@@ -2559,7 +2519,14 @@ window.addEventListener('storage', e => {
     if (e.key === 'aria-config') {
         const newCfg = JSON.parse(e.newValue || '{}');
         config = { ...config, ...newCfg };
-        applyTheme(!!config.lightMode);
+        return;
+    }
+    // Another tab of this browser (the Fiche page) saved the sheet: adopt it, or our
+    // next save pushes the stale copy back over it.
+    // shortcut: a Fiche edit made on another device is still overwritten by an open panel; needs a version check on characters.
+    if (e.key === 'aria-characters' && currentCharId && character) {
+        const { id, ...fresh } = getCharacters().find(c => c.id === currentCharId) || {};
+        if (id && JSON.stringify(fresh) !== JSON.stringify(character)) { character = fresh; renderAll(); schedulePresence(); }
         return;
     }
     // Keep every tab of this character agreeing on the kill switch — see
@@ -2571,7 +2538,6 @@ function loadConfigInputs() {
     const idEl = document.getElementById('cfg-identity-display');
     if (idEl) idEl.textContent = character.name || '—';
     document.getElementById('cfg-campaign-key').value = character.campaignKey || '';
-    document.getElementById('cfg-light-mode').checked = !!config.lightMode;
 }
 // Save config modal changes to localStorage. Reconnects Ably only on a campaign
 // switch (or when the connection is gone) — see below.
@@ -2586,11 +2552,6 @@ function saveConfig() {
     const campaignChanged = newCampaignKey !== (character.campaignKey || '');
     character.campaignKey = newCampaignKey;
     saveCurrentCharacter();
-    config = {
-        ...config,
-        lightMode: document.getElementById('cfg-light-mode').checked,
-    };
-    localStorage.setItem('aria-config', JSON.stringify(config));
     // The Ably connection is only torn down when the campaign changed. It used to be
     // closed unconditionally, which left the presence set: every peer saw us leave and
     // rebuilt our tile, and this tab rebuilt its whole grid from an empty set — one
@@ -2611,7 +2572,7 @@ function saveConfig() {
         // repopulates the picker.
         Object.keys(knownPlayers).forEach(k => delete knownPlayers[k]);
     }
-    if (!ablyInstance && config.ablyKey) initAbly();
+    if (!ablyInstance) initAbly();
 }
 
 // ═══════════════════════════════════════════
@@ -2821,6 +2782,30 @@ function renderPotions() {
 
     const hasContent = recipes.length > 0 || stock.length > 0;
     if (empty) empty.style.display = hasContent ? 'none' : '';
+
+    // Identified substances: the player's own list, form is static in the HTML so a
+    // re-render never eats what is being typed.
+    fill(document.getElementById('substance-list'), (character.substances || []).map((s, i) =>
+        el('div', { className: 'potion-card' },
+            el('div', { className: 'potion-card-top' },
+                el('span', { className: 'potion-card-name', textContent: s.name })),
+            el('div', { className: 'potion-card-desc', textContent: s.note || ' ' }),
+            el('div', { className: 'potion-card-foot' },
+                el('button', { className: 'potion-card-del', title: 'Retirer', textContent: '✕', onclick: () => removeSubstance(i) })))));
+}
+
+function addSubstance() {
+    const nameEl = document.getElementById('sub-name');
+    const noteEl = document.getElementById('sub-note');
+    const name = nameEl.value.trim();
+    if (!name) return;
+    (character.substances ||= []).push({ name, note: noteEl.value.trim() });
+    nameEl.value = noteEl.value = '';
+    commitCharacter({ editors: true });
+}
+function removeSubstance(i) {
+    character.substances.splice(i, 1);
+    commitCharacter({ editors: true });
 }
 
 
@@ -2968,7 +2953,9 @@ function readEditorInputs() {
         character.stats.CHA = +document.getElementById('ed-cha').value;
     }
     character.stats.PV = +document.getElementById('ed-pv').value;
+    // spread: the Fiche keeps level / origine / personnalite / portrait / backdrop here too
     character.physical = {
+        ...character.physical,
         age: document.getElementById('ed-age').value.trim(),
         taille: document.getElementById('ed-taille').value.trim(),
         poids: document.getElementById('ed-poids').value.trim(),
@@ -2977,7 +2964,7 @@ function readEditorInputs() {
         signes: document.getElementById('ed-signes').value.trim(),
         histoire: document.getElementById('ed-histoire').value.trim(),
     };
-    character.protection = { nom: document.getElementById('ed-prot-nom').value.trim(), valeur: +document.getElementById('ed-prot-val').value || 0 };
+    character.protection = { ...character.protection, nom: document.getElementById('ed-prot-nom').value.trim(), valeur: +document.getElementById('ed-prot-val').value || 0 };
 }
 
 let autoSaveTimer = null;
@@ -3132,46 +3119,66 @@ function saveMapNote(poiId, text) {
     _mapNoteTimer = setTimeout(() => debouncedSyncState(), 500);
 }
 
+// The stage is mapView() (aria-shared.js), shared with the GM tab: the image and the open
+// card survive a state arriving, which happens on every token move at the table.
 function renderMapTab() {
     const stage = document.getElementById('map-stage');
-    const title = document.getElementById('map-title');
-    if (!stage || !title) return;
-    if (!mapState || !mapState.imageUrl) { title.textContent = ''; fill(stage); return; }
-    title.textContent = mapState.name || '';
-
-    const pins = el('div', { className: 'map-pins' });
-    _mapVisible().forEach(p => {
-        pins.append(el('div', {
-            className: 'map-pin discovered' + (p.id === mapSelectedPoiId ? ' selected' : ''),
-            style: { left: p.x + '%', top: p.y + '%' },
-            onclick: () => {
-                mapSelectedPoiId = mapSelectedPoiId === p.id ? null : p.id;
-                renderMapTab();
-                // The card reads, the drawer writes: clicking a pin unfolds the drawer and
-                // puts the caret on that POI's row.
-                const dr = document.getElementById('map-notes-drawer');
-                if (dr && mapSelectedPoiId) { dr.open = true; document.getElementById('map-note-' + p.id)?.focus(); }
-            },
+    if (!stage) return;
+    if (!mapState || !mapState.imageUrl) { mapView(stage, { empty: '' }); renderMapNotesDrawer(); return; }
+    const visible = _mapVisible();
+    const fog = fogZones(mapState, currentCharId);
+    const sel = visible.find(p => p.id === mapSelectedPoiId) || null;
+    // A tactical map is in image pixels (mapVB), with its grid; a world map in percentages.
+    const grid = mapGrid(mapState);
+    mapView(stage, {
+        imageUrl: mapState.imageUrl, alt: mapState.name || '', vb: mapVB(mapState), grid,
+        title: mapState.name || '',
+        kicker: mapTokenMove?.denied ? 'Déplacement refusé par le MJ'
+              : mapTokenMove ? 'Déplacement demandé au MJ…'
+              : (fog.length ? 'Exploration · brouillard actif' : 'Exploration')
+              + (grid ? ` · 1 case = ${String(grid.per).replace('.', ',')} ${grid.unit}` : ''),
+        // Our own token can be dragged while the GM is there to receive it; the others are
+        // only drawn. Names and HP come resolved in the state.
+        tokens: visibleTokens(mapState, currentCharId).map(t => ({
+            id: t.id, x: t.x, y: t.y, size: t.size, name: String(t.name || '?'),
+            ini: String(t.name || '?').trim().charAt(0).toUpperCase(), hp: t.hp, markers: markerGlyphs(t.markers),
+            cls: [t.kind === 'monstre' && 'monster', t.hp === 0 && 'dead', t.own === currentCharId && 'me'].filter(Boolean).join(' '),
+            draggable: t.own === currentCharId && gmOnline })),
+        onTokenDrop: (id, x, y) => {
+            if (!ablyMap) return;
+            ablyMap.publish('token-move', { tokenId: id, x, y });
+            if (mapState.moves === 'validation') mapTokenMove = { tokenId: id, x, y };
+            else {
+                // Free map: move it here at once; the GM's next state confirms (or puts it
+                // back, if the move was refused).
+                const t = mapState.tokens.find(z => z.id === id);
+                if (t) { t.x = x; t.y = y; }
+                mapTokenMove = null;
+            }
+            renderMapTab();
         },
-            el('span', { className: 'map-pin-dot' }),
-            el('span', { className: 'map-pin-label', textContent: p.name }),
-            el('div', { className: 'map-tokens' },
-                _mapTokensAt(p.id).map(t => el('span', {
-                    className: 'map-token' + (t.isMe ? ' me' : ''), textContent: t.name })))));
+        zones: [visible.filter(p => (p.zone || []).length), fog],
+        pins: visible.map(p => ({
+            id: p.id, x: p.x, y: p.y, name: p.name,
+            cls: 'discovered' + (p.id === mapSelectedPoiId ? ' selected' : ''),
+            tokens: _mapTokensAt(p.id).map(t => ({ name: t.name, cls: t.isMe ? 'me' : '' })),
+        })),
+        card: sel && { key: sel.id, x: sel.x, y: sel.y,
+                       create: () => el('div', { className: 'map-poi-card' }),
+                       update: node => fill(node, ..._poiCardPlayer(sel)) },
+        onPinDown: (e, id) => {
+            mapSelectedPoiId = mapSelectedPoiId === id ? null : id;
+            renderMapTab();
+            // The card reads, the drawer writes: clicking a pin unfolds the drawer and
+            // puts the caret on that POI's row.
+            // After the mousedown that follows this pointerdown: clicking the pin (not
+            // focusable) would otherwise blur the field we just focused.
+            const dr = document.getElementById('map-notes-drawer');
+            if (dr && mapSelectedPoiId) requestAnimationFrame(() => {
+                dr.open = true; document.getElementById('map-note-' + id)?.focus(); });
+        },
+        onBackground: () => { if (mapSelectedPoiId) { mapSelectedPoiId = null; renderMapTab(); } },
     });
-
-    const sel = _mapVisible().find(p => p.id === mapSelectedPoiId) || null;
-    fill(stage, el('div', { className: 'aria-frame', id: 'map-frame' },
-        el('img', { className: 'aria-map', src: mapState.imageUrl, alt: mapState.name || '', draggable: false }),
-        _mapZoneLayer(_mapVisible().filter(p => (p.zone || []).length), fogZones(mapState, currentCharId)),
-        pins,
-        sel && _poiCardPlayer(sel)));
-
-    document.getElementById('map-frame')?.addEventListener('click', e => {
-        if (e.target.closest('.map-pin') || e.target.closest('.map-poi-card')) return;
-        if (mapSelectedPoiId) { mapSelectedPoiId = null; renderMapTab(); }
-    });
-
     renderMapNotesDrawer();
 }
 
@@ -3209,8 +3216,7 @@ function renderMapNotesDrawer() {
 // The floating card READS; the drawer writes. A floating card closes on an outside click,
 // and a player is not made to type into a volatile container — see Task 10 for the drawer.
 function _poiCardPlayer(poi) {
-    return el('div', { className: 'map-poi-card' + (poi.x > 55 ? ' left' : ''),
-                       style: { left: poi.x + '%', top: poi.y + '%' } },
+    return [
         el('div', { className: 'map-poi-title', textContent: poi.name }),
         poi.publicDesc && el('div', { className: 'map-poi-desc', textContent: poi.publicDesc }),
         mapNotes[poi.id] && el('div', { className: 'map-poi-label', textContent: 'Ma note' }),
@@ -3218,11 +3224,13 @@ function _poiCardPlayer(poi) {
         el('button', {
             className: 'map-move-btn' + (mapDeniedPoiId === poi.id ? ' denied' : ''),
             disabled: !gmOnline || mapPendingPoiId === poi.id || mapState?.positions?.[currentCharId] === poi.id,
-            textContent: !gmOnline                     ? 'MJ absent'
+            textContent: mapState?.positions?.[currentCharId] === poi.id ? 'Vous y êtes'
+                       : !gmOnline                     ? 'MJ absent'
                        : mapPendingPoiId === poi.id    ? 'Demande envoyée…'
                        : mapDeniedPoiId  === poi.id    ? 'Refusé'
                        : 'Demander à s’y rendre',
-            onclick: () => requestMove(poi.id) }));
+            onclick: () => requestMove(poi.id) }),
+    ];
 }
 
 

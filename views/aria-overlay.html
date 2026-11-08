@@ -3,10 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>ARIA – Overlay</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Archivo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+    <link rel="stylesheet" href="../css/aria-fonts.css">
     <link rel="stylesheet" href="../css/aria-overlay.css">
 </head>
 <body>
@@ -68,7 +65,12 @@
         </div>
     </div>
 
+    <!-- Pas de session ici : meme origine que les panneaux, donc meme localStorage,
+         et l'overlay n'a besoin que de ce qu'anon peut lire. -->
+    <script>window.ARIA_ANON_ONLY = true;</script>
+    <script src="../js/vendor/ably.min-2.29.0.js"></script>
     <script src="../js/aria-supabase.js"></script>
+    <script src="../js/aria-roll.js"></script>
     <script src="../js/aria-overlay.js"></script>
 </body>
 </html>
