@@ -66,7 +66,8 @@ input::placeholder, textarea::placeholder { color: var(--hb-ph); }
 .hb-tab.on { color: var(--warm); border-bottom-color: var(--ember); }
 .hb-tab-count { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0; padding: 2px 6px; border-radius: 9px; background: rgba(150,168,200,.12); color: var(--text-2); }
 .hb-head-r { display: flex; align-items: center; gap: 18px; }
-.hb-me { display: flex; align-items: center; gap: 10px; }
+.hb-me { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.hb-me:hover .hb-me-name { color: var(--ember); }
 .hb-me-av { position: relative; width: 42px; height: 42px; flex-shrink: 0; }
 .hb-me-frame {
     position: absolute; inset: 0; border: 1px solid rgba(236,164,86,.6); border-radius: 3px; overflow: hidden;
@@ -321,3 +322,14 @@ input::placeholder, textarea::placeholder { color: var(--hb-ph); }
 
 /* ── keyboard focus on the clickable divs (role set in wire()) ── */
 .hb-root [role=button]:focus-visible, .hb-modal-scrim [role=button]:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
+
+/* ── profile & settings panel ── */
+.hb-prof-x { position: static; flex-shrink: 0; }
+.hb-prof-mail { font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; color: var(--dim); }
+.hb-prof-sec { display: flex; flex-direction: column; gap: 8px; }
+.hb-prof-sec .hb-code-in { flex: 1; min-width: 0; text-transform: none; letter-spacing: .02em; }
+.hb-prof-hint { font-size: 13px; line-height: 1.45; color: var(--text-3); }
+.hb-prof-keys { display: flex; flex-direction: column; gap: 6px; }
+.hb-prof-key { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid rgba(150,168,200,.14); border-radius: 3px; }
+.hb-prof-key-t { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .18em; text-transform: uppercase; color: var(--ember); flex-shrink: 0; }
+.hb-prof-key-v { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-2); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

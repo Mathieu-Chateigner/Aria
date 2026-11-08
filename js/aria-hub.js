@@ -356,8 +356,91 @@ function renderAside() {
             el('div', { className: 'hb-friend-act', textContent: p.activity })))));
 }
 
+// ── profile & settings (our addition: the handoff's avatar did nothing) ─────
+// One panel for everything that belongs to the account rather than to a table:
+// name, password, the save keys (where an old pre-account key gets claimed), and
+// the per-machine preferences in aria-config.
+const PROFILE = 'profile';
+function readConfig() { try { return JSON.parse(localStorage.getItem('aria-config') || '{}'); } catch (_) { return {}; } }
+function writeConfig(patch) { localStorage.setItem('aria-config', JSON.stringify({ ...readConfig(), ...patch })); }
+
+async function openProfile() {
+    hub.modal = PROFILE; hub.pick = null;
+    hub.saves = hubData.demo ? [] : await sbOwnedSaves().catch(() => []);
+    renderModal();
+}
+
+function profileSection(title, ...kids) {
+    return el('div', { className: 'hb-prof-sec' }, el('div', { className: 'hb-field-label', textContent: title }), ...kids);
+}
+function profileRow(input, label, onclick) {
+    return el('div', { className: 'hb-code-row' }, input, el('div', { className: 'hb-code-btn', textContent: label, onclick }));
+}
+
+function renderProfile() {
+    const nameIn = el('input', { className: 'hb-code-in', value: hub.me.name, maxLength: 40, spellcheck: false });
+    const pwIn = el('input', { className: 'hb-code-in', type: 'password', placeholder: 'Nouveau mot de passe (8 caractères min.)', autocomplete: 'new-password' });
+    const keyIn = el('input', { className: 'hb-code-in', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx', spellcheck: false });
+    const ytIn = el('input', { className: 'hb-code-in', type: 'password', value: readConfig().youtubeApiKey || '', placeholder: 'Clé API YouTube (facultatif)' });
+
+    const saveName = async () => {
+        const name = nameIn.value.trim();
+        if (!name) { flash('Le nom ne peut pas être vide.', 'err'); return; }
+        const r = await sbUpdateUser({ data: { display_name: name } });
+        if (r.error) { flash('Nom refusé : ' + r.error, 'err'); return; }
+        hub.me.name = sbUserName(); $('hb-me-name').textContent = hub.me.name;
+        flash('Nom enregistré.', 'ok');
+    };
+    const savePw = async () => {
+        if (pwIn.value.length < 8) { flash('8 caractères minimum.', 'err'); return; }
+        const r = await sbSetPassword(pwIn.value);
+        pwIn.value = '';
+        flash(r.error ? 'Mot de passe refusé : ' + r.error : 'Mot de passe changé.', r.error ? 'err' : 'ok');
+    };
+    const claim = async () => {
+        const key = keyIn.value.trim();
+        if (!key) return;
+        if (!await sbClaimSaveKey(key)) { flash('Clé introuvable, ou déjà rattachée à un autre compte.', 'err'); return; }
+        flash('Clé rattachée : vos tables et personnages arrivent.', 'ok');
+        setTimeout(() => location.reload(), 900);   // hubData.load() reads everything the key just unlocked
+    };
+    const copy = k => navigator.clipboard.writeText(k).then(() => flash('Clé copiée.', 'ok'), () => {});
+    const TYPE = { gm: 'Maître du jeu', player: 'Joueur' };
+
+    fill($('hb-modal'),
+        el('div', { className: 'hb-modal-body' },
+            el('div', { className: 'hb-row-between' },
+                el('div', { className: 'hb-modal-head' },
+                    el('div', { className: 'hb-modal-name', textContent: 'Profil' }),
+                    el('div', { className: 'hb-prof-mail', textContent: sbUserEmail() })),
+                btn('hb-modal-x hb-prof-x', '✕', closeModal)),
+
+            profileSection('Nom affiché', profileRow(nameIn, 'Enregistrer', saveName)),
+            profileSection('Mot de passe', profileRow(pwIn, 'Changer', savePw)),
+
+            profileSection('Clés de sauvegarde',
+                el('div', { className: 'hb-prof-hint', textContent: 'Vos personnages et campagnes sont rangés sous une clé. Une clé créée avant les comptes se rattache ici, une seule fois.' }),
+                hub.saves && hub.saves.length
+                    ? el('div', { className: 'hb-prof-keys' }, hub.saves.map(s => el('div', { className: 'hb-prof-key' },
+                        el('span', { className: 'hb-prof-key-t', textContent: TYPE[s.type] || 'Clé' }),
+                        el('span', { className: 'hb-prof-key-v', textContent: s.save_key }),
+                        el('div', { className: 'hb-code-btn', textContent: 'Copier', onclick: () => copy(s.save_key) }))))
+                    : el('div', { className: 'hb-prof-hint', textContent: 'Aucune clé pour l\'instant.' }),
+                profileRow(keyIn, 'Rattacher', claim)),
+
+            profileSection('Préférences de cet appareil',
+                el('div', { className: 'hb-prof-hint', textContent: 'Pour importer les titres et les playlists YouTube dans l\'onglet Musique du MJ.' }),
+                profileRow(ytIn, 'Enregistrer', () => { writeConfig({ youtubeApiKey: ytIn.value.trim() }); flash('Préférence enregistrée.', 'ok'); })),
+
+            el('div', { className: 'hb-modal-acts' },
+                el('div', { className: 'hb-modal-chat', textContent: 'Se déconnecter', onclick: () => $('hb-quit').click() }))));
+    [[nameIn, saveName], [pwIn, savePw], [keyIn, claim]].forEach(([i, f]) => i.addEventListener('keydown', e => { if (e.key === 'Enter') f(); }));
+}
+
 function renderModal() {
-    const mk = campById(hub.modal), scrim = $('hb-modal-scrim');
+    const scrim = $('hb-modal-scrim');
+    if (hub.modal === PROFILE) { scrim.hidden = false; renderProfile(); return; }
+    const mk = campById(hub.modal);
     scrim.hidden = !mk;
     if (!mk) return;
     const st = campStatus(mk), V = VIS[mk.vis] || VIS.prive, full = mk.seats <= mk.taken, isGM = mk.role === 'MJ';
@@ -566,6 +649,7 @@ async function create() {
 
 // ── wiring ─────────────────────────────────────────────────────────────────
 function wire() {
+    $('hb-me').onclick = openProfile;
     $('hb-quit').onclick = () => { if (!hubData.demo) sbSignOut(); location.assign('../index.html'); };
     document.querySelectorAll('.hb-code-in').forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') useCode(); }));
     document.querySelectorAll('.hb-code-btn').forEach(b => b.addEventListener('click', useCode));

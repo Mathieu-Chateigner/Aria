@@ -47,9 +47,10 @@ function sbUserId()      { return _session && _session.user && _session.user.id 
 function sbUserEmail()   { return _session && _session.user && _session.user.email || ''; }
 // Display name given at signup (user_metadata.name; Google and Discord fill it too,
 // Discord's display name sits in custom_claims.global_name), else the mail's local part.
+// display_name is the one chosen in the taverne's profile panel and beats them all.
 function sbUserName() {
     const m = _session && _session.user && _session.user.user_metadata;
-    return (m && ((m.custom_claims && m.custom_claims.global_name) || m.name || m.full_name)) || sbUserEmail().split('@')[0];
+    return (m && (m.display_name || (m.custom_claims && m.custom_claims.global_name) || m.name || m.full_name)) || sbUserEmail().split('@')[0];
 }
 function sbSignedIn()    { return !!sbAccessToken(); }
 
@@ -153,10 +154,13 @@ async function sbAdoptOAuth() {
     return { ok: true };
 }
 
-async function sbSetPassword(password) {
+const sbSetPassword = password => sbUpdateUser({ password });
+
+// PUT /auth/v1/user: { password } or { data: { display_name } } (user_metadata).
+async function sbUpdateUser(patch) {
     const res = await fetch(SUPABASE_URL + '/auth/v1/user', {
         method: 'PUT', headers: { ...sbAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify(patch),
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) return { error: body.msg || 'Refusé.', code: body.error_code || '' };
