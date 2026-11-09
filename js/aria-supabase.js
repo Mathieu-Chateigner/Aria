@@ -515,6 +515,8 @@ const ENT = {
     },
     characterFile: {
         table: 'character_files', parent: 'character_id',
+        // One GM file goes to several characters: the key is the pair, not the file id.
+        onConflict: 'character_id,id',
         // `id` and `file_id` both carry the file's id; reads take file_id.
         fields: {
             id:   { col: 'file_id', to: v => v },

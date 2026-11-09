@@ -208,9 +208,9 @@ async function syncCharacterFile(file, charId) {
 }
 
 // Delete a granted file record from Supabase by file ID.
-async function deleteCharacterFile(fileId) {
-    if (!_supabaseReady()) return;
-    await sbDelete(ENT.characterFile.table, 'id=eq.' + encodeURIComponent(fileId));
+async function deleteCharacterFile(fileId, charId) {
+    if (!_supabaseReady() || !charId) return;
+    await sbDelete(ENT.characterFile.table, 'character_id=eq.' + encodeURIComponent(charId) + '&id=eq.' + encodeURIComponent(fileId));
 }
 
 // Every per-character localStorage key, named once. charKey(which, id) is the only
@@ -2293,7 +2293,7 @@ function initAbly() {
                 console.log('[PLAYER] file-revoke received:', d.fileId);
                 playerFiles = playerFiles.filter(f => f.id !== d.fileId);
                 localStorage.setItem(charKey('files'), JSON.stringify(playerFiles));
-                deleteCharacterFile(d.fileId);
+                deleteCharacterFile(d.fileId, currentCharId);
                 applyTabVisibility();
                 renderPlayerFiles();
                 return;

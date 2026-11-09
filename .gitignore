@@ -12,3 +12,5 @@
 # Supabase CLI link state (local-only)
 /supabase/
 .playwright-mcp/
+
+backups/
