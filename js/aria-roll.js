@@ -6,7 +6,7 @@
 // overlay all load it. Rolls stay client-side on purpose: no server round-trip on
 // every roll for the sake of a player who would cheat at a TTRPG table anyway.
 //
-//   seuil  clamp(base + modifiers, 1, 99)
+//   seuil  clamp(base + modifiers, 1, 100)  (a 100% skill shows 100%; 96+ still fumbles)
 //   crit   roll <= max(1, floor(seuil / 10))   'crit-success'
 //   fumble roll >= 96                          'crit-fail'   (even under the seuil)
 //   ok     roll <= seuil                       'success'
@@ -18,7 +18,7 @@
 // touching it.
 
 function rollSeuil(n) {
-    return Math.max(1, Math.min(99, Math.round(n)));
+    return Math.max(1, Math.min(100, Math.round(n)));
 }
 
 // Classify a roll against an already-clamped seuil. `null` seuil = plain die.

@@ -6,11 +6,11 @@ const fs = require('fs');
 const { rollSeuil, rollType, resolveRoll } =
     new Function(fs.readFileSync(__dirname + '/aria-roll.js', 'utf8') + '\nreturn { rollSeuil, rollType, resolveRoll };')();
 
-// Seuil clamps to 1..99.
+// Seuil clamps to 1..100.
 assert.strictEqual(rollSeuil(-40), 1);
 assert.strictEqual(rollSeuil(0), 1);
-assert.strictEqual(rollSeuil(150), 99);
-assert.strictEqual(rollSeuil(100), 99);
+assert.strictEqual(rollSeuil(150), 100);
+assert.strictEqual(rollSeuil(100), 100);
 assert.strictEqual(rollSeuil(55), 55);
 
 // Crit band is floor(seuil / 10), at least 1.
@@ -26,6 +26,7 @@ assert.strictEqual(rollType(96, 99), 'crit-fail');
 assert.strictEqual(rollType(100, 50), 'crit-fail');
 assert.strictEqual(rollType(95, 99), 'success');
 assert.strictEqual(rollType(95, 50), 'fail');
+assert.strictEqual(rollType(100, 100), 'crit-fail');   // 100% is not auto-success
 assert.strictEqual(rollType(56, 55), 'fail');
 assert.strictEqual(rollType(55, 55), 'success');
 
@@ -42,6 +43,6 @@ for (let i = 0; i < 2000; i++) {
     const d = resolveRoll(null, 6);
     assert.ok(d.roll >= 1 && d.roll <= 6 && d.type === 'die' && d.success === null);
 }
-assert.strictEqual(resolveRoll(250).threshold, 99);
+assert.strictEqual(resolveRoll(250).threshold, 100);
 
 console.log('aria-roll selfcheck: ok');

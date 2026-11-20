@@ -57,6 +57,16 @@ function _fileUrl(u) {
 // Coerce a remote-supplied value to a finite number, or null. Presence payloads are
 // remote-controlled (anyone with the Ably key can publish), and these land in
 // arithmetic and in element sizing.
+// A character's armor value, for damage reduction. `valeur` is the field, but sheets
+// saved before the Armure input parsed "Cuir 3" hold valeur 0 with the number left in
+// the name — fall back to a trailing number there. Also coerces a string valeur.
+function armorValue(c) {
+    const p = (c && c.protection) || {};
+    const v = parseInt(p.valeur, 10);
+    if (v > 0) return v;
+    const m = String(p.nom || '').match(/(\d+)\s*$/);
+    return m ? +m[1] : 0;
+}
 function _finiteNum(v) { if (v === null || v === undefined || v === '') return null; const n = +v; return Number.isFinite(n) ? n : null; }
 
 // Shape check for remote-supplied ids. They key Maps and dataset attributes; a

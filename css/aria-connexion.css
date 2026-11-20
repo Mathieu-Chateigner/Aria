@@ -8,7 +8,21 @@
 html, body { background: var(--ink-0); overflow: hidden; height: 100%; }
 a { text-decoration: none; }
 input::placeholder { color: var(--placeholder); }
-input:-webkit-autofill { -webkit-text-fill-color: var(--warm); -webkit-box-shadow: 0 0 0 40px var(--ink-field) inset; caret-color: var(--warm); }
+/* Chrome paints autofilled fields with its own light background, which no
+   `background` rule can override. Cover it with an inset shadow and stall the
+   background transition so the light colour never shows. The selectors must
+   outrank `.cx-input:focus`, whose box-shadow would otherwise replace the inset
+   one the moment the field is focused — which is exactly when autofill fires. */
+input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus, input:-webkit-autofill:active,
+.cx-input:-webkit-autofill, .cx-input:-webkit-autofill:hover, .cx-input:-webkit-autofill:focus, .cx-input:-webkit-autofill:active {
+    -webkit-text-fill-color: var(--warm); caret-color: var(--warm);
+    -webkit-box-shadow: 0 0 0 1000px var(--ink-field) inset; box-shadow: 0 0 0 1000px var(--ink-field) inset;
+    transition: background-color 600000s 0s, color 600000s 0s, border-color .2s;
+}
+.cx-input:-webkit-autofill:focus {
+    -webkit-box-shadow: 0 0 0 1000px var(--ink-field) inset, 0 0 0 3px rgba(236,164,86,.1);
+    box-shadow: 0 0 0 1000px var(--ink-field) inset, 0 0 0 3px rgba(236,164,86,.1);
+}
 [hidden] { display: none !important; }
 
 @keyframes ariaRise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }

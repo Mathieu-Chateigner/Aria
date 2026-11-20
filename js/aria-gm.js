@@ -1460,18 +1460,17 @@ function sendTabConfig(charId, tab, enabled) {
     openPlayerDetails(charId); // refresh modal to reflect new state
 }
 
-// Read the damage input for a player, apply armor reduction, and publish the damage.
+// Read the damage input for a player and publish it as-is. Direct GM damage is
+// exact — armor only reduces a monster's attack (applyDamageToPlayer).
 function applyPlayerDamage(charId) {
     const inp = document.getElementById(`dmg-${charId}`);
-    const rawDmg = parseInt(inp.value);
-    if (!rawDmg || rawDmg <= 0) return;
+    const dmg = parseInt(inp.value);
+    if (!dmg || dmg <= 0) return;
     const p = players.get(charId);
     if (!p) return;
-    const prot = p.protection?.valeur || 0;
-    const dmg = Math.max(0, rawDmg - prot);
     const hpBefore = p.hp ?? p.maxHP ?? 0;
     const hpAfter = Math.max(0, hpBefore - dmg);
-    console.log('[GM] applyPlayerDamage:', p.name, '| raw:', rawDmg, '| armor:', prot, '| net dmg:', dmg, '| HP:', hpBefore, '→', hpAfter);
+    console.log('[GM] applyPlayerDamage:', p.name, '| dmg:', dmg, '| HP:', hpBefore, '→', hpAfter);
     p.hp = hpAfter;
     inp.value = '';
     publishDamage(p.charId, dmg, hpBefore, hpAfter, p.maxHP || hpBefore, p.name);
@@ -2136,11 +2135,12 @@ function showGMRollResult(name, threshold, roll, success, dmgResult) {
                 el('button', { className: 'gm-target-btn', dataset: { pid: id }, textContent: p.name || id.slice(-4),
                     onclick: () => applyDamageToPlayer(id, dmgResult.total) })))));
 }
-// Apply a damage amount to a player from the GM roll result panel, with armor reduction.
+// Apply a monster attack's damage to a player from the GM roll result panel — the one
+// path where the player's armor reduces the damage (only monster attacks roll damage).
 function applyDamageToPlayer(charId, amount) {
     const p = players.get(charId);
     if (!p) return;
-    const prot = p.protection?.valeur || 0;
+    const prot = armorValue(p);
     const dmg = Math.max(0, amount - prot);
     const hpBefore = p.hp ?? p.maxHP ?? 0;
     const hpAfter = Math.max(0, hpBefore - dmg);
@@ -2161,15 +2161,14 @@ function gmRollDie(sides) {
 }
 
 // ── GM BULK DAMAGE / HEAL ─────────────────────
-// Apply a damage amount (with armor reduction) to all online players simultaneously.
+// Apply a damage amount to all online players simultaneously. Direct GM damage —
+// no armor reduction (that is for monster attacks only).
 function bulkDamageAll() {
     const inp = document.getElementById('bulk-dmg-input');
-    const rawDmg = parseInt(inp?.value);
-    if (!rawDmg || rawDmg <= 0) return;
+    const dmg = parseInt(inp?.value);
+    if (!dmg || dmg <= 0) return;
     const online = [...players.entries()].filter(([, p]) => p.online !== false);
     online.forEach(([id, p]) => {
-        const prot = p.protection?.valeur || 0;
-        const dmg = Math.max(0, rawDmg - prot);
         const hpBefore = p.hp ?? p.maxHP ?? 0;
         const hpAfter = Math.max(0, hpBefore - dmg);
         p.hp = hpAfter;

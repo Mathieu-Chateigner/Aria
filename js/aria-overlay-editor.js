@@ -148,6 +148,9 @@ function resizeCanvas() {
     canvas.style.height = h + 'px';
     previewFrame.style.width  = w + 'px';
     previewFrame.style.height = h + 'px';
+    // The iframe itself stays 1920x1080 — what OBS renders — and is scaled to fit.
+    const frame = document.getElementById('preview-frame');
+    if (frame) frame.style.transform = `scale(${previewFrame.clientWidth / 1920})`;
 }
 
 // Bind click handlers for the Save and Grid Snap topbar buttons.
@@ -337,7 +340,11 @@ function renderCanvas() {
         label.textContent = WIDGET_LABELS[widget.type] || widget.type;
         el.appendChild(label);
 
-        for (const dir of ['nw','n','ne','e','se','s','sw','w']) {
+        // A ratio-locked event widget always scales as one image, so a side handle
+        // would move both dimensions at once — it looked like the side handles did
+        // what the corners do. Those widgets only get the corners.
+        const dirs = eventRatio(widget.type) ? ['nw','ne','se','sw'] : ['nw','n','ne','e','se','s','sw','w'];
+        for (const dir of dirs) {
             const h = document.createElement('div');
             h.className = 'resize-handle ' + dir;
             h.addEventListener('mousedown', e => { e.stopPropagation(); startResize(e, widget.id, dir); });

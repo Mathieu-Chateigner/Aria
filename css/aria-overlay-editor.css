@@ -98,7 +98,10 @@ html, body { height: 100%; background: var(--ink); color: var(--text); font-fami
    above the test-event buttons, same as the canvas is centered in its wrap. */
 #preview-canvas-wrap { flex: 1; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; }
 #preview-frame-wrap { position: relative; aspect-ratio: 16 / 9; background: #000; border: 1px solid var(--line2); border-radius: 4px; overflow: hidden; flex-shrink: 0; }
-#preview-frame { width: 100%; height: 100%; border: none; }
+/* The overlay is laid out in fixed px for a 1920x1080 OBS source. Rendered at the
+   preview box's own size, every card/number came out ~3x too big relative to the
+   canvas. So the frame is always 1920x1080 and scaled down to the box (resizeCanvas). */
+#preview-frame { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; border: none; transform-origin: 0 0; }
 #preview-tests-wrap { position: absolute; left: 14px; right: 14px; bottom: 16px; }
 #preview-canvas-wrap > .palette-section-label, #editor-canvas-wrap > .palette-section-label { position: absolute; top: 0; left: 0; right: 0; text-align: center; margin: 0; }
 

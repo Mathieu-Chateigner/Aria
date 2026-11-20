@@ -163,8 +163,12 @@ function hero(c) {
                         el('div', { className: 'fc-vital-k', textContent: 'Armure' }),
                         read ? el('div', { className: 'fc-vital-v', textContent: armure(c) })
                              : input('fc-vital-in', armure(c), v => {
-                                 const m = v.match(/^(.*?)\s*·\s*(\d+)\s*$/);
-                                 c.protection = { ...c.protection, nom: (m ? m[1] : v).trim(), ...(m ? { valeur: +m[2] } : {}) };
+                                 // The value is the trailing number, whatever separates it:
+                                 // "Cuir 3", "Cuir · 3", "Cuir: 3" or just "3". Requiring the
+                                 // "·" the field displays left valeur at 0 for anyone who
+                                 // typed it any other way, so GM damage ignored their armor.
+                                 const m = v.match(/^(.*?)[\s·:,\-–—]*(\d+)\s*$/);
+                                 c.protection = { ...c.protection, nom: (m ? m[1] : v).trim(), valeur: m ? +m[2] : 0 };
                              }))))));
 }
 

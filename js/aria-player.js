@@ -1621,7 +1621,9 @@ function renderCombatSidebar() {
     const parrySkill = allSkills.find(sk => isContemporary ? /tabasser/i.test(sk.name) : /combat.rapproch/i.test(sk.name));
     const dodgeSkill = allSkills.find(sk => isContemporary ? /réflexes/i.test(sk.name) : /esquiv/i.test(sk.name));
     const reactBtn = (sk, label) => el('button', { className: 'react-btn', textContent: label,
-        onclick: () => doRoll(sk.name, sk.pct + (+sk.bonus || 0)) },
+        // Roll under the button's label: the toast/overlay/GM feed should say
+        // "Parade", not the underlying skill ("Combat rapproché").
+        onclick: () => doRoll(label, sk.pct + (+sk.bonus || 0)) },
         el('span', { className: 'react-pct', textContent: effOf(sk) + '%' }));
 
     // 2 · Protection — name + value badge
