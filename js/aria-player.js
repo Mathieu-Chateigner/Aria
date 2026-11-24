@@ -82,6 +82,7 @@ let gmStreamId = '';
 let gmOnline = false;   // a request sent with no GM in the set waits for an answer nobody got
 let vdoRoom = '';
 let vdoRoomPassword = '';
+let campVdo = { room: '', password: '' };   // the campaign's setting — see loadCampaignVdo()
 // Presence density (design frame 25): 'reduit' (dots) | 'bandeau' (rail) | 'tablee' (stage)
 let presenceMode = localStorage.getItem('aria-presence-mode') || 'bandeau';
 let spotlightCharId = null;   // GM spotlight — that player's face goes big for everyone
@@ -557,6 +558,7 @@ function switchCharacter() {
 function resetCameraState() {
     vdoRoom = '';
     vdoRoomPassword = '';
+    campVdo = { room: '', password: '' };
     cam.blankPushFrame();     // camera released
     peerCameras.clear();
     gmStreamId = '';
@@ -2215,6 +2217,7 @@ function initAbly() {
         ablyPresence = ablyInstance.channels.get(campaignChannel('aria-presence'));
         ablyPresence.presence.subscribe(() => refreshPresenceSet());
         sendPresence();
+        loadCampaignVdo();
         // Targeted messages are addressed to the CHARACTER, not to one tab. Every tab
         // of a character receives and applies them, so a message can no longer be
         // delivered to the one tab that just closed — which is what the "repoint the
@@ -2445,12 +2448,29 @@ function _mergeMembers(members) {
     });
     return byId;
 }
+// The campaign's own VDO settings, read from the database when we enter (campaign_vdo,
+// specs/campaign_vdo.sql), so the cameras work without the GM. A GM in the presence
+// set overrides it live and refreshes it. Only ever applied through
+// refreshPresenceSet(), so a late database answer cannot beat a GM who is present.
+// (campVdo is declared next to vdoRoom, at the top.)
+async function loadCampaignVdo() {
+    const code = ARIA.joinCode();
+    if (!code) return;
+    const { ok, data } = await sbRpc('campaign_vdo', { p_code: code });
+    // Function missing (SQL not run yet) or campaign left meanwhile: keep the
+    // GM-only behaviour rather than guess.
+    if (!ok || ARIA.joinCode() !== code) return;
+    const row = Array.isArray(data) ? data[0] : null;
+    campVdo = { room: row?.room || '', password: row?.password || '' };
+    camLog('[VDO] campaign settings | room:', campVdo.room || '(none)', campVdo.password ? '(password set)' : '(no password)');
+    refreshPresenceSet();
+}
+
 function applyPresenceSet(members) {
     const byId = _mergeMembers(members);
-    // The GM decides the room, the MJ tile and the spotlight. No members ⇒ no GM ⇒
-    // no session: the room goes and the push iframe stops. A GM refresh does not
-    // reach this state, because the reconnected tab has already entered by the time
-    // the dropped connection is reaped.
+    // The room is the campaign's (campVdo); the GM only updates it live, and decides
+    // the MJ tile and the spotlight. A GM leaving no longer ends the session: players
+    // keep the room and go on seeing each other.
     // The GM is whoever holds a 'gm-…' clientId — the token binds it to the account that
     // owns the campaign. `role` in the data is only a claim: anyone could write it, and
     // whoever passed for the GM here would decide which VDO room our webcam pushes into.
@@ -2458,8 +2478,9 @@ function applyPresenceSet(members) {
     const gmWas = gmOnline;
     gmOnline = !!gm;
     if (gmWas !== gmOnline) renderMapTab();   // the move button is gated on it
-    const room = gm ? (gm.vdoRoom || '') : '';
-    const pw = gm ? (gm.vdoRoomPassword || '') : '';
+    if (gm) campVdo = { room: gm.vdoRoom || '', password: gm.vdoRoomPassword || '' };
+    const room = campVdo.room;
+    const pw = campVdo.password;
     const roomChanged = room !== vdoRoom || pw !== vdoRoomPassword;
     vdoRoom = room;
     vdoRoomPassword = pw;
@@ -2484,11 +2505,11 @@ function applyPresenceSet(members) {
         localStorage.setItem(charKey('streams'), JSON.stringify(seen));
     } catch (_) {}
     // Everything the camera layer depends on arrives here and nowhere else, so this
-    // is the log that says whether the session even has a picture to render: no GM
-    // member ⇒ no room ⇒ nothing is published by anybody, and every downstream
-    // "black tile" question is answered already.
+    // is the log that says whether the session even has a picture to render: no room
+    // (none on the campaign, and no GM to give one) ⇒ nothing is published by
+    // anybody, and every downstream "black tile" question is answered already.
     camLog('[VDO] presence applied |', members?.length ?? 0, 'members →', byId.size, 'participants |',
-        'GM:', gm ? 'present' : 'ABSENT (no room, no session)',
+        'GM:', gm ? 'present' : 'absent (room from the campaign)',
         '| room:', vdoRoom || '(none)', vdoRoomPassword ? '(password set)' : '(no password)',
         '| roomChanged:', roomChanged,
         '| MJ streamId:', gmStreamId || '(none — MJ not publishing)',

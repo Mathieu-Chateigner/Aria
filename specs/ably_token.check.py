@@ -120,7 +120,8 @@ rest("/rest/v1/saves", data=[{"save_key": SAVE_A1, "type": "player", "owner": ui
                              {"save_key": SAVE_B, "type": "player", "owner": uidB}], prefer=m)
 rest("/rest/v1/characters", data=[{"id": CHAR_A, "save_key": SAVE_A1, "name": "A", "campaign_key": CODE},
                                   {"id": CHAR_B, "save_key": SAVE_B, "name": "B", "campaign_key": CODE}], prefer=m)
-rest("/rest/v1/campaigns", data={"id": CAMP_A, "save_key": SAVE_A2, "name": "Tok", "join_code": CODE}, prefer=m)
+rest("/rest/v1/campaigns", data={"id": CAMP_A, "save_key": SAVE_A2, "name": "Tok", "join_code": CODE,
+                                  "vdo_room": "tokroom", "vdo_room_password": "tokpw"}, prefer=m)
 
 try:
     print("-- base : plus rien d'anonyme --")
@@ -170,6 +171,18 @@ try:
     check("joueur ne touche pas a une autre campagne", ably_publish(ta, "aria-rolls-ZZZZZ") == 401)
     check("MJ publie la musique", ably_publish(tg, "aria-music-" + CODE) in (200, 201))
     check("overlay ne peut pas publier de jet", ably_publish(to, "aria-rolls-" + CODE) == 401)
+
+    print("-- campaign_vdo : la salle pour les joueurs assis, pas pour les autres --")
+    vdo = lambda tok, code=CODE: rest("/rest/v1/rpc/campaign_vdo", ANON, tok, data={"p_code": code})
+    st, rows = vdo(tokB, CODE.lower())
+    check("un joueur assis lit la salle (code en minuscules)",
+          rows == [{"room": "tokroom", "password": "tokpw"}], (st, rows))
+    st, rows = vdo(tokA)
+    check("le MJ lit la salle", isinstance(rows, list) and len(rows) == 1, (st, rows))
+    st, rows = vdo(tokC)
+    check("un inconnu qui connait le code ne lit rien", rows == [], (st, rows))
+    st, rows = vdo(ANON)
+    check("sans session : refuse", st in (401, 403, 404), (st, rows))
 
     print("-- campaign_chat : participants seulement --")
     msg = lambda i, th, au: {"id": "tok-%s" % i, "join_code": CODE, "thread": th, "author_id": au,
