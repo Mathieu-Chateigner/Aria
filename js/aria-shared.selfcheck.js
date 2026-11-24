@@ -22,8 +22,8 @@ global.localStorage = {
 };
 const src = fs.readFileSync(__dirname + '/aria-roll.js', 'utf8') + '\n' + fs.readFileSync(__dirname + '/aria-shared.js', 'utf8');
 global.SUPABASE_URL = 'https://proj.supabase.co';
-const { rollDiceFormula, rollPassesFilter, rollType, append, makeCamera, makeChat, _fileUrl, generateJoinCode } =
-    new Function(src + '\nreturn { rollDiceFormula, rollPassesFilter, rollType, append, makeCamera, makeChat, _fileUrl, generateJoinCode };')();
+const { rollDiceFormula, rollPassesFilter, rollType, append, makeCamera, makeChat, _fileUrl, generateJoinCode, noteLines } =
+    new Function(src + '\nreturn { rollDiceFormula, rollPassesFilter, rollType, append, makeCamera, makeChat, _fileUrl, generateJoinCode, noteLines };')();
 
 // ── Shared file URLs ─────────────────────────────────────────────────────────
 // Only our own public storage: a file grant is remote-controlled.
@@ -278,6 +278,23 @@ assert.strictEqual(dark.advertisedId(), '');
     for (let i = 0; i < 200; i++) assert.match(generateJoinCode(), /^[A-HJ-NP-Z2-9]{8}$/);
     const first = generateJoinCode();
     assert.notStrictEqual(generateJoinCode(new Set([first])), first);
+}
+
+// note formatting markers: **gras**, *italique*, __souligné__, "- " bullets
+{
+    const runs = t => noteLines(t)[0].runs;
+    assert.deepStrictEqual(runs('a **b** c'), [{ t: 'a ' }, { t: 'b', b: true }, { t: ' c' }]);
+    assert.deepStrictEqual(runs('***x***'), [{ t: 'x', b: true, i: true }]);
+    assert.deepStrictEqual(runs('__u__'), [{ t: 'u', u: true }]);
+    assert.deepStrictEqual(runs('**x *y***'), [{ t: 'x ', b: true }, { t: 'y', b: true, i: true }]);
+    // unclosed markers stay literal
+    assert.deepStrictEqual(runs('5 ** 3'), [{ t: '5 ** 3' }]);
+    assert.deepStrictEqual(runs('a*b'), [{ t: 'a*b' }]);
+    assert.deepStrictEqual(runs(''), []);
+    const l = noteLines(['- item', '-x', '', '  indent '].join('\n'));
+    assert.deepStrictEqual(l.map(x => x.bullet), [true, false, false, false]);
+    assert.deepStrictEqual(l[0].runs, [{ t: 'item' }]);
+    assert.deepStrictEqual(l[3].runs, [{ t: '  indent ' }]);
 }
 
 console.log('aria-shared self-check: all assertions passed');

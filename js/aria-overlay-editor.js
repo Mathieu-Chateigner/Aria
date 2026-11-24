@@ -28,6 +28,11 @@ const CAMPAIGN = getCampaignCode();
 function campaignChannel(base) { return CAMPAIGN ? `${base}-${CAMPAIGN}` : base; }
 
 let widgets       = [];
+// Scenes: config.widgets is the default scene (id ''), so OBS URLs without &scene=
+// keep working; extra scenes live in config.scenes = [{ id, name, widgets }]. The
+// OBS URL carries the id, so renaming a scene doesn't break a browser source.
+let scenes        = [];
+let sceneId       = '';
 let selectedId    = null;
 let snapToGrid    = false;
 let ablyClient    = null;
@@ -96,7 +101,10 @@ async function init() {
         // Layouts saved before the height was locked can hold any height for an
         // event widget; the overlay ignores it, so re-derive it from the width.
         widgets.forEach(w => lockEventRatio(w, 'w'));
+        scenes = Array.isArray(rows[0].config.scenes) ? rows[0].config.scenes : [];
+        scenes.forEach(sc => (sc.widgets || []).forEach(w => lockEventRatio(w, 'w')));
     }
+    scenes.unshift({ id: '', name: 'Principale', widgets });
 
     document.getElementById('editor-owner-label').textContent =
         OWNER_TYPE === 'player' ? 'Joueur — ' + OWNER_ID : 'MJ — ' + OWNER_ID;
@@ -154,7 +162,77 @@ function resizeCanvas() {
 }
 
 // Bind click handlers for the Save and Grid Snap topbar buttons.
+// ── SCENES ────────────────────────────────────
+function currentScene() { return scenes.find(sc => sc.id === sceneId) || scenes[0]; }
+
+function renderScenePicker() {
+    const pick = document.getElementById('scene-pick');
+    pick.innerHTML = '';
+    scenes.forEach(sc => {
+        const opt = document.createElement('option');
+        opt.value = sc.id;
+        opt.textContent = sc.name;
+        pick.appendChild(opt);
+    });
+    pick.value = sceneId;
+    document.getElementById('btn-scene-delete').disabled = !sceneId;
+    document.getElementById('btn-scene-rename').disabled = !sceneId;
+}
+
+// `widgets` is reassigned by deletes, so write it back before leaving the scene.
+function switchScene(id) {
+    currentScene().widgets = widgets;
+    sceneId = id;
+    widgets = currentScene().widgets;
+    selectedId = null;
+    renderScenePicker();
+    renderCanvas(); renderEffectToggles(); syncPropsPanel();
+    document.getElementById('preview-frame').src = buildPreviewUrl();
+}
+
+function bindSceneButtons() {
+    document.getElementById('scene-pick').addEventListener('change', e => switchScene(e.target.value));
+    document.getElementById('btn-scene-add').addEventListener('click', () => {
+        const name = (prompt('Nom de la nouvelle scène (copie de « ' + currentScene().name + ' ») :') || '').trim();
+        if (!name) return;
+        currentScene().widgets = widgets;
+        // Fresh widget ids: content-update targets a widgetId, a shared one would
+        // write into the other scene's widget.
+        const copy = JSON.parse(JSON.stringify(widgets)).map(w => ({ ...w, id: crypto.randomUUID() }));
+        const id = crypto.randomUUID().slice(0, 8);
+        scenes.push({ id, name, widgets: copy });
+        switchScene(id);
+        saveConfig();
+    });
+    document.getElementById('btn-scene-rename').addEventListener('click', () => {
+        if (!sceneId) return;
+        const name = (prompt('Nouveau nom :', currentScene().name) || '').trim();
+        if (!name) return;
+        currentScene().name = name;
+        renderScenePicker(); saveConfig();
+    });
+    document.getElementById('btn-scene-delete').addEventListener('click', () => {
+        if (!sceneId || !confirm('Supprimer la scène « ' + currentScene().name + ' » ?')) return;
+        scenes = scenes.filter(sc => sc.id !== sceneId);
+        sceneId = '';
+        widgets = scenes[0].widgets;
+        switchScene('');
+        saveConfig();
+    });
+    document.getElementById('btn-scene-url').addEventListener('click', async () => {
+        const p = new URLSearchParams({ s: SAVE_KEY });
+        if (sceneId) p.set('scene', sceneId);
+        const url = new URL('aria-overlay.html?' + p, location.href).href;
+        const btn = document.getElementById('btn-scene-url');
+        try { await navigator.clipboard.writeText(url); btn.textContent = '✓ Copiée'; }
+        catch (_) { prompt('URL OBS de cette scène :', url); }
+        setTimeout(() => { btn.textContent = '📋 URL scène'; }, 1200);
+    });
+}
+
 function bindTopbarButtons() {
+    renderScenePicker();
+    bindSceneButtons();
     document.getElementById('btn-save').addEventListener('click', saveConfig);
     document.getElementById('btn-grid-snap').addEventListener('click', () => {
         snapToGrid = !snapToGrid;
@@ -467,6 +545,9 @@ function syncPropsPanel() {
     document.getElementById('prop-maxitems-wrap').style.display = hasMaxItems ? '' : 'none';
     if (hasContent)  document.getElementById('prop-content').value  = widget.config?.content  || '';
     if (hasMaxItems) document.getElementById('prop-maxitems').value = widget.config?.maxItems || 8;
+    const hasHideName = widget.type === 'hp_bar';
+    document.getElementById('prop-hidename-wrap').style.display = hasHideName ? '' : 'none';
+    if (hasHideName) document.getElementById('prop-hidename').checked = !!widget.config?.hideName;
     const hasStreamId = widget.type === 'camera';
     document.getElementById('prop-stream-id-wrap').style.display = hasStreamId ? '' : 'none';
     if (hasStreamId) {
@@ -495,6 +576,18 @@ function availablePlayers() {
         try { chars = JSON.parse(localStorage.getItem('aria-characters') || '[]'); } catch (_) {}
         const me = chars.find(c => c.id === OWNER_ID);
         out.push({ charId: OWNER_ID, label: (me?.name || 'Vous') + ' (vous)' });
+        // Table-mates seen once in this campaign, written by the player panel.
+        let seen = {};
+        try { seen = JSON.parse(localStorage.getItem('aria-known-players-' + OWNER_ID) || '{}'); } catch (_) {}
+        Object.entries(seen).forEach(([charId, name]) => { if (charId !== OWNER_ID) out.push({ charId, label: name || charId }); });
+        // Players already linked in a layout, from before that list existed; named
+        // from the camera picker's history when it knows them.
+        let streams = {};
+        try { streams = JSON.parse(localStorage.getItem('aria-known-streams-' + OWNER_ID) || '{}'); } catch (_) {}
+        scenes.flatMap(sc => sc.widgets || []).forEach(w => {
+            const id = w.config?.charId;
+            if (id && !out.some(p => p.charId === id)) out.push({ charId: id, label: streams['aria_' + id.slice(0, 8)] || id });
+        });
     }
     return out;
 }
@@ -617,6 +710,13 @@ function bindPropsPanel() {
         scheduleAutoSave();
     });
 
+    document.getElementById('prop-hidename').addEventListener('change', () => {
+        const widget = widgets.find(w => w.id === selectedId);
+        if (!widget) return;
+        widget.config.hideName = document.getElementById('prop-hidename').checked;
+        renderCanvas(); scheduleAutoSave();
+    });
+
     document.getElementById('prop-charid-pick').addEventListener('change', () => {
         const widget = widgets.find(w => w.id === selectedId);
         if (!widget) return;
@@ -648,7 +748,11 @@ function scheduleAutoSave() {
 // Save the widget layout to Supabase and broadcast a layout-update via Ably.
 async function saveConfig() {
     clearTimeout(autoSaveTimer);
-    const config = { widgets };
+    currentScene().widgets = widgets;
+    const config = {
+        widgets: scenes[0].widgets,
+        scenes: scenes.slice(1).map(({ id, name, widgets }) => ({ id, name, widgets })),
+    };
     await sbUpsert('overlay_configs', { id: OVERLAY_ID, owner_type: OWNER_TYPE, owner_id: OWNER_ID, config, updated_at: new Date().toISOString() }, 'id');
     if (ablyChannel) ablyChannel.publish('layout-update', { overlayId: OVERLAY_ID, config });
     const btn = document.getElementById('btn-save');
@@ -665,6 +769,7 @@ async function saveConfig() {
 function buildPreviewUrl() {
     const p = new URLSearchParams({ s: SAVE_KEY, mode: OWNER_TYPE, overlay: OVERLAY_ID });
     if (CAMPAIGN) p.set('campaign', CAMPAIGN);
+    if (sceneId) p.set('scene', sceneId);
     return '../views/aria-overlay.html?' + p.toString();
 }
 

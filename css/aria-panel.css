@@ -268,6 +268,7 @@ body.dock-dragging .tab-btn, body.dock-dragging .split-pane-hdr { cursor: grabbi
 .notes-item:hover { background: var(--accent-soft); }
 .notes-item.active { background: var(--accent-soft); border-left-color: var(--gold); }
 .notes-item.active .notes-item-name { color: var(--text); }
+.notes-item { cursor: grab; }
 .notes-item.dragging { opacity: .45; }
 .notes-item.drop-target { border-left-color: var(--gold); background: var(--accent-soft); }
 /* Half-width pane: the notes widget steps down one notch (design frame 22). */
@@ -337,7 +338,7 @@ body.dock-dragging .tab-btn, body.dock-dragging .split-pane-hdr { cursor: grabbi
 }
 .notes-name-input::placeholder { color: var(--dim); opacity: 0.35; font-style: italic; font-family: 'Cormorant Garamond', serif; letter-spacing: 0; }
 .notes-name-input:focus { border-bottom-color: var(--gold); }
-.notes-name-input:disabled, .notes-area:disabled { opacity: 0.3; cursor: default; }
+.notes-name-input:disabled, .notes-area[contenteditable=false] { opacity: 0.3; cursor: default; }
 .notes-area {
     flex: 1;
     width: 100%;
@@ -354,7 +355,13 @@ body.dock-dragging .tab-btn, body.dock-dragging .split-pane-hdr { cursor: grabbi
     outline: none;
     transition: border-color 0.15s;
 }
-.notes-area::placeholder { color: var(--dim); opacity: 0.45; font-style: italic; }
+.notes-area { white-space: pre-wrap; overflow-y: auto; }
+.notes-area:empty::before { content: attr(data-placeholder); color: var(--dim); opacity: 0.45; font-style: italic; }
+.notes-area ul { margin: 0; padding-left: 1.4em; }
+.notes-area b { color: var(--text); }
+.notes-tools { display: flex; gap: 4px; margin-bottom: 8px; }
+.notes-tools button { background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 4px; min-width: 28px; height: 24px; cursor: pointer; font-size: 13px; }
+.notes-tools button:hover { color: var(--gold); border-color: var(--gold); }
 .notes-area:focus { border-color: var(--gold); }
 .card-tab-layout {
     display: flex;
@@ -871,3 +878,6 @@ body.dock-dragging .tab-btn, body.dock-dragging .split-pane-hdr { cursor: grabbi
     vertical-align: middle;
 }
 .content.split-mode .chat-threads { width: 160px; padding: 10px 8px; }
+
+.chat-mute { background: none; border: 1px solid var(--line); border-radius: 4px; cursor: pointer; padding: 0 8px; }
+.chat-mute:hover { border-color: var(--gold); }

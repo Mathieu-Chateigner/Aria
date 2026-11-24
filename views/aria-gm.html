@@ -519,6 +519,7 @@
                         <div class="chat-input-row">
                             <input class="chat-input" id="chat-input" placeholder="Message…" onkeydown="if(event.key==='Enter')chat.send()" />
                             <button class="chat-send" onclick="chat.send()">Envoyer</button>
+                            <button class="chat-mute" id="chat-mute" onclick="chat.toggleSound()" title="Son des nouveaux messages">🔔</button>
                         </div>
                     </div>
                 </div>
@@ -539,7 +540,8 @@
                             <input class="notes-name-input" id="gm-notes-name-input" placeholder="Nom de la note…" oninput="gmNotes.rename()" />
                             <button class="notes-share" id="gm-notes-share" onclick="gmNotes.share()" title="Partagée : visible dans le Journal de toute la table">Privée</button>
                         </div>
-                        <textarea class="notes-area" id="gm-notes-area" placeholder="Contenu…" oninput="gmNotes.save()"></textarea>
+                        <div class="notes-tools"><button type="button" onmousedown="event.preventDefault()" onclick="gmNotes.format('bold')" title="Gras (Ctrl+B)"><b>G</b></button><button type="button" onmousedown="event.preventDefault()" onclick="gmNotes.format('italic')" title="Italique (Ctrl+I)"><i>I</i></button><button type="button" onmousedown="event.preventDefault()" onclick="gmNotes.format('underline')" title="Souligné (Ctrl+U)"><u>S</u></button><button type="button" onmousedown="event.preventDefault()" onclick="gmNotes.format('insertUnorderedList')" title="Liste à puces">•</button></div>
+                        <div class="notes-area" id="gm-notes-area" data-placeholder="Contenu…" oninput="gmNotes.save()"></div>
                     </div>
                 </div>
             </div>

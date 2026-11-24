@@ -13,19 +13,22 @@ const $ = id => document.getElementById(id);
 const J = { D: [], cur: 0, q: '' };
 const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-// A paragraph with every match of q (already normalised) highlighted.
-function para(text, q) {
-    const p = el('div', { className: 'jr-p' });
-    if (!q) { p.textContent = text; return p; }
-    const nt = norm(text);
+// Text with every match of q (already normalised) highlighted.
+function highlight(text, q) {
+    if (!q) return text;
+    const out = [], nt = norm(text);
     let i = 0, j;
     while ((j = nt.indexOf(q, i)) !== -1) {
-        if (j > i) p.append(text.slice(i, j));
-        p.append(el('mark', { textContent: text.slice(j, j + q.length) }));
+        if (j > i) out.push(text.slice(i, j));
+        out.push(el('mark', { textContent: text.slice(j, j + q.length) }));
         i = j + q.length;
     }
-    if (i < text.length) p.append(text.slice(i));
-    return p;
+    if (i < text.length) out.push(text.slice(i));
+    return out;
+}
+// A paragraph, with the note's formatting (noteNodes) and the search highlighted.
+function para(text, q) {
+    return el('div', { className: 'jr-p' }, noteNodes(text, t => highlight(t, q)));
 }
 
 function goSession(i) { J.cur = i; J.q = ''; $('jr-q').value = ''; render(); $('jr-root').scrollTo(0, 0); }

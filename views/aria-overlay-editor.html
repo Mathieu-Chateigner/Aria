@@ -12,6 +12,14 @@
     <div id="editor-topbar">
         <span id="editor-title">Overlay Editor</span>
         <div id="editor-owner-label"></div>
+        <!-- Scenes: one layout per OBS scene, all in the same overlay_configs row. -->
+        <div id="editor-scenes">
+            <select id="scene-pick" class="props-input" title="Scène éditée"></select>
+            <button id="btn-scene-add" class="btn-secondary" title="Dupliquer la scène en une nouvelle">+ Scène</button>
+            <button id="btn-scene-rename" class="btn-secondary">Renommer</button>
+            <button id="btn-scene-delete" class="btn-secondary">Supprimer</button>
+            <button id="btn-scene-url" class="btn-secondary" title="URL OBS de cette scène">📋 URL scène</button>
+        </div>
         <div id="editor-actions">
             <button id="btn-grid-snap" class="btn-secondary" title="Activer/désactiver la grille">⊞ Grille</button>
             <button id="btn-save" class="btn-primary">Sauvegarder</button>
@@ -59,6 +67,10 @@
                 <div id="prop-content-wrap" style="display:none">
                     <label class="props-label">Contenu</label>
                     <textarea id="prop-content" class="props-textarea"></textarea>
+                </div>
+
+                <div id="prop-hidename-wrap" style="display:none">
+                    <label class="props-label"><input type="checkbox" id="prop-hidename"> Masquer le nom</label>
                 </div>
 
                 <div id="prop-maxitems-wrap" style="display:none">

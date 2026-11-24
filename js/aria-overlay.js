@@ -27,6 +27,17 @@ function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt
 let mapState = null;
 // The overlay already knows whose it is: a player overlay shows that character's view, a
 // GM overlay the table's. GM notes are in neither — they are never in the payload at all.
+// Scene id from the editor's "📋 URL scène"; none = the default layout (config.widgets).
+const SCENE = params.get('scene') || '';
+
+// The layout this overlay shows: its scene, or the default one.
+function sceneLayout(config) {
+    if (!SCENE) return config;
+    const sc = (config.scenes || []).find(x => x.id === SCENE);
+    if (!sc) { console.warn('[OVERLAY] unknown scene', SCENE, '- default layout'); return config; }
+    return { ...config, widgets: Array.isArray(sc.widgets) ? sc.widgets : [] };
+}
+
 const MAP_CHAR_ID = OVERLAY_ID.startsWith('player_') ? OVERLAY_ID.slice(7) : null;
 
 let overlayConfig = { widgets: [] };
@@ -341,7 +352,7 @@ function startAbly() {
         cfgCh.subscribe('layout-update', msg => {
             if (msg.data?.overlayId !== OVERLAY_ID || !Array.isArray(msg.data.config?.widgets)) return;
             layoutFromAbly = true;
-            overlayConfig = msg.data.config;
+            overlayConfig = sceneLayout(msg.data.config);
             renderWidgetLayer();
         });
         cfgCh.subscribe('content-update', msg => {
@@ -905,10 +916,11 @@ function renderWidgetContent(widget) {
         }
         case 'hp_bar': {
             const p = widgetChar(cfg);
-            if (!p) return '<div class="ow-hp-wrap"><div class="ow-hp-label">—</div><div class="ow-hp-track"><div class="ow-hp-fill" style="width:0%"></div><div class="ow-hp-text">— PV</div></div></div>';
+            if (!p) return '<div class="ow-hp-wrap">' + (cfg.hideName ? '' : '<div class="ow-hp-label">—</div>') + '<div class="ow-hp-track"><div class="ow-hp-fill" style="width:0%"></div><div class="ow-hp-text">— PV</div></div></div>';
             const pct = Math.max(0, Math.min(100, (p.hp / (p.maxHP || 1)) * 100));
             const colorCls = pct > 60 ? '' : pct > 30 ? ' yellow' : ' red';
-            return `<div class="ow-hp-wrap"><div class="ow-hp-label">${esc(p.name)}</div><div class="ow-hp-track"><div class="ow-hp-fill${colorCls}" style="width:${pct}%"></div><div class="ow-hp-text">${esc(p.hp)} / ${esc(p.maxHP)} PV</div></div></div>`;
+            const label = cfg.hideName ? '' : `<div class="ow-hp-label">${esc(p.name)}</div>`;
+            return `<div class="ow-hp-wrap">${label}<div class="ow-hp-track"><div class="ow-hp-fill${colorCls}" style="width:${pct}%"></div><div class="ow-hp-text">${esc(p.hp)} / ${esc(p.maxHP)} PV</div></div></div>`;
         }
         case 'stats': {
             const p = widgetChar(cfg);
@@ -1057,7 +1069,7 @@ async function loadOverlayConfig() {
     // A live layout beat the round-trip — it wins, this read may predate the write.
     if (layoutFromAbly) return;
     if (rows.length && rows[0].config) {
-        overlayConfig = rows[0].config;
+        overlayConfig = sceneLayout(rows[0].config);
         renderWidgetLayer();
     }
 }

@@ -229,6 +229,7 @@ const CHAR_KEYS = {
     map:    'aria-map-',
     mapNotes: 'aria-map-notes-',
     streams: 'aria-known-streams-',   // read by the overlay editor's camera picker
+    players: 'aria-known-players-',   // read by the overlay editor's "Joueur lié" picker
 };
 const _CHAR_KEY_PREFIXES = Object.values(CHAR_KEYS);
 
@@ -1080,6 +1081,7 @@ function renderCamerasTab() {
             labelEl.className = 'camera-label';
             labelEl.textContent = character.name || 'Vous';
             labelEl.draggable = true;
+            labelEl.title = 'Glisser pour réordonner les caméras';
             selfCell.appendChild(wrap);
             selfCell.appendChild(labelEl);
             grid.insertBefore(selfCell, grid.firstChild);
@@ -1157,6 +1159,7 @@ function renderCamerasTab() {
             labelEl.className = 'camera-label';
             labelEl.textContent = label;
             labelEl.draggable = true;
+            labelEl.title = 'Glisser pour réordonner les caméras';
             cell.appendChild(wrap);
             cell.appendChild(labelEl);
             grid.appendChild(cell);
@@ -2503,6 +2506,11 @@ function applyPresenceSet(members) {
         if (gmStreamId) seen[gmStreamId] = 'MJ';
         peerCameras.forEach(p => { seen[p.streamId] = p.name; });
         localStorage.setItem(charKey('streams'), JSON.stringify(seen));
+    } catch (_) {}
+    try {
+        const seen = JSON.parse(localStorage.getItem(charKey('players')) || '{}');
+        Object.entries(knownPlayers).forEach(([id, p]) => { seen[id] = p.name || seen[id] || ''; });
+        localStorage.setItem(charKey('players'), JSON.stringify(seen));
     } catch (_) {}
     // Everything the camera layer depends on arrives here and nowhere else, so this
     // is the log that says whether the session even has a picture to render: no room

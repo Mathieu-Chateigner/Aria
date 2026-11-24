@@ -1078,7 +1078,7 @@ function makeNotes({ key, ids, sync, syncSoon, remove }) {
 
     function renderList() {
         fill($('list'), list.map(note =>
-            el('div', { className: 'notes-item' + (note.id === currentId ? ' active' : ''), draggable: true,
+            el('div', { className: 'notes-item' + (note.id === currentId ? ' active' : ''), draggable: true, title: 'Glisser pour réordonner',
                 ondragstart: e => { dragId = note.id; e.dataTransfer.effectAllowed = 'move'; e.currentTarget.classList.add('dragging'); },
                 ondragend: e => { dragId = null; e.currentTarget.classList.remove('dragging'); },
                 ondragover: e => { if (dragId && dragId !== note.id) { e.preventDefault(); e.currentTarget.classList.add('drop-target'); } },
@@ -1095,8 +1095,18 @@ function makeNotes({ key, ids, sync, syncSoon, remove }) {
         if (!nameInput || !area) return;
         const note = current();
         nameInput.value = note ? note.name : '';
-        area.value = note ? note.content : '';
-        nameInput.disabled = area.disabled = !note;
+        fill(area, ...(note?.content ? noteNodes(note.content) : []));
+        nameInput.disabled = !note;
+        area.contentEditable = note ? 'true' : 'false';
+        if (!area.dataset.bound) {
+            area.dataset.bound = '1';
+            // Plain text only: pasted web/Word HTML would carry structure the
+            // serializer drops without a word.
+            area.addEventListener('paste', e => {
+                e.preventDefault();
+                document.execCommand('insertText', false, e.clipboardData.getData('text/plain'));
+            });
+        }
         if (shareBtn) {
             shareBtn.disabled = !note;
             shareBtn.textContent = note && note.shared ? 'Partagée' : 'Privée';
@@ -1137,9 +1147,17 @@ function makeNotes({ key, ids, sync, syncSoon, remove }) {
     function save() {
         const note = current();
         if (!note) return;
-        note.content = $('area').value;
+        note.content = noteSerialize($('area'));
         persist();
         syncSoon?.(note, posOf(note));
+    }
+
+    // Toolbar: bold / italic / underline / insertUnorderedList. Fires `input`, which saves.
+    function format(cmd) {
+        if (!current()) return;
+        $('area').focus();
+        document.execCommand('styleWithCSS', false, false);   // <b>, not <span style>
+        document.execCommand(cmd);
     }
 
     // A shared note shows in every participant's Journal (journal_notes()).
@@ -1161,7 +1179,93 @@ function makeNotes({ key, ids, sync, syncSoon, remove }) {
         syncSoon?.(note, posOf(note));
     }
 
-    return { load, add, select, del, save, rename, share, get list() { return list; } };
+    return { load, add, select, del, save, rename, share, format, get list() { return list; } };
+}
+
+// ── Note formatting ─────────────────────────────────────────────────────────
+// A note stays plain text in the database, with light markers: **gras**, *italique*,
+// __souligné__ and "- " at the start of a line for a bullet. The panels edit it in a
+// contenteditable (noteNodes → DOM, noteSerialize → text), the Journal renders it with
+// noteNodes. No HTML is ever stored, so a shared note cannot carry markup to the table.
+// shortcut: no escaping — a literal "*x*" typed in a note comes back italic.
+const _NOTE_MARK = /\*\*(.+?)\*\*(?!\*)|__(.+?)__|\*(.+?)\*/;
+function noteRuns(text, st = {}) {
+    const out = [];
+    let rest = text;
+    for (let m; (m = _NOTE_MARK.exec(rest)); ) {
+        if (m.index) out.push({ t: rest.slice(0, m.index), ...st });
+        const [inner, k] = m[1] != null ? [m[1], 'b'] : m[2] != null ? [m[2], 'u'] : [m[3], 'i'];
+        out.push(...noteRuns(inner, { ...st, [k]: true }));
+        rest = rest.slice(m.index + m[0].length);
+    }
+    if (rest) out.push({ t: rest, ...st });
+    return out;
+}
+// [{ bullet, runs }] per line.
+function noteLines(text) {
+    return String(text || '').split('\n').map(line => {
+        const bullet = line.startsWith('- ');
+        return { bullet, runs: noteRuns(bullet ? line.slice(2) : line) };
+    });
+}
+// One <div> per line (what Chrome's contenteditable makes on Enter), consecutive
+// bullets in one <ul>. wrap(text) lets the Journal highlight its search matches.
+function noteNodes(text, wrap = t => t) {
+    const nodes = [];
+    let ul = null;
+    for (const { bullet, runs } of noteLines(text)) {
+        const kids = runs.map(r => {
+            let n = wrap(r.t);
+            if (r.u) n = el('u', {}, n);
+            if (r.i) n = el('i', {}, n);
+            if (r.b) n = el('b', {}, n);
+            return n;
+        });
+        if (!kids.length) kids.push(el('br'));
+        if (bullet) {
+            if (!ul) nodes.push(ul = el('ul'));
+            ul.append(el('li', {}, ...kids));
+        } else {
+            ul = null;
+            nodes.push(el('div', {}, ...kids));
+        }
+    }
+    return nodes;
+}
+// The contenteditable back to marked text. Blocks (div, p, li) are lines; a <br>
+// that ends a block is Chrome's placeholder for an empty line, not a line break.
+function noteSerialize(root) {
+    const lines = [];
+    let line = '', bullet = false, open = false;
+    const flush = () => { lines.push((bullet ? '- ' : '') + line); line = ''; bullet = false; open = false; };
+    const MARK = { B: '**', STRONG: '**', I: '*', EM: '*', U: '__' };
+    (function walk(node) {
+        for (const c of node.childNodes) {
+            if (c.nodeType === 3) { line += c.nodeValue; open = true; continue; }
+            if (c.nodeType !== 1) continue;
+            const tag = c.tagName;
+            if (tag === 'BR') { if (c.nextSibling || node === root) flush(); continue; }
+            if (MARK[tag]) {
+                if (!c.textContent) continue;
+                line += MARK[tag]; walk(c); line += MARK[tag]; open = true;
+                continue;
+            }
+            if (tag === 'UL' || tag === 'OL') { if (open) flush(); walk(c); continue; }
+            if (tag === 'DIV' || tag === 'P' || tag === 'LI') {
+                if (open) flush();
+                bullet = tag === 'LI';
+                const before = lines.length;
+                walk(c);
+                // A block that only wrapped other blocks has no line of its own;
+                // one that produced nothing (<div><br></div>) is an empty line.
+                if (open || lines.length === before) flush();
+                continue;
+            }
+            walk(c);   // span or anything else: keep its text
+        }
+    })(root);
+    if (open) flush();
+    return lines.join('\n');
 }
 
 // Camera logging, off by default. The push/lock/device/stats chatter narrated every
@@ -2449,7 +2553,44 @@ function makeChat({ selfId, selfName, contacts }) {
         const onScreen = (m.thread === current && paneOpen())
                       || (m.thread === 'global' && !!$('chat-global-log'));
         if (m.authorId !== selfId() && !onScreen) unread.add(m.thread);
+        if (m.authorId !== selfId()) ping();
         render();
+    }
+
+    // Short two-note chime, synthesized: no sound file to host. Live messages only —
+    // history loads through add(), never here.
+    let actx = null, lastPing = 0;
+    // Per browser, both panels: the GM streams and OBS may capture desktop audio.
+    const soundOff = () => localStorage.getItem('aria-chat-muted') === '1';
+    function renderSound() {
+        const b = $('chat-mute');
+        if (!b) return;
+        b.textContent = soundOff() ? '🔕' : '🔔';
+        b.title = soundOff() ? 'Son des messages coupé' : 'Son des nouveaux messages';
+    }
+    function toggleSound() {
+        if (soundOff()) localStorage.removeItem('aria-chat-muted');
+        else localStorage.setItem('aria-chat-muted', '1');
+        renderSound();
+    }
+    function ping() {
+        // A reconnect flushes queued messages all at once: one chime, not ten.
+        if (Date.now() - lastPing < 500 || soundOff()) return;
+        lastPing = Date.now();
+        try {
+            actx = actx || new AudioContext();
+            if (actx.state === 'suspended') actx.resume();   // created before any click
+            const t = actx.currentTime;
+            [[880, 0], [1320, 0.09]].forEach(([f, d]) => {
+                const o = actx.createOscillator(), g = actx.createGain();
+                o.type = 'sine'; o.frequency.value = f;
+                g.gain.setValueAtTime(0.0001, t + d);
+                g.gain.exponentialRampToValueAtTime(0.08, t + d + 0.01);
+                g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.25);
+                o.connect(g).connect(actx.destination);
+                o.start(t + d); o.stop(t + d + 0.26);
+            });
+        } catch (_) {}
     }
 
     // ── transport ───────────────────────────
@@ -2570,6 +2711,7 @@ function makeChat({ selfId, selfName, contacts }) {
     }
 
     function render() {
+        renderSound();
         if (paneOpen()) unread.delete(current);
         renderLog($('chat-global-log'), 'global');
         renderLog($('chat-log'), current);
@@ -2603,6 +2745,6 @@ function makeChat({ selfId, selfName, contacts }) {
         if (btn) btn.classList.toggle('has-unread', unread.size > 0);
     }
 
-    return { attach, detach, reset, load, send, sendGlobal, select, render, renderContacts, post,
+    return { attach, detach, reset, load, send, sendGlobal, select, render, renderContacts, post, toggleSound,
              dmId, openWith: id => select(dmId(id)) };
 }
