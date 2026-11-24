@@ -1204,7 +1204,8 @@ function _playerCardState(p, charId) {
         // password-protected room, and the known-players snapshot keeps the last
         // streamId of players who have gone — so both gates, or the card shows a
         // guaranteed-black rectangle.
-        camSrc: (p.streamId && online && currentVdoRoom) ? cam.viewSrc(p.streamId, false) : '',
+        // 600 kbps: a card-sized tile. shortcut: estimate, tune after a session.
+        camSrc: (p.streamId && online && currentVdoRoom) ? cam.viewSrc(p.streamId, false, 600) : '',
     };
 }
 

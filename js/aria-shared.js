@@ -1259,9 +1259,14 @@ function makeCamera({ tag, sidPrefix, lockPrefix, frameId,
         // ignores &view and renders the "Join Room with Camera" landing page. The
         // password is required too: streams pushed into a protected room are
         // encrypted, so a bare ?view=SID stays black.
-        viewSrc(sid, muted) {
+        // kbps: the bitrate this tile asks the publisher for (&videobitrate), so a
+        // small tile costs the sender a fraction of a big one. Omitted = VDO.ninja's
+        // default, capped by the sender's &mvb. Every site that compares a frame's src
+        // to viewSrc() must pass the same kbps, or the frame reloads on each render.
+        viewSrc(sid, muted, kbps) {
             let src = `https://vdo.ninja/?view=${encodeURIComponent(sidSafe(sid))}&autoplay&cleanoutput`;
             if (muted) src += '&muted';
+            if (kbps) src += `&videobitrate=${kbps}`;
             if (room()) src += `&solo&room=${encodeURIComponent(room())}`;
             if (password()) src += `&password=${encodeURIComponent(password())}`;
             return src;
@@ -1361,7 +1366,17 @@ function makeCamera({ tag, sidPrefix, lockPrefix, frameId,
             // The Accueil's Options › Micro sets 'aria-mic' (per browser, like the
             // camera device); with it on, the mic is published too — table voice.
             const mic = localStorage.getItem('aria-mic') === '1' ? '' : '&audiodevice=0';
-            let src = `https://vdo.ninja/?push=${streamId()}&room=${encodeURIComponent(room())}&view&autostart&webcam${mic}&cleanoutput`;
+            // Bitrate cap (kbps) on each outgoing copy. In a room every viewer gets its
+            // own P2P copy, so upload = per-copy bitrate × viewers — uncapped it reached
+            // ~24 Mbit/s and saturated the home uplink (ping spikes for the whole
+            // house). Viewers ask for less on small tiles (viewSrc kbps); this is the
+            // ceiling. 'aria-cam-eco' (Accueil › Options › Qualité caméra, per browser)
+            // lowers it for a weak uplink. &limittotalbitrate was dropped: the docs only
+            // say it "tries", with no word on how it splits, so it could override the
+            // per-tile requests.
+            // shortcut: 600/1500 are estimates — tune them after a measured session.
+            const mvb = localStorage.getItem('aria-cam-eco') === '1' ? 600 : 1500;
+            let src = `https://vdo.ninja/?push=${streamId()}&room=${encodeURIComponent(room())}&view&autostart&webcam${mic}&cleanoutput&mvb=${mvb}`;
             // Without this VDO.ninja takes whatever Chrome offers first, which on a
             // streaming machine is usually the OBS virtual camera.
             if (videoDevice) src += `&videodevice=${encodeURIComponent(videoDevice)}`;

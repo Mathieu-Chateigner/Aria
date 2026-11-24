@@ -797,28 +797,33 @@ function renderPresenceUI() {
     if (rail) {
         const show = hasAny && presenceMode === 'bandeau' && !camsOpen && !railNarrowMQ.matches;
         rail.style.display = show ? '' : 'none';
-        if (show) renderPresenceRail();
+        if (show) {
+            renderPresenceRail();
+            // One viewer per peer: the rail takes over from the hidden grid. Keeping
+            // both meant every peer pushed two copies of its camera to this tab, and
+            // at a full table that doubled everyone's upload. The grid is rebuilt by
+            // renderCamerasTab() when its pane opens again (a few seconds of black).
+            if (camGrid?.childElementCount) camGrid.innerHTML = '';
+        }
         // Viewer iframes only — safe to drop. clearKeyed, not innerHTML, so the
         // reconciler forgets the tiles too rather than holding detached nodes.
         else clearKeyed(document.getElementById('presence-rail-grid'));
     }
-    // The grid is deliberately NOT emptied when its pane closes.
+    // Outside Bandeau the grid is deliberately NOT emptied when its pane closes.
     // .tab-content{display:none} hides the iframes while leaving their WebRTC
-    // connections up, so leaving the tab and coming back now costs nothing - which is
-    // the point: it used to clear here, and every trip to Inventaire meant watching
-    // the whole table reconnect from black on the way back.
+    const camGrid = document.getElementById('cameras-grid');
+    // connections up, so leaving the tab and coming back costs nothing - it used to
+    // clear here, and every trip to Inventaire meant watching the whole table
+    // reconnect from black on the way back. In Bandeau the rail replaces it (above).
     //
     // It is still cleared the moment the room goes (session over): those iframes are
     // then pointed at streams nobody publishes and would sit loaded for good - the
     // case renderCamerasTab() cannot handle, since it is unreachable once the pane is
     // closed.
     //
-    // ponytail: in Bandeau, a closed pane now means the rail and the hidden grid each
-    // hold a viewer on the same streams - 2x inbound connections per peer while you
-    // are on another tab. Fine for a table of a handful; if it ever bites, the fix is
-    // one shared iframe host that the rail and the grid both style, rather than two
-    // sets of iframes that must never be alive at once.
-    const camGrid = document.getElementById('cameras-grid');
+    // shortcut: Bandeau trades the free tab trip for one viewer per peer. Moving the
+    // iframes between rail and grid with Element.moveBefore() (keeps them loaded)
+    // would give both, if the reconnect on reopening Caméras ever bothers anyone.
     if (camGrid && !hasAny && camGrid.childElementCount) camGrid.innerHTML = '';
     // Tablée — the cameras grid renders as a stage
     camGrid?.classList.toggle('stage-mode', presenceMode === 'tablee');
@@ -851,7 +856,9 @@ function renderPresenceRail() {
         return tile;
     }, (tile, label, sid) => {
         const isSelf = cam.live() && sid === cam.streamId();
-        setFrameSrc(tile._frame, cam.viewSrc(sid, isSelf));
+        // Small rail tiles ask for a low bitrate — the rail is the default view, so
+        // this sets most of every peer's upload. shortcut: 300 is an estimate.
+        setFrameSrc(tile._frame, cam.viewSrc(sid, isSelf, 300));
         tile._label.textContent = label;
         tile.classList.toggle('spotlit', !!spot && sid === spot);
     });

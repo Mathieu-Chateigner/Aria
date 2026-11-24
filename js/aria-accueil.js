@@ -73,6 +73,11 @@ const OPTS_ALL = [
     { id: 'mic', label: 'Micro', vals: ['Désactivé', 'Activé'],
       get: () => localStorage.getItem('aria-mic') === '1' ? 1 : 0,
       set: v => localStorage.setItem('aria-mic', v ? '1' : '0') },
+    // Économe caps what this browser's camera sends (aria-shared.js, syncPushFrame):
+    // for a 4G or weak uplink. Read when the Table opens, like Micro.
+    { id: 'camq', label: 'Qualité caméra', vals: ['Normale', 'Économe'],
+      get: () => localStorage.getItem('aria-cam-eco') === '1' ? 1 : 0,
+      set: v => localStorage.setItem('aria-cam-eco', v ? '1' : '0') },
     OPT_APPROVAL,
 ];
 let OPTS = OPTS_ALL;

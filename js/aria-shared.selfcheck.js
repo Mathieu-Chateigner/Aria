@@ -195,6 +195,10 @@ assert.strictEqual(cam.advertisedId(), 'aria_gm_c2ac119b');
 // rather than open a URL VDO.ninja will never match.
 assert.ok(cam.viewSrc('aria-11b0286b').includes('view=aria_11b0286b'));
 assert.ok(!cam.viewSrc('aria-11b0286b').includes('aria-11b0286b'));
+// A tile's bitrate request is opt-in: without kbps the URL must not change, or
+// every frame built before this argument existed would reload on the next render.
+assert.ok(cam.viewSrc('x', false, 300).includes('&videobitrate=300'));
+assert.ok(!cam.viewSrc('x', false).includes('videobitrate'));
 // No room ⇒ nothing is published, so nothing is advertised.
 const dark = makeCamera({ tag: '[TEST]', sidPrefix: 'aria_', lockPrefix: 'x-', frameId: 'x',
     ownerId: () => '11b0286b-09c0-4b93-82c2-c08116d09cae', offKey: () => 'k',
