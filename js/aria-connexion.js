@@ -1,13 +1,13 @@
 // ═══════════════════════════════════════════
 //  CONNEXION — index.html
 // ═══════════════════════════════════════════
-// Login / signup / forgotten password (design_handoff_aria/Aria Connexion.dc.html).
+// Login / signup / forgotten password (AriaTest/design_handoff_aria/Aria Connexion.dc.html).
 // The session itself is aria-supabase.js's business; this page is a form over it.
 // Validation runs on submit only (`tried`), then live until the next mode change.
 //
 // A signed-in visitor never sees the form: the page forwards to the Hub. The reset
 // link from the recovery mail lands here too (#…type=recovery) and opens 'reset';
-// so does the Google / Discord return (#access_token=…), which goes straight in.
+// so does the Discord return (#access_token=…), which goes straight in.
 
 const HUB_URL = 'views/aria-hub.html';
 const $ = id => document.getElementById(id);
@@ -174,7 +174,7 @@ async function submit(e) {
     else enter('Le sceau est reconnu', 'Les portes s’ouvrent');
 }
 
-// Leaves for Google / Discord; the visitor comes back here with the session in the hash.
+// Leaves for Discord; the visitor comes back here with the session in the hash.
 function oauth(provider) {
     if (cx.busy) return;
     if (cx.mode === 'signup' && !cx.accept) { cx.oauthTried = true; render(); return; }

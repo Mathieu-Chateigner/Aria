@@ -1,7 +1,7 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 --  Security hardening — findings of the 2026-10-14 audit
 -- ═══════════════════════════════════════════════════════════════════════════
--- Runs after auth_rls.sql, ably_token.sql, hub.sql, campaign_sessions.sql and
+-- Runs after auth_rls.sql, ably_token.sql, hub.sql and
 -- join_code_unique.sql. Idempotent: re-running it is a no-op.
 
 -- ── 1. Join codes are upper case, unique whatever the case ──
@@ -52,14 +52,7 @@ create policy aria_storage_insert on storage.objects for insert to authenticated
             and exists (select 1 from public.campaigns c where c.id = split_part(objects.name, '/', 1)))
     );
 
--- ── 5. Rendez-vous sessions belong to the campaign's GM ──
--- A session row with someone else's join code gave its host a chat identity on
--- that table (chat_ids, ably-token kind 'sessions').
-drop policy if exists campaign_sessions_host on public.campaign_sessions;
-create policy campaign_sessions_host on public.campaign_sessions for all to authenticated
-    using (host_id = auth.uid())
-    with check (host_id = auth.uid()
-                and exists (select 1 from public.campaigns c where c.join_code = upper(trim(campaign_sessions.join_code))));
+-- ── 5. (rendez-vous sessions: tables dropped, see drop_campaign_sessions.sql) ──
 
 -- ── 10a. Hub messages only to people there is a reason to write to ──
 -- Companions, the GM of a listed table, whoever wrote first, or someone who asked

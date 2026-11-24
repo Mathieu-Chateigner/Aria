@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════
    CONNEXION — index.html
    ═══════════════════════════════════════════
-   design_handoff_aria/Aria Connexion.dc.html. The stone/door scene behind it is
+   AriaTest/design_handoff_aria/Aria Connexion.dc.html. The stone/door scene behind it is
    ariaBg.mount('door'). */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -133,7 +133,6 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 .cx-oauth {
     display: flex; flex-direction: column; gap: 10px;
     /* provider brand colours, only on their own buttons */
-    --g-blue: #4285F4; --g-red: #EA4335; --g-yellow: #FBBC05; --g-green: #34A853;
     --discord: #5865F2; --discord-2: #7983F5;
 }
 .cx-or { display: flex; align-items: center; gap: 12px; font-family: var(--font-ui); font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--dim); }
@@ -150,14 +149,6 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 .cx-oauth-btn:disabled { cursor: progress; }
 .cx-oauth-logo { width: 17px; height: 17px; flex: none; transition: transform .25s; }
 .cx-oauth-btn:hover .cx-oauth-logo { transform: scale(1.1); }
-/* Google: Aria's dark slab, the four colours as a gilded rule along the bottom edge */
-.cx-oauth-btn.google::after {
-    content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; opacity: .55; transition: opacity .2s;
-    background: linear-gradient(90deg, var(--g-blue) 0 25%, var(--g-red) 25% 50%, var(--g-yellow) 50% 75%, var(--g-green) 75%);
-}
-.cx-oauth-btn.google:hover { border-color: rgba(150,168,200,.55); color: var(--text); box-shadow: 0 0 18px rgba(66,133,244,.18); }
-.cx-oauth-btn.google:hover::after { opacity: 1; }
-.g-b { fill: var(--g-blue); } .g-r { fill: var(--g-red); } .g-y { fill: var(--g-yellow); } .g-g { fill: var(--g-green); }
 /* Discord: blurple seal pressed into the dark card */
 .cx-oauth-btn.discord { border-color: rgba(88,101,242,.45); background: rgba(88,101,242,.12); color: var(--text-5); }
 .cx-oauth-btn.discord .cx-oauth-logo { fill: var(--discord-2); transition: transform .25s, fill .2s; }

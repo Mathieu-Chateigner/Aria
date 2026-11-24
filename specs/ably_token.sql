@@ -30,8 +30,7 @@ drop table if exists public.app_config;
 -- Les identites de chat du compte courant pour un code de campagne — les memes que
 -- celles que la fonction ably-token donne aux clients :
 --   'gm'        s'il possede la campagne qui porte ce code ;
---   un charId   pour chacun de ses personnages lies a ce code ;
---   'u_<uid16>' s'il organise ou a rejoint une seance du tableau pour ce code.
+--   un charId   pour chacun de ses personnages lies a ce code.
 -- security definer : RLS cacherait sinon les tables qu'on interroge.
 create or replace function public.chat_ids(p_code text)
 returns setof text
@@ -43,13 +42,6 @@ as $$
     union
     select ch.id from characters ch join saves s on s.save_key = ch.save_key
      where s.owner = auth.uid() and upper(ch.campaign_key) = upper(p_code)
-    union
-    select 'u_' || substr(replace(auth.uid()::text, '-', ''), 1, 16)
-     where exists (select 1 from campaign_sessions cs
-                    where upper(cs.join_code) = upper(p_code)
-                      and (cs.host_id = auth.uid()
-                           or exists (select 1 from session_signups g
-                                       where g.session_id = cs.id and g.user_id = auth.uid())))
 $$;
 revoke all on function public.chat_ids(text) from public, anon;
 grant execute on function public.chat_ids(text) to authenticated;

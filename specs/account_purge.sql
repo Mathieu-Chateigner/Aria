@@ -8,8 +8,8 @@
 -- file: saves.owner was ON DELETE SET NULL, so a deleted user left their saves
 -- behind as *unclaimed* keys — readable by nobody, but claimable by anyone who
 -- knew one (claim_save_key). It is now ON DELETE CASCADE, which takes the saves,
--- then characters/campaigns, then every child table; hub_messages, join_requests
--- and campaign_sessions already cascaded from auth.users. That also makes a
+-- then characters/campaigns, then every child table; hub_messages and join_requests
+-- already cascaded from auth.users. That also makes a
 -- deletion from the dashboard (Authentication › Users) correct.
 --
 -- What no FK reaches is deleted by purge_accounts() by hand: the chat (keyed by

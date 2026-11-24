@@ -217,22 +217,6 @@ try:
         st, rows = rest(q + "&select=campaign_id")
         check("%s : B ne peut pas supprimer" % t, len(rows or []) == 1, rows)
 
-    print("-- campaign_sessions : plus de tableau public --")
-    # It carried join codes readable by any signed-in account. Rows go with A's account.
-    rest("/rest/v1/campaign_sessions", data={"id": "tok-sess", "join_code": CODE, "title": "t",
-                                            "host_id": uidA, "starts_at": "2030-01-01T20:00:00Z"},
-         prefer="return=minimal")
-    rest("/rest/v1/session_signups", data={"id": "tok-sess:" + uidB, "session_id": "tok-sess",
-                                          "user_id": uidB}, prefer="return=minimal")
-    st, rows = rest("/rest/v1/campaign_sessions?id=eq.tok-sess&select=join_code", ANON, tokA)
-    check("l'hote lit sa seance", isinstance(rows, list) and len(rows) == 1, (st, rows))
-    st, rows = rest("/rest/v1/campaign_sessions?id=eq.tok-sess&select=join_code", ANON, tokC)
-    check("un inconnu ne lit pas la seance (ni son code)", rows == [], (st, rows))
-    st, rows = rest("/rest/v1/session_signups?session_id=eq.tok-sess&select=user_id", ANON, tokA)
-    check("l'hote lit les inscrits", isinstance(rows, list) and len(rows) == 1, (st, rows))
-    st, rows = rest("/rest/v1/session_signups?session_id=eq.tok-sess&select=user_id", ANON, tokC)
-    check("un inconnu ne lit pas les inscrits", rows == [], (st, rows))
-
     print("-- stockage : pas d'ecrasement ni de suppression chez un autre --")
     # uploads land under something the uploader owns (security_hardening.sql)
     path = "campaign-files/%s/tok-check-%s.txt" % (CAMP_A, uuid.uuid4().hex[:8])
@@ -261,15 +245,12 @@ try:
     call(URL + "/storage/v1/object/" + path, ANON, tokA, method="DELETE")
     check("A peut le supprimer", not exists())
 
-    print("-- codes de table : casse, jeton joueur, seances --")
+    print("-- codes de table : casse, jeton joueur --")
     st, _ = rest("/rest/v1/saves", ANON, tokC, data={"save_key": SAVE_C, "type": "gm"})
     st, _ = rest("/rest/v1/campaigns", ANON, tokC, data={"id": "tok-camp-c", "save_key": SAVE_C, "join_code": CODE.lower()})
     check("C ne prend pas le code de A en minuscules", st >= 400, st)
     st, body = token({"kind": "player", "charId": CHAR_A, "code": "ZZZZZZZZ"}, tokA)
     check("jeton joueur refuse pour une table ou le perso n'est pas", st == 403, (st, body))
-    st, _ = rest("/rest/v1/campaign_sessions", ANON, tokC, data={"id": "tok-sess-c", "join_code": CODE, "title": "x",
-                                                                 "starts_at": "2030-01-01T00:00:00Z"})
-    check("C ne cree pas de seance sur le code de A", st >= 400, st)
     st, _ = rest("/rest/v1/hub_messages", ANON, tokC, data={"to_user": uidB, "body": "spam"})
     check("C n'ecrit pas a un inconnu", st >= 400, st)
 finally:
