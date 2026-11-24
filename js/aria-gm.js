@@ -209,15 +209,21 @@ async function deleteGMNoteFromDB(id) {
     await sbDelete(ENT.campaignNote.table, 'id=eq.' + encodeURIComponent(id));
 }
 
-// Upsert a known player record for this campaign to Supabase.
+// Upsert a known player record for this campaign to Supabase. applyPresenceSet()
+// re-reads the whole set on every change, so this is called for every player each
+// time anyone's HP moves: only a snapshot that actually changed is written.
+const _knownPlayerSig = {};
 async function syncKnownPlayer(charId, data) {
     if (!_supabaseReady() || !currentCampaignId) return;
-    const camp = getCampaigns().find(c => c.id === currentCampaignId);
-    if (camp) {
-        const ok = await syncCampaign(camp);
-        if (!ok) return; // campaign FK must exist first; skip to avoid cascade error
-    }
-    await sbPutKnownPlayer(charId, data, currentCampaignId);
+    const cid = currentCampaignId, key = cid + ':' + charId;
+    const { ts, ...stable } = data;   // ts is stamped on every pass
+    const sig = JSON.stringify(stable);
+    if (_knownPlayerSig[key] === sig) return;
+    _knownPlayerSig[key] = sig;
+    const camp = getCampaigns().find(c => c.id === cid);
+    // campaign FK must exist first; skip to avoid cascade error
+    const ok = (!camp || await syncCampaign(camp)) && await sbPutKnownPlayer(charId, data, cid);
+    if (!ok && _knownPlayerSig[key] === sig) delete _knownPlayerSig[key];   // retry on the next pass
 }
 
 // Read a campaign-scoped JSON key, tolerating absent or corrupt values.
@@ -261,9 +267,21 @@ async function loadFromSupabase() {
     if (!_supabaseReady()) return false;
     await runMigration(saveKey, 'gm');
     try {
-        const camps = await sbSelect(ENT.campaign.table, 'save_key=eq.' + encodeURIComponent(saveKey) + '&select=*');
-        if (!camps.length) return true;
+        // Strict reads: a failed request must not pass for "no rows", because no rows
+        // is acted on — see the note above this function.
+        const camps = await sbSelectStrict(ENT.campaign.table, 'save_key=eq.' + encodeURIComponent(saveKey) + '&select=*');
         const campaigns = camps.map(c => fromRow(ENT.campaign, c));
+        // Campaigns deleted on another device: drop them here too, the last one
+        // included. Returning early on an empty result used to leave them in place,
+        // and the full sync that follows a successful load pushed them back up.
+        const dbIds = new Set(campaigns.map(c => c.id));
+        const gone = getCampaigns().filter(c => !dbIds.has(c.id));
+        if (gone.length) {
+            // One slot of safety: if they were missing because syncing had been
+            // failing, this list is the only trace left.
+            localStorage.setItem('aria-gm-campaigns-lost', JSON.stringify({ at: _nowISO(), campaigns: gone }));
+            gone.forEach(c => _dropCampaignKeys(c.id));
+        }
         localStorage.setItem('aria-gm-campaigns', JSON.stringify(campaigns));
         // Campaigns load concurrently, not one after another: a sequential loop cost
         // one round-trip PER CAMPAIGN before the app was usable. Each iteration writes
@@ -275,13 +293,13 @@ async function loadFromSupabase() {
             const scope = 'campaign_id=eq.' + encodeURIComponent(c.id) + '&select=*';
             const byPos = scope + '&order=position.asc';
             const [mons, pots, files, kp, notes, music, maps] = await Promise.all([
-                sbSelect(ENT.monster.table, scope),
-                sbSelect(ENT.potion.table, scope),
-                sbSelect(ENT.campaignFile.table, scope),
-                sbSelect(ENT.knownPlayer.table, scope),
-                sbSelect(ENT.campaignNote.table, byPos),
-                sbSelect(ENT.music.table, byPos),
-                sbSelect(ENT.map.table, byPos),
+                sbSelectStrict(ENT.monster.table, scope),
+                sbSelectStrict(ENT.potion.table, scope),
+                sbSelectStrict(ENT.campaignFile.table, scope),
+                sbSelectStrict(ENT.knownPlayer.table, scope),
+                sbSelectStrict(ENT.campaignNote.table, byPos),
+                sbSelectStrict(ENT.music.table, byPos),
+                sbSelectStrict(ENT.map.table, byPos),
             ]);
             const store = (which, value) => localStorage.setItem(campKey(which, c.id), JSON.stringify(value));
             store('monsters', mons.map(m => fromRow(ENT.monster, m)));
@@ -2297,7 +2315,7 @@ function renderCardHistory() {
     feed.innerHTML = '';
     cardHistory.forEach(entry => {
         const card = cardById(entry.cardId);
-        const label = card ? (card.isJoker ? card.label : `${card.rank} de ${SUIT_FR[card.suit.name] || card.suit.name}`) : entry.cardId;
+        const label = card ? cardLabel(card) : entry.cardId;
         const colorCls = card ? (card.isJoker ? 'c-purple' : card.suit.cls) : '';
         const sym = card ? (card.isJoker ? '★' : card.suit.sym) : '?';
         feed.append(el('div', { className: 'card-history-row' },
@@ -2318,8 +2336,8 @@ async function handlePlayerCard(data) {
     if (!data?.cardId) return;
     const card = cardById(data.cardId);
     if (!card) return;
-    const label = card.isJoker ? card.label : `${card.rank} de ${SUIT_FR[card.suit.name] || card.suit.name}`;
-    const who = data.playerName ? `${data.playerName} — ${label}` : label;
+    const label = cardLabel(card);
+    const who =data.playerName ? `${data.playerName} — ${label}` : label;
     document.getElementById('gm-card-info').textContent = who;
     cardHistory.unshift({ cardId: data.cardId, playerName: data.playerName || '?', ts: Date.now() });
     localStorage.setItem(cardHistKey(), JSON.stringify(cardHistory));
@@ -2887,6 +2905,7 @@ function musicDeleteTrack(index) {
 // Delete an audio file from Supabase Storage (campaign-music bucket).
 async function deleteMusicFileFromStorage(path) {
     try {
+        await _sbFreshSession();
         await fetch(`${SUPABASE_URL}/storage/v1/object/campaign-music/${path}`, {
             method: 'DELETE',
             headers: sbAuthHeaders(),
@@ -3004,6 +3023,7 @@ async function musicUploadFile(input) {
         const id   = uid();
         const name = file.name.replace(/\.[^.]+$/, '');
         const path = `${currentCampaignId}/${id}${ext ? '.' + ext : ''}`;
+        await _sbFreshSession();
         const res  = await fetch(`${SUPABASE_URL}/storage/v1/object/campaign-music/${path}`, {
             method: 'POST',
             headers: {
@@ -3058,6 +3078,7 @@ async function uploadFileToStorage(file) {
     const ext = parts.length > 1 ? parts.pop().toLowerCase() : '';
     const storageName = ext ? `${fileId}.${ext}` : fileId;
     const path = `${currentCampaignId}/${storageName}`;
+    await _sbFreshSession();   // these fetches bypass _sbFetch: an hour-old token would be refused
     const res = await fetch(`${SUPABASE_URL}/storage/v1/object/campaign-files/${path}`, {
         method: 'POST',
         headers: {
@@ -3077,6 +3098,7 @@ async function uploadFileToStorage(file) {
 // Delete a file from Supabase Storage (campaign-files bucket) by path.
 async function deleteFileFromStorage(path) {
     try {
+        await _sbFreshSession();
         await fetch(`${SUPABASE_URL}/storage/v1/object/campaign-files/${path}`, {
             method: 'DELETE',
             headers: sbAuthHeaders(),

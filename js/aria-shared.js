@@ -1754,7 +1754,7 @@ async function submitExistingKey() {
     const input = document.getElementById('gateway-key-input');
     const key = input ? input.value.trim() : '';
     if (!key) return;
-    if (!sbSignedIn()) { _authError('Connectez-vous avant de rattacher une clé.'); return; }
+    if (!sbSignedIn()) { showGateway('auth'); return; }   // session expired while the panel was open
 
     if (!await sbClaimSaveKey(key)) {
         alert('Clé introuvable, ou déjà rattachée à un autre compte.');
@@ -2350,8 +2350,9 @@ function _showMusicUnlockPrompt(onUnlock) {
         document.body.append(prompt);
     }
     prompt.style.display = 'flex';
-    const handler = () => { prompt.style.display = 'none'; prompt.removeEventListener('click', handler); onUnlock(); };
-    prompt.addEventListener('click', handler);
+    // onclick, not addEventListener: a second blocked track replaces the pending
+    // unlock instead of stacking, or one click would start every track at once.
+    prompt.onclick = () => { prompt.style.display = 'none'; prompt.onclick = null; onUnlock(); };
 }
 
 // Start a track in the idle slot and cross-fade into it. Auto-advance is armed onto

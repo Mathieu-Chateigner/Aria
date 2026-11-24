@@ -267,8 +267,7 @@ function ablyConnect(body, first) {
     });
 }
 
-// Who published this: 'gm' for any GM connection, else the bound clientId (a charId,
-// or 'u_…' from the rendez-vous board). Chat authorship is checked against it.
+// Who published this: 'gm' for any GM connection, else the bound clientId (a charId). Chat authorship is checked against it.
 function ablySender(clientId) {
     const c = String(clientId || '');
     return c.startsWith('gm-') ? 'gm' : c;
@@ -340,18 +339,30 @@ async function sbDelete(table, filterStr) {
     } catch(e) { console.warn('[ARIA] sbDelete error:', table, e); }
 }
 
-// Fetch rows from a Supabase table matching a filter string.
-async function sbSelect(table, filterStr) {
+// Fetch rows from a Supabase table matching a filter string; null when the request
+// failed. For callers that act on an EMPTY result (the panels' load treats it as
+// "deleted on another device"), where a failure must not look like one.
+async function sbSelectOrNull(table, filterStr) {
     try {
         const res = await _sbFetch('/rest/v1/' + table + '?' + filterStr);
-        if (!res.ok) { console.warn('[ARIA] sbSelect failed:', table, await res.text()); return []; }
+        if (!res.ok) { console.warn('[ARIA] sbSelect failed:', table, await res.text()); return null; }
         return await res.json();
-    } catch(e) { console.warn('[ARIA] sbSelect error:', table, e); return []; }
+    } catch(e) { console.warn('[ARIA] sbSelect error:', table, e); return null; }
+}
+// Same, with a failure read as no rows.
+async function sbSelect(table, filterStr) {
+    return await sbSelectOrNull(table, filterStr) ?? [];
+}
+// For a load that must be all-or-nothing: throws instead of returning null.
+async function sbSelectStrict(table, filterStr) {
+    const rows = await sbSelectOrNull(table, filterStr);
+    if (!rows) throw new Error('select ' + table);
+    return rows;
 }
 
 // Insert a new row into a Supabase table. Returns whether it landed — a unique
 // constraint or an RLS refusal comes back false, and a caller that cannot simply
-// log and move on (the rendez-vous sign-up) says so to the user instead.
+// log and move on (a join request) says so to the user instead.
 async function sbInsert(table, row) {
     try {
         const res = await _sbFetch('/rest/v1/' + table, {

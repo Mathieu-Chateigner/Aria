@@ -314,7 +314,7 @@ function startAbly() {
         console.log('[OVERLAY] room:', vdoRoom || '(none)', '| password:', vdoRoomPassword ? '(set)' : '(none)',
             '| MJ stream:', gmLiveStreamId || '(none)', '| live streams:', [...liveStreamIds()].join(', ') || '(none)');
         console.log('[OVERLAY] camera widgets:', overlayConfig.widgets.filter(w => w.type === 'camera')
-            .map(w => ({ id: w.id, streamId: w.config?.streamId || '(unset)', live: liveStreamIds().has(w.config?.streamId || '') })));
+            .map(w => ({ id: w.id, streamId: w.config?.streamId || '(unset)', live: liveStreamIds().has(sidSafe(w.config?.streamId)) })));
         return 'see console';
     };
     // Live monster HP — the GM publishes monster-state on the (campaign-scoped) damage
@@ -339,13 +339,13 @@ function startAbly() {
         // One channel per layout, so the editor's token can publish to its own only.
         const cfgCh = ably.channels.get('aria-overlay-config:' + OVERLAY_ID);
         cfgCh.subscribe('layout-update', msg => {
-            if (msg.data.overlayId !== OVERLAY_ID) return;
+            if (msg.data?.overlayId !== OVERLAY_ID || !Array.isArray(msg.data.config?.widgets)) return;
             layoutFromAbly = true;
             overlayConfig = msg.data.config;
             renderWidgetLayer();
         });
         cfgCh.subscribe('content-update', msg => {
-            if (msg.data.overlayId !== OVERLAY_ID) return;
+            if (msg.data?.overlayId !== OVERLAY_ID) return;
             const widget = overlayConfig.widgets.find(w => w.id === msg.data.widgetId);
             if (!widget) return;
             widget.config = { ...widget.config, content: msg.data.content };
@@ -974,7 +974,7 @@ function renderWidgetContent(widget) {
         case 'roll_history': {
             if (!rollHistory.length) return '<div class="ow-list">—</div>';
             const shown = rollHistory.slice(-(cfg.maxItems || 8)).reverse();
-            return `<div class="ow-list">${shown.map(r => `<div class="ow-roll-row"><span class="ow-roll-char">${esc(r.char || '')}</span><span class="ow-roll-skill">${esc(r.skillName)}</span><span class="ow-roll-result ${r.success ? 'success' : 'fail'}">${esc(r.roll)}</span></div>`).join('')}</div>`;
+            return `<div class="ow-list">${shown.map(r => `<div class="ow-roll-row"><span class="ow-roll-char">${esc(r.char || '')}</span><span class="ow-roll-skill">${esc(r.skillName)}</span><span class="ow-roll-result ${r.success === null || r.success === undefined ? '' : r.success ? 'success' : 'fail'}">${esc(r.roll)}</span></div>`).join('')}</div>`;
         }
         case 'camera': {
             const sid = sidSafe(cfg.streamId);

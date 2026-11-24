@@ -119,8 +119,6 @@ let playerFiles = [];
 // pending craft recipe index — set before a roll, cleared by handleResult
 let pendingCraft = null;
 
-let syncTimer      = null;
-
 
 // Read a per-character JSON key, tolerating absent or corrupt values.
 function _charJSON(which, charId, fallback = null) {
@@ -268,8 +266,22 @@ async function loadFromSupabase() {
     if (!_supabaseReady()) return false;
     try {
         await runMigration(saveKey, 'player');
-        const chars = await sbSelect(ENT.character.table, 'save_key=eq.' + encodeURIComponent(saveKey));
-        if (!chars.length) return true;
+        // Strict reads: a failed request must not pass for "no rows", because no rows
+        // is acted on — the DB is authoritative after a successful load.
+        const chars = await sbSelectStrict(ENT.character.table, 'save_key=eq.' + encodeURIComponent(saveKey));
+        if (!chars.length) {
+            // Every character was deleted on another device (or this browser holds
+            // another account's). Returning early here used to leave them in place,
+            // and the full sync that follows a successful load pushed them back up.
+            const local = getCharacters();
+            if (local.length) {
+                // One slot of safety: if the DB was empty because syncing had been
+                // failing, this is the only copy left.
+                localStorage.setItem('aria-characters-lost', JSON.stringify({ at: _nowISO(), chars: local }));
+                _clearLocalPlayerData();
+            }
+            return true;
+        }
 
         const dbChars = chars.map(row => fromRow(ENT.character, row));
         // Clean up scoped keys of characters deleted on another device (the list
@@ -282,9 +294,9 @@ async function loadFromSupabase() {
 
         const ids = chars.map(c => c.id).join(',');
         const [states, notes, files] = await Promise.all([
-            sbSelect('character_state', 'character_id=in.(' + ids + ')'),
-            sbSelect(ENT.characterNote.table, 'character_id=in.(' + ids + ')&order=position.asc'),
-            sbSelect(ENT.characterFile.table, 'character_id=in.(' + ids + ')'),
+            sbSelectStrict('character_state', 'character_id=in.(' + ids + ')'),
+            sbSelectStrict(ENT.characterNote.table, 'character_id=in.(' + ids + ')&order=position.asc'),
+            sbSelectStrict(ENT.characterFile.table, 'character_id=in.(' + ids + ')'),
         ]);
 
         states.forEach(s => {
@@ -433,10 +445,8 @@ function showApp() {
 }
 
 // Remembered across reloads so a refresh comes straight back into the character.
-// beforeunload publishes `leave`, which drops this player's card and camera on the
-// GM, on the overlay and on every peer — landing on the selection screen and waiting
-// for a click stretched that gap out to however long the click took. Cleared by an
-// explicit "changer de personnage", which is a deliberate exit.
+// A convenience (see LAST_CAMPAIGN_KEY in aria-gm.js). Cleared by an explicit
+// "changer de personnage", which is a deliberate exit.
 const LAST_CHAR_KEY = 'aria-last-character';
 
 // Re-enter the character this browser was last playing, if it still exists.
@@ -794,6 +804,7 @@ function renderPresenceUI() {
     // same streams, doubling the WebRTC connections (and the bandwidth) per peer.
     const rail = document.getElementById('presence-rail');
     const camsOpen = openPanes.includes('tab-cameras');
+    const camGrid = document.getElementById('cameras-grid');
     if (rail) {
         const show = hasAny && presenceMode === 'bandeau' && !camsOpen && !railNarrowMQ.matches;
         rail.style.display = show ? '' : 'none';
@@ -811,7 +822,6 @@ function renderPresenceUI() {
     }
     // Outside Bandeau the grid is deliberately NOT emptied when its pane closes.
     // .tab-content{display:none} hides the iframes while leaving their WebRTC
-    const camGrid = document.getElementById('cameras-grid');
     // connections up, so leaving the tab and coming back costs nothing - it used to
     // clear here, and every trip to Inventaire meant watching the whole table
     // reconnect from black on the way back. In Bandeau the rail replaces it (above).
@@ -1469,13 +1479,11 @@ function renderDerived() {
     updateTopbarIdentity();
     document.title = character.name ? `ARIA – ${character.name}` : 'ARIA – Joueur';
     renderSkills();
-    renderStats();
     updateHPDisplay();
-    renderCombatSidebar();
     renderPotions();
     renderPlayerFiles();
     renderKarma();
-    updateBMDisplay();
+    updateBMDisplay();   // also renders the stat cards and the combat sidebar
 }
 
 // renderEditorForm() fans out to the weapons/inventory/skills/specials editors.
@@ -2219,6 +2227,11 @@ function initAbly() {
             // is bound by the token, so a player cannot pass for the GM here — and
             // whatever a player sends is treated as a Soigner, whatever it claims.
             if (!ablyFromGM(msg)) {
+                // A Soigner comes from a player at this table: a clientId in the presence
+                // set. The OBS overlay's token may publish here too (it asks for the
+                // monster list) and carries no clientId — whoever holds an overlay URL
+                // must not be able to chip at a character's HP with it.
+                if (!knownPlayers[msg.clientId]) return;
                 if (d.targetId === myId && (msg.name === 'heal' || msg.name === 'damage')) {
                     // Soigner rolls 1d6 to heal and 1d3 on a failure: nothing larger is legitimate.
                     const cap = msg.name === 'heal' ? 6 : 3;
@@ -2336,9 +2349,7 @@ function initAbly() {
             const d = msg.data;
             if (!d || !d.playerName || d.playerName === character.name) return;
             const card = cardById(d.cardId);
-            const label = card
-                ? (card.isJoker ? card.label : `${card.rank} de ${SUIT_FR[card.suit.name] || card.suit.name}`)
-                : d.cardId;
+            const label = card ? cardLabel(card) : d.cardId;
             showOtherRollToast({ char: d.playerName, skillName: '🃏 ' + label, roll: null, threshold: null, success: null });
         });
     } catch (e) { console.error('Ably:', e); setAblyStatus(false); }

@@ -9,7 +9,7 @@
 //          join_requests, characters, hub_messages, journal_notes(), the sheet
 //          validation functions; Ably presence for who is at the table.
 //   demo — the handoff's seed data, in memory (`?demo`, `?demo=veteran`). For
-//          comparing the pages with design_handoff_aria/*.dc.html.
+//          comparing the pages with AriaTest/design_handoff_aria/*.dc.html.
 //
 // Every campaign is normalized to the prototype's shape, which the page renders:
 //   { id, name, gm, gmId, vis, seats, taken, next, hour, rhythm, session, tags,
@@ -220,7 +220,7 @@ const hubLive = (() => {
         const code = await freeJoinCode();
         const coverUrl = cover ? await sbUploadPublic('campaign-files', 'covers/' + id + '-' + Date.now() + '.jpg', cover) : null;
         const row = {
-            id, save_key: await saveFor('gm'), name: f.name.trim(), join_code: code, aria_type: 'ancient',
+            id, save_key: await saveFor('gm'), name: f.name.trim(), join_code: code, aria_type: f.type === 'contemporary' ? 'contemporary' : 'ancient',
             visibility: f.vis, pitch: f.pitch.trim() || null, tags: f.tagList, seats: f.seats,
             rhythm: HUB_RHYTHM_KEY[f.rhythm] || 'weekly',
             first_session: f.date ? new Date(f.date).toISOString() : null, cover_url: coverUrl || null,
@@ -298,8 +298,8 @@ const hubLive = (() => {
     function dropArt(url) {
         const pre = SUPABASE_URL + '/storage/v1/object/public/campaign-files/art/';
         if (!url.startsWith(pre)) return;
-        fetch(SUPABASE_URL + '/storage/v1/object/campaign-files/art/' + url.slice(pre.length),
-              { method: 'DELETE', headers: sbAuthHeaders() }).catch(() => {});
+        _sbFreshSession().then(() => fetch(SUPABASE_URL + '/storage/v1/object/campaign-files/art/' + url.slice(pre.length),
+              { method: 'DELETE', headers: sbAuthHeaders() })).catch(() => {});
     }
 
     // Portrait / background of a character sheet; '' when the upload failed.
