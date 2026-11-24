@@ -430,21 +430,6 @@
     background: linear-gradient(180deg, rgba(169,139,221,0.04) 0%, transparent 40%);
     pointer-events: none;
 }
-.panel-header {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 11px;
-    letter-spacing: .2em;
-    text-transform: uppercase;
-    color: var(--gm-accent-dim);
-    padding: 8px 14px;
-    background: rgba(169,139,221,0.06);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-.panel-body { padding: 12px 14px; }
-
 /* ════════════════════════════════════════════
    SHARED BUTTONS / INPUTS
    ════════════════════════════════════════════ */
@@ -1769,7 +1754,6 @@
     display: none;
     box-shadow: 0 12px 48px rgba(0,0,0,0.7);
 }.sel-card-cta { font-family: ui-monospace, Menlo, monospace; font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--gm-accent-light); margin-top: 2px; }.sel-confirm-btn:hover { filter: brightness(1.1); }
-.sel-card-row .sel-card-name { flex: 1; min-width: 0; }
 .sel-card-joincode { font-family: ui-monospace, Menlo, monospace; font-size: 9.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--gm-accent-light); cursor: pointer; transition: color .15s; }
 .sel-card-joincode:hover { color: var(--gm-accent); }.gateway-btn:hover { filter: brightness(1.1); }
 
@@ -1787,16 +1771,6 @@
 .zone-fog { fill: rgba(var(--map-ink-rgb), .45); stroke: var(--map-secret); stroke-opacity: .7; stroke-width: 1; stroke-dasharray: 4 3; filter: none; }
 .map-pin.secret .map-pin-dot { background: transparent; border: 1.5px dashed var(--map-secret); box-shadow: 0 0 0 2px rgba(var(--map-ink-rgb), .6); }
 .map-pin.secret .map-pin-label { color: var(--map-secret2); }
-.gm-btn {
-    font-family: 'Archivo', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: .06em;
-    text-transform: uppercase; padding: 8px 14px; cursor: pointer; border-radius: 3px;
-    white-space: nowrap; transition: filter .15s, background .15s, border-color .15s;
-    background: var(--map-secret); border: 1px solid var(--map-secret); color: var(--ink);
-}
-.gm-btn:hover { filter: brightness(1.08); }
-.gm-btn.ghost { background: none; border-color: var(--line2); color: var(--dim); }
-.gm-btn.ghost:hover { filter: none; background: var(--field2); }
-.gm-btn.ghost.active { background: var(--violetsoft); border-color: var(--map-secret); color: var(--map-secret2); }
 .map-gen-label { font-family: ui-monospace, Menlo, monospace; font-size: 9.5px; letter-spacing: .18em;
                  text-transform: uppercase; color: var(--dim); }
 .map-source-input { flex: 1; min-width: 160px; background: var(--field); border: 1px solid var(--line2);

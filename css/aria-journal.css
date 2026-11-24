@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════
    JOURNAL — campaign journal (views/aria-journal.html)
    ═══════════════════════════════════════════
-   design_handoff_aria/Aria Journal.dc.html. The desk behind it is
+   AriaTest/design_handoff_aria/Aria Journal.dc.html. The desk behind it is
    ariaBg.mount('desk'). */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

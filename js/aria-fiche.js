@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════
 //  FICHE — the character sheet (views/aria-fiche.html?camp=ID)
 // ═══════════════════════════════════════════
-// design_handoff_aria/Aria Fiche.dc.html: the account's character at that table,
+// AriaTest/design_handoff_aria/Aria Fiche.dc.html: the account's character at that table,
 // read and edited. "Éditer la fiche" works on a copy (draft); "Annuler" drops it,
 // "Enregistrer" writes the character row the player panel loads.
 //

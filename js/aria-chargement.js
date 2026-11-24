@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════
 //  CHARGEMENT — boot screen
 // ═══════════════════════════════════════════
-// design_handoff_aria/Aria Chargement.dc.html, as a layer over the page that is
+// AriaTest/design_handoff_aria/Aria Chargement.dc.html, as a layer over the page that is
 // booting rather than a page of its own: the Hub shows it while its first load runs.
 //
 //   await ariaLoading(promise)
@@ -12,11 +12,11 @@
 
 function ariaLoading(promise) {
     const TIPS = [
-        'Un critique au d20 déclenche l\'effet de la carte tirée — gardez un œil sur le talon.',
+        'Un jet sous le dixième de votre seuil est un succès critique ; à 96 et plus, c\'est un échec critique.',
         'Ce que vous n\'avez pas découvert reste noir sur la carte. Rien n\'y attend en silence par hasard.',
-        'Le Karma se dépense avant le jet, jamais après. Les dés ne pardonnent pas l\'hésitation.',
-        'Les touches 1 à 8 lancent vos jets rapides. K, I, C, A, N et J ouvrent vos grimoires.',
-        'Une torche éclaire trois cases. Dans l\'obscurité, ce sont les yeux qui vous trouvent.',
+        'Le Karma est entre les mains du MJ : il pèse sur chacun de vos jets, en bien comme en mal.',
+        'Armez « Jet caché » avant de lancer : seul le MJ verra le résultat.',
+        'La parade se joue sur le combat rapproché, une fois par tour. L\'esquive, elle, vous coûte vos attaques.',
     ];
     const STEPS = ['Allumage des torches', 'Réveil des archives', 'Déroulement des cartes', 'Appel des tables', 'Ouverture des portes'];
     const D = 4200, HOLD = 92;

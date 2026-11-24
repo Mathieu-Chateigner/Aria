@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════
    ARIA — DESIGN TOKENS
    ═══════════════════════════════════════════
-   The palette and type of the redesign (design_handoff_aria/README.md, "Design
+   The palette and type of the redesign (AriaTest/design_handoff_aria/README.md, "Design
    tokens"). Loaded first on every redesigned page; stylesheets use these variables,
    never the hex values. Dark only — light mode was removed.
 

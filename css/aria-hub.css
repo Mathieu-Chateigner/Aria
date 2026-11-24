@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════
    HUB — la taverne (views/aria-hub.html)
    ═══════════════════════════════════════════
-   design_handoff_aria/Aria Hub.dc.html. Tavern painting = ariaBg.mount('tavern'). */
+   AriaTest/design_handoff_aria/Aria Hub.dc.html. Tavern painting = ariaBg.mount('tavern'). */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { background: var(--ink); min-height: 100%; }
@@ -17,7 +17,6 @@ input::placeholder, textarea::placeholder { color: var(--hb-ph); }
 .hb-veil { position: fixed; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(6,4,3,.62) 0%, rgba(6,4,3,.38) 45%, rgba(6,4,3,.66) 100%); }
 
 /* ── shared bits ── */
-.hb-mono { font-family: var(--font-mono); text-transform: uppercase; }
 .hb-kicker { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .32em; color: var(--parch-dim); text-transform: uppercase; }
 .hb-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .28em; color: var(--dim); text-transform: uppercase; }
 .hb-h1 { font-family: var(--font-display); font-size: clamp(36px,4.5vw,50px); font-weight: 600; line-height: 1; color: var(--warm); }

@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════
 //  JOURNAL — campaign journal (views/aria-journal.html?camp=ID)
 // ═══════════════════════════════════════════
-// design_handoff_aria/Aria Journal.dc.html: one session per page, newest first in
+// AriaTest/design_handoff_aria/Aria Journal.dc.html: one session per page, newest first in
 // the index, "← Session précédente" / "Session suivante →", and a search over every
 // note (case- and accent-insensitive, matches highlighted).
 //

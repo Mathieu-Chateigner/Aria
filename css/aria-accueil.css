@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════
    ACCUEIL — le seuil (views/aria-accueil.html)
    ═══════════════════════════════════════════
-   design_handoff_aria/Aria Accueil.dc.html. The wall and the open arch behind it
+   AriaTest/design_handoff_aria/Aria Accueil.dc.html. The wall and the open arch behind it
    are ariaBg.mount('arch'); .ac-ui shares the stage's cover scale (set in JS), so
    the menu always sits inside the arch. */
 

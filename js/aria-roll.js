@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════
 //  ROLL RESOLUTION — d100 roll-under
 // ═══════════════════════════════════════════
-// The one definition of how a roll resolves (design_handoff_aria/README.md, "Dice
+// The one definition of how a roll resolves (AriaTest/design_handoff_aria/README.md, "Dice
 // resolution"). Standalone, no DOM and no dependency, so the player, the GM and the
 // overlay all load it. Rolls stay client-side on purpose: no server round-trip on
 // every roll for the sake of a player who would cheat at a TTRPG table anyway.

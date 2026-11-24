@@ -2,7 +2,7 @@
 //  PROCEDURAL BACKGROUNDS
 // ═══════════════════════════════════════════
 // Every painted backdrop of the redesign, in one place. Ported as-is from the
-// design handoff (design_handoff_aria/*.dc.html); the painters are seeded, so a
+// design handoff (AriaTest/design_handoff_aria/*.dc.html); the painters are seeded, so a
 // scene paints the same picture on every load.
 //
 //   ariaBg.mount('door')    Connexion — stone wall, closed oak door with a barred

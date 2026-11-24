@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════
 //  ACCUEIL — le seuil (views/aria-accueil.html?camp=ID)
 // ═══════════════════════════════════════════
-// design_handoff_aria/Aria Accueil.dc.html: the per-campaign menu between the Hub
+// AriaTest/design_handoff_aria/Aria Accueil.dc.html: the per-campaign menu between the Hub
 // and the Table, driven from the keyboard (↑↓ / z w s, Entrée / Espace, Échap).
 //
 //   Joueur: Entrer à la table · Ma fiche (aria-fiche.html) · Journal (aria-journal.html)
@@ -27,10 +27,10 @@ const S = {
 };
 const PARTY = ['#8fb3d9', '#eca456', '#d98f8f', '#b9c98a', '#c4a8e0', '#9fd1c4', '#d9c38f', '#d98fb8'];
 const TIPS = [
-    'Un critique au d20 déclenche l\'effet de la carte tirée — gardez un œil sur le talon.',
+    'Un jet sous le dixième de votre seuil est un succès critique ; à 96 et plus, c\'est un échec critique.',
     'Ce que vous n\'avez pas découvert reste noir sur la carte. Le MJ, lui, voit tout.',
-    'Glissez un panneau fermé sur un panneau ouvert pour les consulter côte à côte.',
-    'Votre clé de sauvegarde suit votre personnage d\'un appareil à l\'autre.',
+    'Glissez un onglet vers le contenu pour l\'ouvrir à côté d\'un autre.',
+    'Votre compte suit vos personnages d\'un appareil à l\'autre.',
 ];
 const LIST_PANELS = ['prep', 'players'];
 

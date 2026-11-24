@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════
    CHARGEMENT — boot screen (js/aria-chargement.js)
    ═══════════════════════════════════════════
-   design_handoff_aria/Aria Chargement.dc.html. Full-screen layer over whatever page
+   AriaTest/design_handoff_aria/Aria Chargement.dc.html. Full-screen layer over whatever page
    is booting underneath; the hall painting behind it is ariaBg.mount('hall'). */
 
 .ld-root {

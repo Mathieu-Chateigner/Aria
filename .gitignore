@@ -9,8 +9,9 @@
 .worktrees/
 /.superpowers
 
-# Supabase CLI link state (local-only)
-/supabase/
+# Supabase CLI link state (local-only) — the functions are source, keep them
+/supabase/*
+!/supabase/functions/
 .playwright-mcp/
 
 backups/

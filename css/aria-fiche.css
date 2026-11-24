@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════
    FICHE — the character sheet (views/aria-fiche.html)
    ═══════════════════════════════════════════
-   design_handoff_aria/Aria Fiche.dc.html. The study behind it is
+   AriaTest/design_handoff_aria/Aria Fiche.dc.html. The study behind it is
    ariaBg.mount('study'). */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

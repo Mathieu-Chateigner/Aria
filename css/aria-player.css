@@ -351,11 +351,6 @@
     gap: 15px;
     overflow-y: auto;
 }
-.inv-sidebar-panel .panel-body {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-}
 .content {
     flex: 1;
     overflow-y: auto;
@@ -573,10 +568,8 @@
 .content.split-mode #tab-notes.active { padding: 0; }
 .content.split-mode .section-header { gap: 11px; margin-bottom: 13px; }
 .content.split-mode .section-title { font-size: 20px; }
-.content.split-mode .section-caption { font-size: 9.5px; letter-spacing: .14em; }
 .content.split-mode .skill-list { grid-template-columns: 1fr; gap: 5px; margin-bottom: 20px; }
-.content.split-mode .skill-item,
-.content.split-mode .skill-row { gap: 11px; padding: 10px 13px; }
+.content.split-mode .skill-item { gap: 11px; padding: 10px 13px; }
 .content.split-mode .skill-name { font-size: 14px; }
 .content.split-mode .skill-link { font-size: 9px; }
 .content.split-mode .skill-pct { font-size: 17px; min-width: 42px; }
@@ -607,24 +600,7 @@
     text-transform: none;
     color: var(--warm);
     white-space: nowrap;
-}.section-caption {
-    font-family: ui-monospace, Menlo, monospace;
-    font-size: 10px;
-    letter-spacing: .16em;
-    text-transform: uppercase;
-    color: var(--faint);
-    flex-shrink: 0;
-    white-space: nowrap;
 }
-.ornamental-divider .line {
-    flex: 1;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--line2));
-}
-.ornamental-divider .line.rev {
-    background: linear-gradient(90deg, var(--line2), transparent);
-}
-
 /* ── SKILL LIST ── */
 /* exactement 2 colonnes (1 seule en volet etroit, voir split-mode) */
 .skill-list {
@@ -634,8 +610,6 @@
     margin-bottom: 24px;
 }
 
-/* .skill-row is the spec name; .skill-item is what the JS actually renders */
-.skill-row,
 .skill-item {
     display: flex;
     align-items: center;
@@ -650,7 +624,6 @@
     position: relative;
     overflow: hidden;
 }
-.skill-row::before,
 .skill-item::before {
     content: '';
     position: absolute; inset: 0;
@@ -659,11 +632,9 @@
     transition: opacity 0.18s;
     pointer-events: none;
 }
-.skill-row:hover,
 .skill-item:hover {
     border-left-color: var(--ember);
 }
-.skill-row:hover::before,
 .skill-item:hover::before { opacity: 1; }
 
 .skill-name {
@@ -860,14 +831,6 @@
     border-right: 1px solid var(--line2);
     padding: 24px 26px;
     min-width: 0;
-}
-.free-roll-caption {
-    font-family: ui-monospace, Menlo, monospace;
-    font-size: 9.5px;
-    letter-spacing: .2em;
-    text-transform: uppercase;
-    color: var(--faint);
-    margin-bottom: 2px;
 }
 .free-roll-layout .roll-history-section { min-width: 0; margin-top: 0; padding: 24px 26px; }
 @media (max-width: 900px) {
@@ -1282,15 +1245,6 @@
     align-items: center;
     gap: 8px;
 }
-.cs-hint {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 14px;
-    font-style: italic;
-    color: var(--parchment-dim);
-    letter-spacing: 0;
-    text-transform: none;
-    opacity: 0.7;
-}
 .cs-block-body { padding: 0; }
 .editor-form { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
 .editor-field { display: flex; flex-direction: column; gap: 4px; }
@@ -1469,33 +1423,6 @@
     justify-content: space-between;
     margin-bottom: 10px;
 }
-.alchemy-vials {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: var(--embersoft);
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    padding: 8px 14px;
-    margin-bottom: 14px;
-}
-.alchemy-vials-label {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 13px;
-    color: var(--parchment-dim);
-    letter-spacing: 0.05em;
-}
-.alchemy-vials-ctrl { display: flex; align-items: center; gap: 10px; }
-.vial-count {
-    font-family: 'Archivo', sans-serif;
-    font-variant-numeric: tabular-nums;
-    font-size: 22px;
-    font-weight: 700;
-    color: var(--ember2);
-    min-width: 32px;
-    text-align: center;
-}
-
 .alchemy-section-hdr {
     font-family: ui-monospace, Menlo, monospace;
     font-size: 9.5px;
@@ -2227,7 +2154,6 @@
     .cs-pair { grid-template-columns: 1fr; }
     .editor-form { grid-template-columns: 1fr; }
     .cs-skills-grid { grid-template-columns: 1fr; }
-    .money-editor-row { grid-template-columns: repeat(2, 1fr); }
     /* Split-view: stack the two panes vertically instead of side by side */
     .content.split-mode { display: flex; overflow-y: auto; }
 }

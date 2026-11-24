@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════
 //  HUB — la taverne (views/aria-hub.html)
 // ═══════════════════════════════════════════
-// design_handoff_aria/Aria Hub.dc.html: your tables, the open tables, forging a
+// AriaTest/design_handoff_aria/Aria Hub.dc.html: your tables, the open tables, forging a
 // campaign, and talking to GMs. Data comes from js/aria-hub-data.js (`hubData`).
 //
 // Rendering follows the prototype's renderVals(): state → DOM, whole sections at a
@@ -13,7 +13,7 @@ const hub = {
     tab: 'mine', q: '', filter: 'all', modal: null, chat: null, typing: false, toast: null, drag: false,
     pick: null,                       // { campId } while choosing a character to sit with
     me: { name: '' }, camps: [], requests: [], convs: {}, friends: [], ready: true,
-    f: { name: '', pitch: '', vis: 'public', seats: 4, rhythm: 'Hebdomadaire', date: '', tags: '', cover: '', coverBlob: null },
+    f: null,      // the create form's state, set by resetForm() / editCamp()
     edit: null,   // id of the campaign the create form is editing
 };
 
@@ -23,6 +23,9 @@ const VIS = {
     prive:   { label: 'Privée · sceau', c: 'var(--hb-seal)',  desc: 'Invisible, accès par code.' },
 };
 const RHY = ['Hebdomadaire', 'Toutes les 2 semaines', 'Mensuelle', 'One-shot'];
+// The sheet variant of the table: it picks the character template of whoever sits
+// down, and the GM panel only lists characters of that variant.
+const TYPES = [['ancient', 'Médiéval'], ['contemporary', 'Contemporain']];
 // The handoff's avatar colours by name; anyone else gets one by hash.
 const PAL = { 'Élise': '#8fb3d9', 'Aldric': '#eca456', 'Tomas': '#b9c98a', 'Maëlle': '#d98f8f', 'Iris': '#c4a8e0', 'Jonas': '#9fd1c4', 'Soren': '#d9c38f', 'Brune': '#d98fb8', 'Oskar': '#a8b8e0', 'Nox': '#c4a8e0', 'Célian': '#9fd1c4' };
 const PAL_LIST = [...new Set(Object.values(PAL))];
@@ -303,6 +306,9 @@ function renderCreate() {
         el('div', { className: 'hb-vis-label', textContent: o.label, style: { color: f.vis === id ? o.c : '' } }),
         el('div', { className: 'hb-vis-desc', textContent: o.desc }))));
     fill($('hb-rhythm'), RHY.map(r => el('div', { className: 'hb-pill' + (f.rhythm === r ? ' on' : ''), textContent: r, onclick: () => { f.rhythm = r; renderCreate(); } })));
+    // Not editable afterwards: the characters already seated were built from it.
+    $('hb-type-field').hidden = !!hub.edit;
+    fill($('hb-type'), TYPES.map(([id, label]) => el('div', { className: 'hb-pill' + (f.type === id ? ' on' : ''), textContent: label, onclick: () => { f.type = id; renderCreate(); } })));
     $('hb-create-kicker').textContent = hub.edit ? 'Vous êtes maître du jeu' : 'Vous serez maître du jeu';
     $('hb-create-h1').textContent = hub.edit ? 'Modifier la campagne' : 'Forger une campagne';
     $('hb-create-btn').textContent = hub.edit ? 'Enregistrer les modifications' : 'Forger la campagne';
@@ -628,7 +634,7 @@ function pickCover(file) {
     });
 }
 
-const BLANK_FORM = () => ({ name: '', pitch: '', vis: 'public', seats: 4, rhythm: 'Hebdomadaire', date: '', tags: '', cover: '', coverBlob: null });
+const BLANK_FORM = () => ({ name: '', pitch: '', vis: 'public', seats: 4, rhythm: 'Hebdomadaire', type: 'ancient', date: '', tags: '', cover: '', coverBlob: null });
 function setFormInputs() {
     const f = hub.f;
     [['hb-f-name', f.name], ['hb-f-pitch', f.pitch], ['hb-f-date', f.date], ['hb-f-tags', f.tags]].forEach(([id, v]) => { $(id).value = v; });
@@ -638,7 +644,7 @@ function resetForm() { hub.f = BLANK_FORM(); hub.edit = null; setFormInputs(); }
 // The create form doubles as the edit form: prefilled, and create() patches instead of inserting.
 function editCamp(k) {
     const local = t => new Date(t - new Date(t).getTimezoneOffset() * 60000).toISOString().slice(0, 16);   // datetime-local wants local time
-    hub.f = { name: k.name, pitch: k.pitch, vis: k.vis, seats: k.seats, rhythm: k.rhythm,
+    hub.f = { name: k.name, pitch: k.pitch, vis: k.vis, seats: k.seats, rhythm: k.rhythm, type: k.ariaType || 'ancient',
         date: k.first ? local(Date.parse(k.first)) : '', tags: k.tags.join(', '), cover: k.cover || '', coverBlob: null };
     hub.edit = k.id; hub.modal = null; hub.tab = 'create';
     setFormInputs();
@@ -674,7 +680,7 @@ async function create() {
     }
     if (!res) { flash('La campagne n\'a pas pu être forgée.', 'err'); return; }
     const code = f.vis === 'prive' ? res.code : null;
-    hub.camps.unshift({ id: res.id, gm: hub.me.name, taken: 0, session: 0, role: 'MJ', code: res.code, ariaType: 'ancient', ...fields });
+    hub.camps.unshift({ id: res.id, gm: hub.me.name, taken: 0, session: 0, role: 'MJ', code: res.code, ariaType: f.type, ...fields });
     resetForm();
     hub.tab = 'mine';
     render();
@@ -734,6 +740,7 @@ function wire() {
 async function boot() {
     if (!hubData.demo && !sbSignedIn()) { location.replace('../index.html'); return; }
     ariaBg.mount('tavern', document.querySelector('.hb-root'));
+    resetForm();
     wire();
     const params = new URLSearchParams(location.search);
     const loading = hubData.load();
