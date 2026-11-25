@@ -591,6 +591,9 @@ const ENT = {
             grid:      { col: 'grid',       to: _orNull, def: null },
             tokens:    { col: 'tokens',     to: _orNull, def: _arr },   // [{ id, ref, x, y, size, hidden, markers }]
             moves:     { col: 'moves',      to: v => v === 'validation' ? 'validation' : 'libre', def: 'libre' },
+            // Manual fog (phase 4): { base: 'dark' | 'clear', ops: [{ t: 'r' | 'h', pts }] }.
+            // null = a map from before the fog: fully revealed.
+            fog:       { col: 'fog',        to: _orNull, def: null },
         },
     },
     music: {
@@ -813,7 +816,47 @@ function markerGlyphs(ids) {
 // the one place all four pages draw from. Malformed input renders as nothing.
 function visibleTokens(state, charId) {
     const list = Array.isArray(state?.tokens) ? state.tokens : [];
-    return list.filter(t => t && !t.hidden && Number.isFinite(+t.x) && Number.isFinite(+t.y));
+    // Under the fog of a tactical map, a token is gone for the table — another player's
+    // character included — except our own, which we always see (phase 4).
+    const fog = mapFog({ kind: state?.kind, fog: state?.fogMask });
+    return list.filter(t => t && !t.hidden && Number.isFinite(+t.x) && Number.isFinite(+t.y)
+        && (!fog || (charId && t.own === charId) || fogVisible(fog, +t.x, +t.y)));
+}
+
+// The manual fog of a tactical map, checked and normalised (it comes off Ably on the
+// player's side and the overlay): { base: 'dark' | 'clear', ops: [{ t: 'r' | 'h', pts }] }.
+// The map starts all dark or all clear; each op then reveals ('r') or covers ('h') a
+// polygon, in order. null when there is nothing to draw: a world map, a map from before the
+// fog (fully revealed), or a clear base with no op. Bounded, so garbage cannot draw a
+// million points.
+const FOG_MAX_OPS = 400, FOG_MAX_PTS = 64;
+function mapFog(m) {
+    if (m?.kind !== 'tactique' || !m.fog || typeof m.fog !== 'object') return null;
+    const base = m.fog.base === 'dark' ? 'dark' : 'clear';
+    const ops = (Array.isArray(m.fog.ops) ? m.fog.ops : []).slice(-FOG_MAX_OPS).flatMap(o => {
+        if (!o || (o.t !== 'r' && o.t !== 'h') || !Array.isArray(o.pts)) return [];
+        const pts = o.pts.slice(0, FOG_MAX_PTS).filter(q => Array.isArray(q) && q.length === 2
+            && Number.isFinite(+q[0]) && Number.isFinite(+q[1])).map(q => [+q[0], +q[1]]);
+        return pts.length >= 3 ? [{ t: o.t, pts }] : [];
+    });
+    return base === 'clear' && !ops.length ? null : { base, ops };
+}
+
+// Is a point of the map visible under this fog? The ops are replayed in order: the last
+// polygon containing the point decides.
+function fogVisible(fog, x, y) {
+    if (!fog) return true;
+    let seen = fog.base === 'clear';
+    for (const o of fog.ops) if (_inPoly(o.pts, x, y)) seen = o.t === 'r';
+    return seen;
+}
+function _inPoly(pts, x, y) {
+    let inside = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        const [xi, yi] = pts[i], [xj, yj] = pts[j];
+        if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
 }
 
 // Calibrate a grid from two opposite corners of one cell drawn in the image: the cell is

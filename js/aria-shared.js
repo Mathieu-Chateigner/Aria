@@ -377,7 +377,16 @@ function _mapZoneLayer(clear, fog, vb = { w: 100, h: 100 }) {
 //         pins: [{ id, x, y, name, cls, tokens: [{ name, cls }] }],
 //         tokens: [{ id, x, y, size, ini, name, cls, hp, markers: [glyph], draggable }],
 //         card: { key, x, y, create(), update(node) } | null,
-//         onBackground(e, {x, y} | null), onPinDown(e, id), onTokenClick(id), onTokenDrop(id, x, y) }
+//         onBackground(e, {x, y} | null), onPinDown(e, id), onTokenClick(id), onTokenDrop(id, x, y),
+//         center: {x, y} | null (the ◎ button), follow: { on, toggle() } | null (the « Suivre le MJ » chip),
+//         ruler: { on, toggle() } | null (the measuring button), rulerCls,
+//         tool: 'ruler' | 'ping' | 'rect' | null, sideTools: [nodes] (the GM's vertical toolbar),
+//         fog: mapFog(map) | null, fogSee (the GM sees through it), onRect({x, y}, {x, y}),
+//         onRuler([[x,y],[x,y]] | null), onPing({x, y}, shift), onViewChange({x, y, k}, byUser) }
+//
+// Measuring: a right-click drag always measures; with tool 'ruler' a left drag does too.
+// Pinging: a long press (500 ms, held still) anywhere, tokens included; with tool 'ping' a
+// plain click. The panel publishes both (makeMapFx) — the view only draws the local ruler.
 function mapView(container, opts) {
     if (!container) return;
     if (!opts.imageUrl) {
@@ -403,6 +412,9 @@ function mapView(container, opts) {
     const zones = _mapZoneLayer(opts.zones?.[0] || [], opts.zones?.[1] || [], vb);
     v.zones.replaceWith(zones);
     v.zones = zones;
+    const fogL = _mapFogLayer(opts.fog || null, vb, !!opts.fogSee);
+    v.fog.replaceWith(fogL);
+    v.fog = fogL;
     fill(v.extra, ...(opts.extra || []));
     reconcile(v.pins, (opts.pins || []).map(p => [p.id, p]),
         id => el('div', { onpointerdown: e => v.opts.onPinDown?.(e, id) },
@@ -441,8 +453,25 @@ function mapView(container, opts) {
             node.children[1].firstChild.style.width = (hp ?? 0) * 100 + '%';
             node.children[1].dataset.level = hp == null ? '' : hp <= 0 ? 'dead' : hp > .6 ? 'ok' : hp > .3 ? 'mid' : 'low';
             node.children[2].textContent = (t.markers || []).join('');
-            node.children[3].textContent = t.name || '';
+            // Out of the fight: greyed and crossed in CSS, said in words under the disc.
+            node.children[3].textContent = (t.name || '') + (hp === 0 ? ' · hors de combat' : '');
+            // Lost HP since the last render: a short flash (the class is reset so a second
+            // hit replays it).
+            if (hp != null && node._hp != null && hp < node._hp) {
+                node.classList.remove('hit'); void node.offsetWidth; node.classList.add('hit');
+            }
+            node._hp = hp;
         });
+    v.centerBtn.style.display = opts.center ? '' : 'none';
+    v.rulerBtn.style.display = opts.ruler ? '' : 'none';
+    v.rulerBtn.classList.toggle('on', !!opts.ruler?.on);
+    v.followBtn.style.display = opts.follow ? '' : 'none';
+    v.followBtn.classList.toggle('on', !!opts.follow?.on);
+    fill(v.side, ...(opts.sideTools || []));
+    v.side.style.display = opts.sideTools?.length ? '' : 'none';
+    v.root.classList.toggle('tool-ruler', opts.tool === 'ruler');
+    v.root.classList.toggle('tool-ping', opts.tool === 'ping');
+    v.root.classList.toggle('tool-rect', opts.tool === 'rect');
 
     const c = opts.card;
     if (!c) { v.card?.remove(); v.card = null; v.cardKey = null; v.cardAt = null; }
@@ -466,54 +495,78 @@ function _mapViewBuild(container) {
     const v = { k: 1, tx: 0, ty: 0, card: null, cardKey: null, cardAt: null, opts: {} };
     v.img = el('img', { className: 'aria-map', draggable: false });
     v.zones = document.createElementNS(SVG_NS, 'svg');
+    v.fog = document.createElementNS(SVG_NS, 'svg');
     v.grid = document.createElementNS(SVG_NS, 'svg');
     v.extra = el('div', { className: 'map-extra' });
     v.pins = el('div', { className: 'map-pins' });
     v.toks = el('div', { className: 'map-toks' });
     v.measure = el('div', { className: 'map-measure' });
-    v.frame = el('div', { className: 'aria-frame', id: 'map-frame' }, v.img, v.grid, v.zones, v.extra, v.toks, v.pins, v.measure);
+    // Rulers and pings, ours and everyone else's. Keyed nodes: one ruler per author.
+    v.fx = el('div', { className: 'map-fx' });
+    v.frame = el('div', { className: 'aria-frame', id: 'map-frame' }, v.img, v.grid, v.zones, v.fog, v.extra, v.toks, v.pins, v.measure, v.fx);
     v.world = el('div', { className: 'map-world' }, v.frame);
     v.viewport = el('div', { className: 'map-viewport' }, v.world);
     v.title = el('div', { className: 'map-cart-title' });
     v.kicker = el('div', { className: 'map-cart-kicker' });
     const zoomBtn = (label, title, fn) => el('button', { className: 'map-zoom-btn', textContent: label, title, onclick: fn });
+    v.side = el('div', { className: 'map-side-tools' });
     v.root = el('div', { className: 'map-view' },
         v.viewport,
         el('div', { className: 'map-cartouche' }, v.title, v.kicker),
+        v.side,
         el('div', { className: 'map-zoom' },
-            zoomBtn('+', 'Zoomer', () => _mapViewZoomAt(v, 1.4)),
-            zoomBtn('−', 'Dézoomer', () => _mapViewZoomAt(v, 1 / 1.4)),
-            zoomBtn('⤢', 'Ajuster', () => _mapViewFit(v))));
+            v.followBtn = el('button', { className: 'map-follow', textContent: 'Suivre le MJ', title: 'Suivre la vue du MJ (F)',
+                onclick: () => v.opts.follow?.toggle() }),
+            zoomBtn('+', 'Zoomer', () => _mapViewZoomAt(v, 1.4, undefined, undefined, true)),
+            zoomBtn('−', 'Dézoomer', () => _mapViewZoomAt(v, 1 / 1.4, undefined, undefined, true)),
+            zoomBtn('⤢', 'Ajuster', () => _mapViewFit(v, true)),
+            v.centerBtn = zoomBtn('◎', 'Recentrer sur mon jeton', () => v.opts.center && _mapViewCenter(v, v.opts.center, true)),
+            v.rulerBtn = zoomBtn('⟷', 'Mesurer (M) · clic droit-glisser mesure aussi', () => v.opts.ruler?.toggle())));
     fill(container, v.root);
-    v.img.addEventListener('load', () => _mapViewPlaceCard(v));
+    v.img.addEventListener('load', () => {
+        _mapViewPlaceCard(v);
+        if (v.pendingView) mapViewSetView(container, v.pendingView);
+    });
 
     // Wheel zooms around the cursor. Not passive, or preventDefault() is ignored and the
     // pane scrolls as well.
     v.viewport.addEventListener('wheel', e => {
         e.preventDefault();
-        _mapViewZoomAt(v, e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX, e.clientY);
+        _mapViewZoomAt(v, e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX, e.clientY, true);
     }, { passive: false });
+    // The right button measures; its menu would cover the ruler.
+    v.viewport.addEventListener('contextmenu', e => e.preventDefault());
 
     // A press on the background pans once it travels past a few pixels; otherwise it is a
     // click, handed to the panel. Pins and zone vertices have their own handlers.
     v.viewport.addEventListener('pointerdown', e => {
+        if (e.button === 2) { _mapViewRulerDrag(v, e); return; }
         if (e.button !== 0 || e.target.closest('.map-pin, .zone-vertex, .map-tok')) return;
+        if (v.opts.tool === 'ruler') { _mapViewRulerDrag(v, e); return; }
+        if (v.opts.tool === 'rect') { _mapViewRectDrag(v, e); return; }
         const x0 = e.clientX, y0 = e.clientY, tx0 = v.tx, ty0 = v.ty;
         let panning = false;
+        // Held still for 500 ms: a ping, and the release is not a click.
+        let pinged = false;
+        const long = setTimeout(() => { pinged = true; _mapViewPingAt(v, e); }, 500);
         v.viewport.setPointerCapture(e.pointerId);
         const move = ev => {
             if (!panning && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return;
+            clearTimeout(long);
+            if (pinged) return;
             panning = true;
             v.viewport.classList.add('panning');
             v.tx = tx0 + ev.clientX - x0; v.ty = ty0 + ev.clientY - y0;
-            _mapViewApply(v);
+            _mapViewApply(v, true);
         };
         const end = ev => {
             v.viewport.removeEventListener('pointermove', move);
             v.viewport.removeEventListener('pointerup', end);
             v.viewport.removeEventListener('pointercancel', end);
             v.viewport.classList.remove('panning');
-            if (panning || ev.type === 'pointercancel' || !v.frame.isConnected) return;
+            clearTimeout(long);
+            if (pinged || panning || ev.type === 'pointercancel' || !v.frame.isConnected) return;
+            if (v.opts.tool === 'ping') { _mapViewPingAt(v, ev); return; }
             // A press that never left the spot is a click. Outside the picture the panel
             // gets null coordinates: it closes what is open and places nothing.
             const r = v.frame.getBoundingClientRect();
@@ -532,19 +585,64 @@ function _mapViewBuild(container) {
     return v;
 }
 
-function _mapViewApply(v) {
+// `byUser`: the change came from a hand on the map (wheel, drag, a button) — which is
+// what stops « Suivre le MJ » — and not from a view applied by the code.
+function _mapViewApply(v, byUser = false) {
     v.world.style.transform = `translate(${v.tx}px, ${v.ty}px) scale(${v.k})`;
     // Pins, names and tokens keep their size while the map zooms (CSS divides by it).
     v.world.style.setProperty('--map-k', v.k);
     _mapViewPlaceCard(v);
+    if (byUser !== null) _mapViewChanged(v, byUser);
+}
+function _mapViewChanged(v, byUser) {
+    const view = _mapViewGet(v);
+    if (view) v.opts.onViewChange?.(view, byUser);
 }
 
-function _mapViewFit(v) { v.k = 1; v.tx = 0; v.ty = 0; _mapViewApply(v); }
+function _mapViewFit(v, byUser = false) { v.k = 1; v.tx = 0; v.ty = 0; _mapViewApply(v, byUser); }
+
+// Bring a point (map units) to the middle of the box, zoomed in to at least x2.
+function _mapViewCenter(v, p, byUser = false) { _mapViewCenterAt(v, p, Math.max(2, v.k), byUser); }
+function _mapViewCenterAt(v, p, k, byUser = false) {
+    const vb = v.opts.vb || { w: 100, h: 100 };
+    const vr = v.viewport.getBoundingClientRect(), wr = v.world.getBoundingClientRect(), fr = v.frame.getBoundingClientRect();
+    if (!fr.width) return;
+    const lx = (fr.left + fr.width * p.x / vb.w - wr.left) / v.k;
+    const ly = (fr.top + fr.height * p.y / vb.h - wr.top) / v.k;
+    k = Math.min(8, Math.max(1, k));
+    v.tx = vr.left + vr.width / 2 - (wr.left - v.tx) - k * lx;
+    v.ty = vr.top + vr.height / 2 - (wr.top - v.ty) - k * ly;
+    v.k = k;
+    _mapViewApply(v, byUser);
+}
+
+// The view as map units: the point at the middle of the box and the zoom (1 = fitted).
+// Box sizes differ between screens; the centre and the zoom are what carry over.
+function _mapViewGet(v) {
+    const vb = v.opts.vb || { w: 100, h: 100 };
+    const vr = v.viewport.getBoundingClientRect(), fr = v.frame.getBoundingClientRect();
+    if (!fr.width || !vr.width) return null;
+    return { x: (vr.left + vr.width / 2 - fr.left) / fr.width * vb.w,
+             y: (vr.top + vr.height / 2 - fr.top) / fr.height * vb.h, k: v.k };
+}
+function mapViewGetView(container) { const v = container?._mapView; return v ? _mapViewGet(v) : null; }
+// Apply a view received from elsewhere (« Suivre le MJ »): not a hand on the map.
+function mapViewSetView(container, view) {
+    const v = container?._mapView;
+    if (!v || !view) return;
+    // Picture not laid out yet (a new map): applied when it loads.
+    if (!v.frame.getBoundingClientRect().width) { v.pendingView = view; return; }
+    v.pendingView = null;
+    if (view.k <= 1.001) { _mapViewFit(v); return; }
+    _mapViewCenterAt(v, view, view.k);
+}
+// Centre every screen on a point (the GM's Maj + ping): once, at least x2.
+function mapViewFocus(container, p) { const v = container?._mapView; if (v) _mapViewCenter(v, p); }
 
 // Zoom by `f` keeping the point under (cx, cy) still — the centre of the box when no
 // point is given. transform-origin is 0 0, so the world's on-screen rect is (layout +
 // translate) and a local point is (screen − rect) / k.
-function _mapViewZoomAt(v, f, cx, cy) {
+function _mapViewZoomAt(v, f, cx, cy, byUser = false) {
     const k = Math.min(8, Math.max(1, v.k * f));
     if (k === v.k) return;
     const vr = v.viewport.getBoundingClientRect();
@@ -555,7 +653,7 @@ function _mapViewZoomAt(v, f, cx, cy) {
     v.ty += (cy - k * ly) - r.top;
     v.k = k;
     if (k === 1) { v.tx = 0; v.ty = 0; }
-    _mapViewApply(v);
+    _mapViewApply(v, byUser);
 }
 
 // A token's box: `size` cells wide, centred on (x, y), in percentages of the frame.
@@ -573,18 +671,24 @@ function _mapViewPlaceToken(node, x, y, size, cell, vb) {
 function _mapViewTokenDown(v, e, id) {
     const t = (v.opts.tokens || []).find(x => x.id === id);
     if (!t || e.button !== 0) return;
-    if (!t.draggable) { v.opts.onTokenClick?.(id); return; }
     e.preventDefault();
+    const start = { x: +t.x, y: +t.y };
+    // The ruler starts from the token's centre; the ping tool pings where it points.
+    if (v.opts.tool === 'ruler') { _mapViewRulerDrag(v, e, start); return; }
+    if (v.opts.tool === 'ping') { _mapViewPingAt(v, e); return; }
+    if (v.opts.tool === 'rect') { _mapViewRectDrag(v, e); return; }
     const node = e.currentTarget;
     const vb = v.opts.vb || { w: 100, h: 100 }, g = v.opts.grid;
     const size = Math.max(1, Math.min(4, Number(t.size) || 1)), cell = g?.cell || vb.w / 30;
-    const start = { x: +t.x, y: +t.y };
-    let cur = start, moved = false;
+    let cur = start, moved = false, pinged = false;
+    const long = setTimeout(() => { if (!moved) { pinged = true; _mapViewPingAt(v, e); } }, 500);
     node.setPointerCapture(e.pointerId);
     const move = ev => {
-        if (!v.frame.isConnected) return;
+        if (!v.frame.isConnected || pinged) return;
         if (!moved && Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 4) return;
+        clearTimeout(long);
         moved = true;
+        if (!t.draggable) return;
         const r = v.frame.getBoundingClientRect();
         const p = { x: Math.min(vb.w, Math.max(0, (ev.clientX - r.left) / r.width * vb.w)),
                     y: Math.min(vb.h, Math.max(0, (ev.clientY - r.top) / r.height * vb.h)) };
@@ -598,9 +702,11 @@ function _mapViewTokenDown(v, e, id) {
         node.removeEventListener('pointerup', end);
         node.removeEventListener('pointercancel', end);
         node.classList.remove('dragging');
+        clearTimeout(long);
         fill(v.measure);
+        if (pinged) return;
         if (ev.type === 'pointercancel') { _mapViewPlaceToken(node, start.x, start.y, size, cell, vb); return; }
-        if (moved) v.opts.onTokenDrop?.(id, cur.x, cur.y);
+        if (moved) { if (t.draggable) v.opts.onTokenDrop?.(id, cur.x, cur.y); }
         else v.opts.onTokenClick?.(id);
     };
     node.addEventListener('pointermove', move);
@@ -621,6 +727,219 @@ function _mapViewMeasure(v, a, b, g, vb) {
     svg.append(line);
     fill(v.measure, svg, el('div', { className: 'map-measure-label', textContent: gridDistance(a, b, g).text,
         style: { left: b.x / vb.w * 100 + '%', top: b.y / vb.h * 100 + '%' } }));
+}
+
+// A pointer event as map units, clamped to the picture.
+function _mapViewPt(v, ev) {
+    const vb = v.opts.vb || { w: 100, h: 100 }, r = v.frame.getBoundingClientRect();
+    return { x: Math.min(vb.w, Math.max(0, (ev.clientX - r.left) / r.width * vb.w)),
+             y: Math.min(vb.h, Math.max(0, (ev.clientY - r.top) / r.height * vb.h)) };
+}
+function _mapViewPingAt(v, ev) {
+    if (!v.frame.isConnected) return;
+    v.opts.onPing?.(_mapViewPt(v, ev), !!ev.shiftKey);
+}
+
+// Measure: from the press (or a token's centre) to the pointer, ends on cell centres when the
+// grid is magnetic. Drawn here at every move; the panel hears the points (to share them) and
+// null on release. Only on a map with a scale.
+function _mapViewRulerDrag(v, e, from) {
+    const g = v.opts.grid;
+    if (!g) return;
+    e.preventDefault();
+    const snap = p => g.snap ? gridSnap(p.x, p.y, g, 1) : p;
+    const a = from || snap(_mapViewPt(v, e));
+    const target = v.viewport;
+    target.setPointerCapture(e.pointerId);
+    const move = ev => {
+        if (!v.frame.isConnected) return;
+        const b = snap(_mapViewPt(v, ev));
+        _mapViewDrawRuler(v, 'self', a, b, v.opts.rulerCls || '', '');
+        v.opts.onRuler?.([[a.x, a.y], [b.x, b.y]]);
+    };
+    const end = () => {
+        target.removeEventListener('pointermove', move);
+        target.removeEventListener('pointerup', end);
+        target.removeEventListener('pointercancel', end);
+        _mapViewFadeRuler(v, 'self');
+        v.opts.onRuler?.(null);
+    };
+    target.addEventListener('pointermove', move);
+    target.addEventListener('pointerup', end);
+    target.addEventListener('pointercancel', end);
+}
+
+// A rectangle dragged on the map (the GM's fog tool): corners on grid intersections when
+// the grid is magnetic, drawn while dragging, handed to the panel on release.
+function _mapViewRectDrag(v, e) {
+    e.preventDefault();
+    const g = v.opts.grid, vb = v.opts.vb || { w: 100, h: 100 };
+    const snap = p => g && g.snap ? gridSnap(p.x, p.y, g, 2) : p;
+    const a = snap(_mapViewPt(v, e));
+    let b = a;
+    const target = v.viewport;
+    target.setPointerCapture(e.pointerId);
+    const move = ev => {
+        if (!v.frame.isConnected) return;
+        b = snap(_mapViewPt(v, ev));
+        fill(v.measure, el('div', { className: 'map-rect-draft', style: {
+            left: Math.min(a.x, b.x) / vb.w * 100 + '%', top: Math.min(a.y, b.y) / vb.h * 100 + '%',
+            width: Math.abs(b.x - a.x) / vb.w * 100 + '%', height: Math.abs(b.y - a.y) / vb.h * 100 + '%' } }));
+    };
+    const end = ev => {
+        target.removeEventListener('pointermove', move);
+        target.removeEventListener('pointerup', end);
+        target.removeEventListener('pointercancel', end);
+        fill(v.measure);
+        if (ev.type === 'pointercancel') return;
+        if (Math.abs(b.x - a.x) > vb.w / 200 && Math.abs(b.y - a.y) > vb.h / 200) v.opts.onRect?.(a, b);
+    };
+    target.addEventListener('pointermove', move);
+    target.addEventListener('pointerup', end);
+    target.addEventListener('pointercancel', end);
+}
+
+// The manual fog of a tactical map (mapFog() in aria-supabase.js): one ink rectangle cut by
+// an SVG <mask> replaying the ops in order — white is fog, black is revealed. The table gets
+// opaque ink with soft edges; the GM (`see`) sees through it, darkened, with the revealed
+// areas outlined in dashed violet. Above the grid and the zones, under tokens and pins:
+// the player's own token stays visible on top.
+function _mapFogLayer(fog, vb, see) {
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('class', 'map-fog' + (see ? ' see' : ''));
+    if (!fog) return svg;
+    const at = (n, attrs) => { const e = document.createElementNS(SVG_NS, n); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+    svg.setAttribute('viewBox', `0 0 ${vb.w} ${vb.h}`);
+    svg.setAttribute('preserveAspectRatio', 'none');
+    const pad = { x: -vb.w * .1, y: -vb.h * .1, width: vb.w * 1.2, height: vb.h * 1.2 };
+    const filter = at('filter', { id: 'map-fog-soft', filterUnits: 'userSpaceOnUse', ...pad });
+    filter.append(at('feGaussianBlur', { stdDeviation: Math.max(vb.w, vb.h) * .006 }));
+    const mask = at('mask', { id: 'map-fog-mask', maskUnits: 'userSpaceOnUse', ...pad });
+    const g = at('g', see ? {} : { filter: 'url(#map-fog-soft)' });
+    g.append(at('rect', { ...pad, fill: fog.base === 'dark' ? '#fff' : '#000' }));
+    const pts = o => o.pts.map(q => q.join(',')).join(' ');
+    fog.ops.forEach(o => g.append(at('polygon', { points: pts(o), fill: o.t === 'h' ? '#fff' : '#000' })));
+    mask.append(g);
+    const defs = at('defs', {});
+    defs.append(filter, mask);
+    svg.append(defs, at('rect', { class: 'map-fog-ink', x: 0, y: 0, width: vb.w, height: vb.h, mask: 'url(#map-fog-mask)' }));
+    if (see) fog.ops.filter(o => o.t === 'r').forEach(o =>
+        svg.append(at('polygon', { points: pts(o), class: 'map-fog-edge', 'vector-effect': 'non-scaling-stroke' })));
+    return svg;
+}
+
+// One ruler per author, keyed in the fx layer: a dashed line in the author's colour and a
+// bubble « Nom · 3 cases · 4,5 m ». Fading: kept 2 s after the release, then gone.
+function _mapViewDrawRuler(v, key, a, b, cls, name) {
+    const g = v.opts.grid, vb = v.opts.vb || { w: 100, h: 100 };
+    if (!g) return;
+    let node = _fxNode(v.fx, 'r:' + key);
+    if (!node) {
+        node = el('div', { className: 'map-ruler' });
+        node.dataset.key = 'r:' + key;
+        const svg = document.createElementNS(SVG_NS, 'svg');
+        svg.setAttribute('preserveAspectRatio', 'none');
+        const line = document.createElementNS(SVG_NS, 'line');
+        line.setAttribute('vector-effect', 'non-scaling-stroke');
+        svg.append(line);
+        node.append(svg, el('div', { className: 'map-ruler-label' }));
+        v.fx.append(node);
+    }
+    clearTimeout(node._fade);
+    node.className = 'map-ruler' + (cls ? ' ' + cls : '');
+    const svg = node.firstChild;
+    svg.setAttribute('viewBox', `0 0 ${vb.w} ${vb.h}`);
+    [['x1', a.x], ['y1', a.y], ['x2', b.x], ['y2', b.y]].forEach(([k, n]) => svg.firstChild.setAttribute(k, n));
+    const lab = node.lastChild;
+    lab.textContent = (name ? name + ' · ' : '') + gridDistance(a, b, g).text;
+    lab.style.left = b.x / vb.w * 100 + '%';
+    lab.style.top = b.y / vb.h * 100 + '%';
+    // A remote ruler whose release was lost goes by itself.
+    if (key !== 'self') node._fade = setTimeout(() => _mapViewFadeRuler(v, key), 5000);
+}
+function _mapViewFadeRuler(v, key) {
+    const node = _fxNode(v.fx, 'r:' + key);
+    if (!node) return;
+    clearTimeout(node._fade);
+    node._fade = setTimeout(() => {
+        node.classList.add('fading');
+        node._fade = setTimeout(() => node.remove(), 400);
+    }, 2000);
+}
+// keyedNode() reads reconcile()'s map; the fx layer keys its nodes by data-key instead.
+function _fxNode(container, key) { return [...container.children].find(n => n.dataset.key === key) || null; }
+
+// Draw a ruler received from someone else, or fade it (pts null). Points are clamped to the
+// picture: they come off Ably.
+function mapViewRuler(container, key, pts, cls, name) {
+    const v = container?._mapView;
+    if (!v) return;
+    if (!pts) { _mapViewFadeRuler(v, key); return; }
+    const vb = v.opts.vb || { w: 100, h: 100 };
+    const P = q => ({ x: Math.min(vb.w, Math.max(0, +q[0])), y: Math.min(vb.h, Math.max(0, +q[1])) });
+    _mapViewDrawRuler(v, key, P(pts[0]), P(pts[1]), cls, name);
+}
+
+// A ping: a wave in the author's colour with their name, 1.2 s. Size held on screen.
+function mapViewPing(container, p, cls, name) {
+    const v = container?._mapView;
+    if (!v) return;
+    const vb = v.opts.vb || { w: 100, h: 100 };
+    const x = Math.min(vb.w, Math.max(0, +p.x)), y = Math.min(vb.h, Math.max(0, +p.y));
+    const node = el('div', { className: 'map-ping' + (cls ? ' ' + cls : ''),
+            style: { left: x / vb.w * 100 + '%', top: y / vb.h * 100 + '%' } },
+        el('i'), el('i'), el('span', { className: 'map-ping-name', textContent: name || '' }));
+    v.fx.append(node);
+    setTimeout(() => node.remove(), 1200);
+}
+
+// Rulers and pings at the table ('aria-map' / 'ruler', 'ping'), the same for both panels.
+// Nothing is stored: a message draws, then fades. The author is msg.clientId — never a
+// payload field — so a message with none (an overlay token) is dropped; the name shown is
+// the roster's. Our own echo is dropped by connection, the local drawing came first.
+//   cfg: { stage() → the map container, conn() → our Ably connection id,
+//          nameOf(clientId) → name, selfCls 'gm' | 'pj', selfName() → name,
+//          onFocus({x, y}) → the GM's Maj + ping recentres this screen }
+function makeMapFx(cfg) {
+    let ch = null, timer = null, last = 0, pending = null;
+    const clsOf = id => String(id).startsWith('gm-') ? 'gm' : 'pj';
+    const num2 = q => Array.isArray(q) && q.length === 2 && q.every(n => Number.isFinite(+n));
+    const send = () => { timer = null; last = Date.now(); ch?.publish('ruler', { pts: pending }); };
+    const r1 = n => Math.round(n * 10) / 10;
+    return {
+        attach(channel) {
+            ch = channel;
+            ch.subscribe('ruler', msg => {
+                const id = msg.clientId;
+                if (!id || msg.connectionId === cfg.conn()) return;
+                const pts = msg.data?.pts;
+                const ok = Array.isArray(pts) && pts.length === 2 && pts.every(num2);
+                mapViewRuler(cfg.stage(), id, ok ? pts : null, clsOf(id), cfg.nameOf(id));
+            });
+            ch.subscribe('ping', msg => {
+                const id = msg.clientId, d = msg.data || {};
+                if (!id || msg.connectionId === cfg.conn()) return;
+                if (!Number.isFinite(+d.x) || !Number.isFinite(+d.y)) return;
+                const p = { x: +d.x, y: +d.y };
+                mapViewPing(cfg.stage(), p, clsOf(id), cfg.nameOf(id));
+                if (d.focus && ablyFromGM(msg)) cfg.onFocus?.(p);
+            });
+        },
+        // Called at every pointer move of a ruler: about ten sends a second, the release
+        // (null) at once.
+        ruler(pts) {
+            pending = pts ? pts.map(q => q.map(r1)) : null;
+            if (!pts) { clearTimeout(timer); send(); return; }
+            if (timer) return;
+            const wait = 100 - (Date.now() - last);
+            if (wait <= 0) send(); else timer = setTimeout(send, wait);
+        },
+        // `focus` only means something from the GM (checked by the receivers too).
+        ping(p, focus) {
+            mapViewPing(cfg.stage(), p, cfg.selfCls, cfg.selfName());
+            ch?.publish('ping', { x: r1(p.x), y: r1(p.y), focus: !!focus && cfg.selfCls === 'gm' });
+        },
+    };
 }
 
 // Anchor the card beside its pin, never on it: right of the pin, or left when it would
@@ -1711,6 +2030,8 @@ function fileIcon(type) {
 let config = JSON.parse(localStorage.getItem('aria-config') || '{}');
 
 function toggleConfig() {
+    const ui = document.getElementById('cfg-ui-toggle');
+    if (ui) ui.textContent = UI_OLD ? 'Interface : ancienne — passer à la nouvelle' : "Interface : nouvelle — passer à l'ancienne";
     document.getElementById('config-modal').classList.toggle('show');
     document.getElementById('config-scrim').classList.toggle('show');
 }
@@ -1960,6 +2281,135 @@ let openPanes = ['tab-skills'];
 let paneWeights = [100];
 let focusIdx = 0;
 
+// ═══════════════════════════════════════════
+//  DRAWER LAYOUT — vue de jeu (specs/2026-11-25-vue-de-jeu-design.md)
+// ═══════════════════════════════════════════
+// Replaces the split panes when the panel sets ARIA.drawers(). The same .tab-content
+// divs are reused, never reparented: one of them may be the *stage* (the centre of
+// the screen — the map, or the cameras when there is none, from ARIA.stagePane()),
+// and at most one other is open as a *drawer* over it. A *side* pane
+// (ARIA.sidePane() — the cameras, when the map holds the centre) sits in the right
+// column. openPanes keeps meaning "the panes on screen" ([stage, side, drawer]), so
+// every openPanes.includes(...) check in
+// the panels keeps working. `?ui=old` turns all of this off for one release.
+// The choice also sticks per browser (`aria-ui` = 'old', set by the Configuration switch,
+// so links and reloads keep it); `?ui=old` / `?ui=new` in the URL win over it.
+const UI_OLD = (() => {
+    if (typeof location === 'undefined') return false;
+    const q = new URLSearchParams(location.search).get('ui');
+    if (q) return q === 'old';
+    try { return localStorage.getItem('aria-ui') === 'old'; } catch { return false; }
+})();
+// Configuration switch: remember the other interface and reload without ?ui=.
+function toggleUiOld() {
+    try { if (UI_OLD) localStorage.removeItem('aria-ui'); else localStorage.setItem('aria-ui', 'old'); } catch {}
+    const u = new URL(location.href);
+    u.searchParams.delete('ui');
+    location.assign(u.href);
+}
+let drawerPane = null;
+
+function drawerMode() { return !!ARIA.drawers?.(); }
+
+// Turn the old tab bar into the section rail. `spec` is [[tabId, label]] in rail
+// order; a null label keeps the button (the layout engine still reads its
+// display) but hides it from the rail. Each panel calls this from its
+// mountPlayUI(), at load, before anything is rendered.
+function mountPlayRail(spec) {
+    document.body.classList.add('ui-play');
+    const rail = document.querySelector('.content > .tabs');
+    rail.classList.add('play-rail');
+    rail.setAttribute('aria-label', 'Sections');
+    document.querySelector('.main').prepend(rail);
+    spec.forEach(([id, label]) => {
+        const b = rail.querySelector(`.tab-btn[data-tab="${id}"]`);
+        if (!b) return;
+        if (label) b.textContent = label; else b.classList.add('rail-hidden');
+        b.onclick = () => toggleDrawer(id);   // replaces the inline switchTab()
+        rail.appendChild(b);
+    });
+    document.addEventListener('keydown', e => {
+        // Esc first puts a map tool down (ARIA.escape), then closes the drawer.
+        if (e.key === 'Escape' && (ARIA.escape?.() || closeDrawer())) { e.preventDefault(); return; }
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        if (e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+        // Letter shortcuts of the map (M measure, F follow the GM), ARIA.keys.
+        const fn = ARIA.keys?.()?.[e.key.toLowerCase()];
+        if (fn) { e.preventDefault(); fn(); return; }
+        // 1-8 open the rail's sections in order, never while typing.
+        if (!/^[1-8]$/.test(e.key)) return;
+        const btns = [...rail.querySelectorAll('.tab-btn')].filter(b => b.offsetParent !== null);
+        const b = btns[+e.key - 1];
+        if (b) { e.preventDefault(); b.click(); }
+    });
+}
+// Below 1280 px the vue de jeu does not fit: a screen over everything says so and
+// offers a page that does (the Fiche for a player, the Accueil for the GM). CSS decides
+// when it shows; `href()` is read on click, once the campaign is known.
+function mountPlayNarrow(label, href) {
+    document.body.append(el('div', { className: 'play-narrow' },
+        el('div', { className: 'pn-title', textContent: 'Élargissez la fenêtre pour jouer' }),
+        el('div', { className: 'pn-sub', textContent: 'La table demande au moins 1280 pixels de large.' }),
+        el('a', { className: 'pn-link', href: '#', textContent: label,
+                  onclick: e => { e.preventDefault(); location.assign(href()); } })));
+}
+// Move one existing node (with its ids and handlers) into a new region.
+function playMove(sel, toId) {
+    const n = document.querySelector(sel);
+    if (n) document.getElementById(toId).appendChild(n);
+}
+function stagePane() { return ARIA.stagePane?.() || null; }
+
+function _tabShown(id) {
+    const btn = document.querySelector(`.tab-btn[data-tab="${id}"]`);
+    return !!(btn && btn.style.display !== 'none' && document.getElementById(id));
+}
+
+// Rail click: open that drawer, or close it when it is the one already open.
+function toggleDrawer(id) {
+    drawerPane = drawerPane === id ? null : id;
+    renderTabLayout();
+}
+function closeDrawer() {
+    if (!drawerPane) return false;
+    drawerPane = null;
+    renderTabLayout();
+    return true;
+}
+
+function applyDrawerLayout() {
+    const stage = stagePane();
+    const side = (ARIA.sidePane?.() || null);
+    if (drawerPane && (!_tabShown(drawerPane) || drawerPane === stage || drawerPane === side)) drawerPane = null;
+    openPanes = [stage, side, drawerPane].filter(Boolean);
+    paneWeights = openPanes.map(() => 100 / openPanes.length);
+    focusIdx = Math.max(0, openPanes.length - 1);
+    const content = document.querySelector('.content');
+    if (content) {
+        content.classList.remove('split-mode');
+        content.style.gridTemplateColumns = '';
+        content.querySelectorAll('.split-pane-hdr, .split-divider').forEach(e => e.remove());
+        content.classList.toggle('has-stage', !!stage);
+        content.classList.toggle('has-side', !!side);
+        content.classList.toggle('drawer-open', !!drawerPane);
+    }
+    // A thread floated over the portraits (player « Fil ») goes back with the drawer.
+    if (!drawerPane) document.querySelector('.main')?.classList.remove('fil-open');
+    document.querySelectorAll('.tab-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.tab === drawerPane);
+        b.classList.remove('open');
+        b.classList.toggle('is-stage', b.dataset.tab === stage || b.dataset.tab === side);
+    });
+    document.querySelectorAll('.tab-content').forEach(t => {
+        t.classList.toggle('active', openPanes.includes(t.id));
+        t.classList.toggle('stage-pane', t.id === stage);
+        t.classList.toggle('side-pane', t.id === side);
+        t.classList.toggle('drawer-pane', t.id === drawerPane);
+        t.classList.remove('split-primary');
+        t.style.gridColumn = ''; t.style.gridRow = '';
+    });
+}
+
 // Restore the persisted pane layout. Called from ARIA.configure(), once the panel
 // has supplied its storage key (hidden tabs are pruned later, in renderTabLayout).
 function initSplitState() {
@@ -1987,7 +2437,7 @@ function _normWeights() {
 
 // Back to a single default pane (character/campaign switch).
 function resetSplitState() {
-    openPanes = [ARIA.defaultPane]; paneWeights = [100]; focusIdx = 0;
+    openPanes = [ARIA.defaultPane]; paneWeights = [100]; focusIdx = 0; drawerPane = null;
 }
 
 // Click on a tab button: classic tab switch — but only in single-pane mode.
@@ -1995,6 +2445,12 @@ function resetSplitState() {
 // under the 900px breakpoint the split collapses to the single tab bar
 // (pane headers hidden), so clicks must keep working there.
 function switchTab(id, _btn) {
+    // Vue de jeu: a code-driven switch opens that drawer; the default pane (the
+    // fallback when a conditional tab disappears) and the stage just re-assert.
+    if (drawerMode()) {
+        if (id !== ARIA.defaultPane && id !== stagePane()) drawerPane = id;
+        return renderTabLayout();
+    }
     if (openPanes.length > 1) {
         if (window.innerWidth > 900) return;
         const j = openPanes.indexOf(id);
@@ -2014,6 +2470,7 @@ function switchTab(id, _btn) {
 // Shared half of renderTabLayout: prune hidden panes, apply classes and grid
 // placement. Each panel's renderTabLayout calls this, then does its own work.
 function applyTabLayout() {
+    if (drawerMode()) return applyDrawerLayout();
     // Drop panes whose tab was hidden (conditional tabs set display:none on the button).
     for (let i = openPanes.length - 1; i >= 0; i--) {
         const btn = document.querySelector(`.tab-btn[data-tab="${openPanes[i]}"]`);
@@ -2044,6 +2501,9 @@ function applyTabLayout() {
 // Finish a layout pass: rebuild the split chrome and persist. Panels call this at
 // the end of their renderTabLayout, after their own pane-specific work.
 function finishTabLayout() {
+    // Drawers never split, and their pane list must not overwrite the layout the
+    // old interface (?ui=old) restores from ARIA.splitKey.
+    if (drawerMode()) return;
     updateSplitChrome();
     _persistSplit();
 }
@@ -2269,7 +2729,7 @@ function resetSplitRatio() {
 window.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('mousedown', e => {
-            if (e.button !== 0) return;
+            if (e.button !== 0 || drawerMode()) return;
             _dockBegin(btn.dataset.tab, e);
         });
     });
@@ -2495,6 +2955,143 @@ async function refreshPresenceSet() {
 }
 
 // ═══════════════════════════════════════════
+//  ROLL ROW (vue de jeu step 7)
+// ═══════════════════════════════════════════
+// Every roll and card draw of the table, as one row of cards over the centre
+// (specs/2026-11-25-vue-de-jeu-design.md, *Jets et cartes*). Slots, not a list: a new
+// card takes the first free slot, else goes right of the last; a full line wraps. A card
+// that leaves keeps its slot empty until every card is gone, so nothing slides under the
+// reader's eye. The block is centred both ways, each line centred, and shrinks when it
+// would outgrow the stage. A card lives `ms` from its own arrival; hovering any card
+// pauses them all. `onLeave(item)` hands it to the panel's thread.
+//
+//   item = { kind: 'roll', char, skillName, roll, threshold, bonusMalus, hidden, mine }
+//        | { kind: 'card', char, cardId, mine }
+// Every string reaches the DOM through el()'s textContent: payloads are remote.
+const ROLL_ROW = { w: 214, h: 132, gap: 12, ms: 3000, cardMs: 4000 };
+
+function makeRollRow({ onLeave } = {}) {
+    const root = el('div', { className: 'roll-row' });
+    const block = el('div', { className: 'roll-row-block' });
+    root.append(block);
+    let slots = [];                    // { item, node, left } | null
+    const hovered = new Set();
+    let tick = null;
+
+    function layout() {
+        const n = slots.length;
+        if (!n) { block.style.width = block.style.height = '0px'; return; }
+        const W = Math.max(1, root.clientWidth - 32), H = Math.max(1, root.clientHeight - 32);
+        const { w, h, gap } = ROLL_ROW;
+        // The largest scale at which the block fits: a smaller card fits more per line,
+        // so the line count is recomputed at each step down.
+        const fit = s => {
+            const per = Math.max(1, Math.floor((W / s + gap) / (w + gap)));
+            const lines = Math.ceil(n / per);
+            return { per, lines, ok: (lines * h + (lines - 1) * gap) * s <= H };
+        };
+        let s = 1, f = fit(1);
+        while (!f.ok && s > .2) { s = Math.round((s - .05) * 100) / 100; f = fit(s); }
+        const { per, lines } = f;
+        const bw = Math.min(n, per) * (w + gap) - gap, bh = lines * (h + gap) - gap;
+        block.style.width = bw + 'px';
+        block.style.height = bh + 'px';
+        block.style.transform = `translate(-50%, -50%) scale(${s})`;
+        slots.forEach((slot, i) => {
+            if (!slot) return;
+            const line = Math.floor(i / per), col = i % per;
+            const count = Math.min(per, n - line * per);
+            const x0 = (bw - (count * (w + gap) - gap)) / 2;
+            slot.node.style.left = x0 + col * (w + gap) + 'px';
+            slot.node.style.top = line * (h + gap) + 'px';
+        });
+    }
+
+    function leave(slot) {
+        const i = slots.indexOf(slot);
+        if (i < 0) return;
+        slots[i] = null;
+        hovered.delete(slot.node);
+        slot.node.classList.add('leaving');
+        setTimeout(() => slot.node.remove(), 260);
+        if (slots.every(x => !x)) { slots = []; clearInterval(tick); tick = null; }
+        else layout();
+        onLeave?.(slot.item);
+    }
+
+    function push(item) {
+        const node = item.kind === 'card' ? _rollRowCard(item) : _rollRowRoll(item);
+        node.addEventListener('pointerenter', () => hovered.add(node));
+        node.addEventListener('pointerleave', () => hovered.delete(node));
+        const slot = { item, node, left: item.kind === 'card' ? ROLL_ROW.cardMs : ROLL_ROW.ms };
+        const free = slots.indexOf(null);
+        if (free >= 0) slots[free] = slot; else slots.push(slot);
+        block.append(node);
+        layout();
+        if (!tick) tick = setInterval(() => {
+            if (hovered.size) return;
+            slots.filter(Boolean).forEach(sl => { sl.left -= 100; if (sl.left <= 0) leave(sl); });
+        }, 100);
+    }
+
+    new ResizeObserver(() => layout()).observe(root);
+    return { root, push, size: () => slots.filter(Boolean).length };
+}
+
+// The verdict of a roll item: { cls, label } (none for a die or a damage roll).
+function rollVerdict(item) {
+    if (item.threshold === null || item.threshold === undefined || !Number.isFinite(+item.roll)) return null;
+    const t = rollType(+item.roll, +item.threshold);
+    return { 'crit-success': { cls: 'cs', label: 'Succès critique' }, success: { cls: 's', label: 'Succès' },
+             fail: { cls: 'f', label: 'Échec' }, 'crit-fail': { cls: 'cf', label: 'Échec critique' } }[t] || null;
+}
+
+function _rollRowRoll(item) {
+    const v = rollVerdict(item);
+    const bm = +item.bonusMalus || 0;
+    const detail = item.threshold === null || item.threshold === undefined ? ''
+        : `seuil ${item.threshold}` + (bm ? ` · mod ${bm > 0 ? '+' : ''}${bm}` : '');
+    return el('div', { className: 'roll-card' + (item.mine ? ' mine' : '') + (v ? ' v-' + v.cls : ' v-die') },
+        el('div', { className: 'rc-head' },
+            el('span', { className: 'rc-char', textContent: item.char || '—' }),
+            item.hidden && el('span', { className: 'rc-tag', textContent: 'caché' })),
+        el('div', { className: 'rc-skill', textContent: item.skillName || '' }),
+        el('div', { className: 'rc-roll', textContent: item.roll ?? '' }),
+        el('div', { className: 'rc-foot' },
+            el('span', { className: 'rc-verdict', textContent: v ? v.label : '' }),
+            el('span', { className: 'rc-detail', textContent: detail })));
+}
+
+// A card draw: the back first, then the flip everyone sees (it starts on receipt, so
+// every screen flips together).
+function _rollRowCard(item) {
+    const card = cardById(item.cardId);
+    const face = el('div');
+    if (card) renderCardFace(face, card);
+    const wrap = el('div', { className: 'rc-flip' },
+        el('div', { className: 'flip-inner' },
+            el('div', { className: 'card-back-face' }, el('div', { className: 'deck-pattern', textContent: '♛' })),
+            face));
+    setTimeout(() => wrap.classList.add('flipped'), 380);
+    return el('div', { className: 'roll-card draw' + (item.mine ? ' mine' : '') },
+        wrap,
+        el('div', { className: 'rc-draw-text' },
+            el('span', { className: 'rc-char', textContent: item.char || '—' }),
+            el('span', { className: 'rc-skill', textContent: 'tire une carte' }),
+            el('span', { className: 'rc-card-label', textContent: card ? cardLabel(card) : '?' })));
+}
+
+// One line of the thread for a roll or a draw that left the row.
+function rollThreadText(item) {
+    if (item.kind === 'card') {
+        const card = cardById(item.cardId);
+        return `tire ${card ? cardLabel(card) : 'une carte'}`;
+    }
+    const v = rollVerdict(item);
+    return `${item.skillName || 'Jet'} · ${item.roll ?? '?'}` + (v ? ` / ${item.threshold} · ${v.label}` : '');
+}
+
+// ═══════════════════════════════════════════
 //  CHAT
 // ═══════════════════════════════════════════
 // One global thread per campaign, plus a private thread per pair of participants.
@@ -2670,6 +3267,14 @@ function makeChat({ selfId, selfName, contacts }) {
         render();
     }
 
+    // A local line in a thread — a roll or a draw that left the roll row. Never
+    // published nor persisted: every client makes its own from the same Ably message,
+    // and the roll history keeps the record.
+    function note(thread, authorName, body) {
+        add({ id: uid(), thread, authorId: '', authorName, body, kind: 'note', ts: Date.now() });
+        render();
+    }
+
     function sendFrom(inputId, thread) {
         const input = $(inputId);
         if (!input) return;
@@ -2696,7 +3301,7 @@ function makeChat({ selfId, selfName, contacts }) {
         const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
         if (!msgs(thread).length) { fill(box, el('div', { className: 'chat-empty', textContent: 'Aucun message.' })); return; }
         fill(box, msgs(thread).map(m => el('div',
-            { className: 'chat-msg' + (m.authorId === selfId() ? ' mine' : '') },
+            { className: 'chat-msg' + (m.kind === 'note' ? ' note' : m.authorId === selfId() ? ' mine' : '') },
             el('div', { className: 'chat-meta' },
                 el('span', { className: 'chat-author', textContent: m.authorName || '—' }),
                 el('span', { className: 'chat-time', textContent: stamp(m.ts) })),
@@ -2745,6 +3350,6 @@ function makeChat({ selfId, selfName, contacts }) {
         if (btn) btn.classList.toggle('has-unread', unread.size > 0);
     }
 
-    return { attach, detach, reset, load, send, sendGlobal, select, render, renderContacts, post, toggleSound,
+    return { attach, detach, reset, load, send, sendGlobal, select, render, renderContacts, post, note, toggleSound,
              dmId, openWith: id => select(dmId(id)) };
 }

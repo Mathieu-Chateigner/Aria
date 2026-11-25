@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="../css/aria-fonts.css">
     <link rel="stylesheet" href="../css/aria-panel.css">
     <link rel="stylesheet" href="../css/aria-gm.css">
+    <link rel="stylesheet" href="../css/aria-play.css">
 </head>
 <body>
 
@@ -113,9 +114,15 @@
         <button class="tb-cam-toggle" id="tb-cam-toggle" onclick="cam.toggle()" style="display:none;" title="Couper ma caméra">📹</button>
         <!-- music mini chip (design frame 12) — shows the now-playing track -->
         <div class="tb-music-chip" id="tb-music-chip" style="visibility:hidden;" title="Piste en cours">
+            <button class="tb-music-play play-only" id="tb-music-play" onclick="musicTogglePlay()" title="Lecture / pause">▶</button>
             <span class="tb-music-note">♪</span>
             <span class="tb-music-title" id="tb-music-title">—</span>
+            <input class="tb-music-vol play-only" id="tb-music-vol" type="range" min="0" max="100" value="80"
+                   oninput="onGMMusicVolumeChange(this.value)" title="Volume">
         </div>
+        <!-- vue de jeu: pending moves; a click centres the map on the oldest -->
+        <button class="tb-flag play-only" id="tb-flag" onclick="focusOldestMove()" style="visibility:hidden;"
+                title="Déplacements en attente — centrer sur le plus ancien">⚑ <span id="tb-flag-n">0</span></button>
         <div class="tb-sep"></div>
         <!-- join code chip (design frame 12) — click to copy -->
         <div class="topbar-joincode" id="tb-joincode" onclick="copyJoinCode()" title="Code de campagne — cliquer pour copier" style="display:none;">—</div>
@@ -546,6 +553,58 @@
                 </div>
             </div>
         </div>
+
+        <!-- VUE DE JEU — right column. mountPlayUI() moves the roll feed here; the
+             Joueurs pane (player cards + cameras) sits above it when a map holds the centre. -->
+        <aside class="play-side play-only" id="play-side"></aside>
+    </div>
+
+    <!-- VUE DE JEU — bottom bar (specs/2026-11-25-vue-de-jeu-design.md). Follows the
+         selected monster (click a card in Monstres); with none, only Jet MJ + dice. -->
+    <footer class="play-bar play-only" id="play-bar">
+        <div class="pb-char pb-target">
+            <div class="pb-portrait" id="pb-portrait" aria-hidden="true"></div>
+            <div class="pb-char-body">
+                <div class="pb-char-head">
+                    <span class="pb-name" id="pb-name">—</span>
+                    <span class="pb-meta" id="pb-armor"></span>
+                    <button class="pb-deselect" onclick="selectMonster(null)" title="Désélectionner">✕</button>
+                </div>
+                <div class="pb-hp-line"><span class="pb-hp-num" id="pb-hp-num"></span><span class="pb-hp-max" id="pb-hp-max"></span></div>
+                <div class="pb-hp-ctl">
+                    <button class="pb-ctl dmg" onclick="gmBarHP(-1)">− Dégâts</button>
+                    <input class="pb-ctl-val" id="pb-hp-val" type="text" inputmode="numeric" aria-label="Valeur" oninput="this.value=this.value.replace(/[^0-9]/g,'')" onkeydown="if(event.key==='Enter')gmBarHP(-1)" />
+                    <button class="pb-ctl heal" onclick="gmBarHP(1)">+ Soin</button>
+                </div>
+            </div>
+        </div>
+        <button class="pb-empty" onclick="toggleDrawer('tab-monsters')">Aucun monstre sélectionné<span>Cliquez une carte dans Monstres</span></button>
+        <div class="pb-sep pb-target"></div>
+        <div class="pb-pins pb-target">
+            <span class="pb-pins-label">Attaques</span>
+            <div class="pb-pin-list" id="pb-pins"></div>
+        </div>
+        <div class="pb-sep"></div>
+        <div class="pb-roll">
+            <div class="pb-gm-roll" id="pb-gm-roll">
+                <span class="pb-meta">Jet MJ · toujours caché</span>
+                <label class="pb-meta" for="pb-gm-seuil">Seuil</label>
+                <input class="pb-ctl-val" id="pb-gm-seuil" type="text" inputmode="numeric" placeholder="50" oninput="this.value=this.value.replace(/[^0-9]/g,'')" onkeydown="if(event.key==='Enter')gmBarRoll()" />
+                <button class="pb-d100" onclick="gmBarRoll()">d100</button>
+            </div>
+            <div class="pb-dice" id="pb-dice">
+                <button class="pb-die" onclick="gmRollDie(4)">d4</button>
+                <button class="pb-die" onclick="gmRollDie(6)">d6</button>
+                <button class="pb-die" onclick="gmRollDie(8)">d8</button>
+                <button class="pb-die" onclick="gmRollDie(10)">d10</button>
+                <button class="pb-die" onclick="gmRollDie(20)">d20</button>
+                <button class="pb-die" onclick="gmRollDie(100)">d100</button>
+            </div>
+        </div>
+    </footer>
+    <!-- The last GM roll, above the bar. mountPlayUI() moves #gm-roll-result in. -->
+    <div class="pb-result play-only" id="pb-gm-result">
+        <button class="pb-result-close" onclick="this.parentElement.classList.remove('show')" title="Fermer">✕</button>
     </div>
 
 
@@ -579,6 +638,7 @@
         <input class="config-input" id="cfg-youtube-key" type="password" autocomplete="off" placeholder="AIzaSy…" />
         <button class="config-save-btn" onclick="saveConfig()">Reconnecter</button>
         <button class="config-save-btn" style="margin-top:8px;background:rgba(169,139,221,.10);" onclick="copyOverlayUrl()">Copier URL Overlay (OBS)</button>
+        <button class="config-save-btn" id="cfg-ui-toggle" style="margin-top:8px;background:none;border:1px solid var(--line2);" onclick="toggleUiOld()">Interface</button>
     </div>
 
 

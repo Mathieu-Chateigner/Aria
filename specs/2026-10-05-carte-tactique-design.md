@@ -117,6 +117,9 @@ Accent par panneau inchangé : `--gold` = braise côté joueur, violet côté MJ
 
 ### Ce qui reste ouvert avec la Table
 
+**Tranché le 2026-11-25** : la carte est le centre de l'écran de jeu — voir
+`specs/2026-11-25-vue-de-jeu-design.md`. Texte d'origine :
+
 L'écran Table n'est pas tranché : la carte y sera-t-elle un onglet, le fond de
 l'écran, autre chose ? Le plan n'en dépend pas. Une seule précaution, qui ne
 coûte rien : le rendu partagé de la phase 0 (`mapView(container, …)`) ne suppose
@@ -256,7 +259,8 @@ alter table campaign_maps
 | `token-move` | joueur → MJ | `{ tokenId, x, y }` — accepté si `msg.clientId` contrôle le jeton |
 | `move-denied` | MJ → joueur | `{ tokenId }` (existe, généralisé) |
 | `ping` | tous → tous | `{ x, y, focus }` — `focus` réservé au MJ (`ablyFromGM`) |
-| `ruler` | tous → tous | `{ pts: [[x,y]…] }` ou `null` pour effacer — éphémère, jamais stocké |
+| `ruler` | tous → tous | `{ pts: [[x,y],[x,y]] }` ou `{ pts: null }` pour effacer — éphémère, jamais stocké, ≈ 10/s |
+| `view` | MJ → joueurs | `{ mapId, x, y, k }` — centre de la vue du MJ (unités de la carte) et zoom, pour « Suivre le MJ » ; anti-rebond 300 ms, renvoyé sur `request` |
 
 `ping` et `ruler` ne touchent pas l'état : volatils, pas de persistance, pas de
 `state`. Vérifier que le jeton `ably-token` laisse les joueurs publier sur
@@ -313,11 +317,17 @@ rendu joueur, widget overlay (`syncMapWidget` gère `kind`). PV en barre fine.
 *Vérif* : un joueur ne peut pas bouger le jeton d'un autre en forgeant
 `tokenId` ; un jeton `hidden` n'est ni dans le panneau joueur ni sur l'overlay.
 
-**Phase 3 — Règle et ping** (≈ ½ jour). Clic droit-glisser = règle, partagée en
+**Phase 3 — Règle et ping** (≈ ½ jour). *Codée le 2026-11-25 avec l'étape 5 de
+`specs/2026-11-25-vue-de-jeu-design.md` (outil `M`, « Suivre le MJ », overlay).* Clic droit-glisser = règle, partagée en
 direct ; clic long = ping (onde CSS), Maj + clic long côté MJ = recentre tous les
 écrans. Rien de persistant.
 
-**Phase 4 — Brouillard manuel** (≈ 1 jour). Outils MJ : révéler/cacher au
+**Phase 4 — Brouillard manuel** (≈ 1 jour). *Codée le 2026-11-25 (étape 6 de
+`specs/2026-11-25-vue-de-jeu-design.md`). Forme retenue, plus simple à rejouer que
+`{ on, revealed }` : `fog = { base: 'dark' | 'clear', ops: [{ t: 'r' | 'h', pts }] }`,
+les ops rejouées dans l'ordre ; dans `state` sous `fogMask` (`state.fog` porte déjà les
+zones des lieux non découverts). Carte d'avant le brouillard (`fog` null) = tout révélé ;
+nouvelle carte = tout noir. Chaque joueur voit toujours son propre jeton.* Outils MJ : révéler/cacher au
 rectangle et au polygone (l'éditeur de tracé de zones existe déjà —
 `_zoneEditLayer`, `_zoneDragVertex` — on le réutilise). `<mask>` SVG dans les
 trois rendus, MJ translucide / joueur opaque, overlay via `_owZones`. Bouton

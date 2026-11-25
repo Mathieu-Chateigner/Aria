@@ -1084,6 +1084,29 @@ body.shake {
 .ow-map-zones  { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .ow-zone-known { fill: rgba(var(--map-player-rgb), .06); stroke: rgba(var(--map-player-rgb), .55); stroke-width: 1.25; }
 .ow-zone-fog   { fill: var(--ink); stroke: none; filter: url(#ow-map-soft); }
+/* Manual fog of a tactical map, as the table sees it. */
+.ow-map-fog { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.ow-fog-ink { fill: var(--ink); }
+/* Rulers and pings from the table, as in the panels: ember for a player, violet for the GM. */
+.ow-map-fx { position: absolute; inset: 0; pointer-events: none; }
+.ow-ruler { position: absolute; inset: 0; --fx: var(--ember); transition: opacity .4s; }
+.ow-ruler.gm, .ow-ping.gm { --fx: var(--violet); }
+.ow-ruler.fading { opacity: 0; }
+.ow-ruler svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.ow-ruler line { stroke: var(--fx); stroke-width: 2.5; stroke-dasharray: 7 5; filter: drop-shadow(0 0 2px #000); }
+.ow-ruler-label { position: absolute; transform: translate(14px, -50%); white-space: nowrap;
+                  font-family: ui-monospace, Menlo, monospace; font-size: 11px; letter-spacing: .06em; color: var(--warm);
+                  background: var(--map-scrim); border: 1px solid var(--fx); border-radius: 3px; padding: 3px 7px; }
+.ow-ping { position: absolute; width: 0; height: 0; --fx: var(--ember); }
+.ow-ping i { position: absolute; left: -22px; top: -22px; width: 44px; height: 44px; border-radius: 50%;
+             border: 2px solid var(--fx); box-shadow: 0 0 12px var(--fx); transform: scale(.2);
+             animation: ow-ping 1.2s ease-out forwards; }
+.ow-ping i + i { animation-delay: .25s; }
+@keyframes ow-ping { to { transform: scale(1.6); opacity: 0; } }
+.ow-ping-name { position: absolute; left: 0; top: 28px; transform: translateX(-50%); white-space: nowrap;
+                font-family: 'Archivo', sans-serif; font-size: 11px; font-weight: 600; color: var(--fx); text-shadow: 0 1px 4px #000;
+                animation: ow-ping-name 1.2s forwards; }
+@keyframes ow-ping-name { 70% { opacity: 1; } to { opacity: 0; } }
 /* Pins: zero-size anchor on the coordinate, name and tokens hanging below (as in the panels). */
 .ow-map-pins { position: absolute; inset: 0; }
 .ow-map-pin { position: absolute; width: 0; height: 0; }

@@ -165,7 +165,23 @@ function _owZones(charId) {
     const blur = Math.max(_owVB().w, _owVB().h) * .006;
     const soft = `<defs><filter id="ow-map-soft" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="${blur}"/></filter></defs>`;
     const vb = _owVB();
-    return _owGrid() + `<svg class="ow-map-zones" viewBox="0 0 ${vb.w} ${vb.h}" preserveAspectRatio="none">${soft}${clear}${fog}</svg>`;
+    return _owGrid() + `<svg class="ow-map-zones" viewBox="0 0 ${vb.w} ${vb.h}" preserveAspectRatio="none">${soft}${clear}${fog}</svg>` + _owFog();
+}
+
+// The manual fog of a tactical map, as the table sees it (_mapFogLayer in the panels):
+// opaque ink cut by a mask replaying the ops. mapFog() has already checked every number,
+// so only numbers reach the string.
+function _owFog() {
+    const fog = mapFog({ kind: mapState?.kind, fog: mapState?.fogMask });
+    if (!fog) return '';
+    const vb = _owVB();
+    const pad = `x="${-vb.w * .1}" y="${-vb.h * .1}" width="${vb.w * 1.2}" height="${vb.h * 1.2}"`;
+    const ops = fog.ops.map(o => `<polygon points="${o.pts.map(q => q.join(',')).join(' ')}" fill="${o.t === 'h' ? '#fff' : '#000'}"/>`).join('');
+    return `<svg class="ow-map-fog" viewBox="0 0 ${vb.w} ${vb.h}" preserveAspectRatio="none"><defs>`
+         + `<filter id="ow-fog-soft" filterUnits="userSpaceOnUse" ${pad}><feGaussianBlur stdDeviation="${Math.max(vb.w, vb.h) * .006}"/></filter>`
+         + `<mask id="ow-fog-mask" maskUnits="userSpaceOnUse" ${pad}><g filter="url(#ow-fog-soft)">`
+         + `<rect ${pad} fill="${fog.base === 'dark' ? '#fff' : '#000'}"/>${ops}</g></mask></defs>`
+         + `<rect class="ow-fog-ink" x="0" y="0" width="${vb.w}" height="${vb.h}" mask="url(#ow-fog-mask)"/></svg>`;
 }
 
 // Create the <img> once and only re-assign src when it differs — the setFrameSrc guard,
@@ -183,7 +199,7 @@ function syncMapWidget(el, widget) {
     let img = el.querySelector('img.ow-map-img');
     if (!img) {
         console.log('[OVERLAY] map widget', widget.id, '→ new image |', mapState.imageUrl);
-        el.innerHTML = `<div class="ow-map"><div class="ow-map-frame"><img class="ow-map-img" src="${esc(mapState.imageUrl)}" alt=""><div class="ow-map-zones-wrap"></div><div class="ow-map-pins"></div></div></div>`;
+        el.innerHTML = `<div class="ow-map"><div class="ow-map-frame"><img class="ow-map-img" src="${esc(mapState.imageUrl)}" alt=""><div class="ow-map-zones-wrap"></div><div class="ow-map-pins"></div><div class="ow-map-fx"></div></div></div>`;
         img = el.querySelector('img.ow-map-img');
     } else if (img.getAttribute('src') !== mapState.imageUrl) {
         console.log('[OVERLAY] map widget', widget.id, '→ re-src |', mapState.imageUrl);
@@ -219,6 +235,86 @@ function syncMapWidget(el, widget) {
              + `<span class="ow-map-label">${esc(p.name)}</span>`
              + `<span class="ow-map-tokens">${tokens}</span></div>`;
     }).join('');
+}
+
+// Rulers and pings at the table ('aria-map' / 'ruler', 'ping'), drawn over every map widget
+// and gone after a moment — nothing is stored. The author is msg.clientId: a message with
+// none came from an overlay token and is dropped. The name is the state's roster, never the
+// payload's. Nodes are built with textContent: nothing from Ably becomes markup.
+const _owRulers = new Map();   // clientId → { a, b, cls, name, fading, timer }
+function _owAuthor(id) {
+    return String(id).startsWith('gm-') ? { cls: 'gm', name: 'MJ' } : { cls: 'pj', name: String(mapState?.players?.[id] || '') };
+}
+function _owFxLayers() {
+    return [...document.querySelectorAll('.ow-map-frame')].map(f => {
+        let l = f.querySelector('.ow-map-fx');
+        if (!l) { l = document.createElement('div'); l.className = 'ow-map-fx'; f.appendChild(l); }
+        return l;
+    });
+}
+function _owDrawRulers() {
+    const g = mapGrid(mapState), vb = _owVB();
+    for (const layer of _owFxLayers()) {
+        layer.querySelectorAll('.ow-ruler').forEach(n => n.remove());
+        if (!g) continue;
+        for (const r of _owRulers.values()) {
+            const node = document.createElement('div');
+            node.className = 'ow-ruler ' + r.cls + (r.fading ? ' fading' : '');
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('viewBox', `0 0 ${vb.w} ${vb.h}`);
+            svg.setAttribute('preserveAspectRatio', 'none');
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            [['x1', r.a.x], ['y1', r.a.y], ['x2', r.b.x], ['y2', r.b.y]].forEach(([k, n]) => line.setAttribute(k, n));
+            line.setAttribute('vector-effect', 'non-scaling-stroke');
+            svg.appendChild(line);
+            const lab = document.createElement('div');
+            lab.className = 'ow-ruler-label';
+            lab.textContent = (r.name ? r.name + ' · ' : '') + gridDistance(r.a, r.b, g).text;
+            lab.style.left = r.b.x / vb.w * 100 + '%';
+            lab.style.top = r.b.y / vb.h * 100 + '%';
+            node.append(svg, lab);
+            layer.appendChild(node);
+        }
+    }
+}
+function _owRuler(msg) {
+    const id = msg.clientId, pts = msg.data?.pts;
+    if (!id || !mapState) return;
+    const cur = _owRulers.get(id);
+    clearTimeout(cur?.timer);
+    const ok = Array.isArray(pts) && pts.length === 2
+        && pts.every(q => Array.isArray(q) && q.length === 2 && q.every(n => Number.isFinite(+n)));
+    const release = () => {
+        const r = _owRulers.get(id); if (!r) return;
+        r.timer = setTimeout(() => {
+            r.fading = true; _owDrawRulers();
+            r.timer = setTimeout(() => { _owRulers.delete(id); _owDrawRulers(); }, 400);
+        }, 2000);
+    };
+    if (!ok) { release(); return; }
+    const vb = _owVB(), P = q => ({ x: Math.min(vb.w, Math.max(0, +q[0])), y: Math.min(vb.h, Math.max(0, +q[1])) });
+    const r = { a: P(pts[0]), b: P(pts[1]), ..._owAuthor(id), fading: false };
+    _owRulers.set(id, r);
+    r.timer = setTimeout(release, 5000);   // a lost release fades all the same
+    _owDrawRulers();
+}
+function _owPing(msg) {
+    const id = msg.clientId, d = msg.data || {};
+    if (!id || !mapState || !Number.isFinite(+d.x) || !Number.isFinite(+d.y)) return;
+    const vb = _owVB(), who = _owAuthor(id);
+    const x = Math.min(vb.w, Math.max(0, +d.x)), y = Math.min(vb.h, Math.max(0, +d.y));
+    for (const layer of _owFxLayers()) {
+        const node = document.createElement('div');
+        node.className = 'ow-ping ' + who.cls;
+        node.style.left = x / vb.w * 100 + '%';
+        node.style.top = y / vb.h * 100 + '%';
+        const name = document.createElement('span');
+        name.className = 'ow-ping-name';
+        name.textContent = who.name;
+        node.append(document.createElement('i'), document.createElement('i'), name);
+        layer.appendChild(node);
+        setTimeout(() => node.remove(), 1200);
+    }
 }
 
 let rollDismiss = null;
@@ -344,6 +440,8 @@ function startAbly() {
     // browser source its picture back mid-session.
     const mapCh = ably.channels.get(campaignChannel('aria-map'));
     mapCh.subscribe('state', msg => { if (!ablyFromGM(msg)) return; mapState = msg.data || null; renderWidgetLayer(); });
+    mapCh.subscribe('ruler', _owRuler);
+    mapCh.subscribe('ping', _owPing);
     mapCh.publish('request', {});
 
     if (OVERLAY_ID) {

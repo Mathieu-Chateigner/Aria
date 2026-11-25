@@ -102,8 +102,8 @@ assert.deepStrictEqual(fakeParent.kids, ['a', 'b', 'c']);
 // Loaded by all four pages, so both filters are written once. They decide what each
 // spectator sees; a divergence here is a leak on stream.
 const sbSrc = fs.readFileSync(__dirname + '/aria-supabase.js', 'utf8');
-const { visiblePois, fogZones, mapVB, mapGrid, gridSnap, gridCalib, gridDistance, visibleTokens } =
-    new Function(sbSrc + '\nreturn { visiblePois, fogZones, mapVB, mapGrid, gridSnap, gridCalib, gridDistance, visibleTokens };')();
+const { visiblePois, fogZones, mapVB, mapGrid, gridSnap, gridCalib, gridDistance, visibleTokens, mapFog, fogVisible } =
+    new Function(sbSrc + '\nreturn { visiblePois, fogZones, mapVB, mapGrid, gridSnap, gridCalib, gridDistance, visibleTokens, mapFog, fogVisible };')();
 
 // ── Tactical map geometry ─────────────────────────────────────────────────────
 // A world map works in percentages, a tactical one in image pixels.
@@ -132,6 +132,26 @@ assert.strictEqual(gridDistance({ x: 0, y: 0 }, { x: 70, y: 0 }, { cell: 70, per
 assert.deepStrictEqual(visibleTokens({ tokens: [{ id: 'a', x: 1, y: 1 }, { id: 'b', x: 2, y: 2, hidden: true }] }, 'alice').map(t => t.id), ['a']);
 assert.deepStrictEqual(visibleTokens({ tokens: 'x' }, null), []);
 assert.deepStrictEqual(visibleTokens({ tokens: [null, { id: 'c', x: 'nope', y: 1 }] }, null), []);
+
+// ── Manual fog (carte tactique, phase 4) ─────────────────────────────────────
+// A dark map with one revealed square (0..100) and a covered square inside it (40..60).
+const sq = (a, b) => [[a, a], [b, a], [b, b], [a, b]];
+const fogSt = { kind: 'tactique', fogMask: { base: 'dark', ops: [{ t: 'r', pts: sq(0, 100) }, { t: 'h', pts: sq(40, 60) }] },
+    tokens: [{ id: 'lit', x: 10, y: 10 }, { id: 'dark', x: 200, y: 200 }, { id: 'covered', x: 50, y: 50 },
+             { id: 'mine', x: 300, y: 300, own: 'alice' }, { id: 'bob', x: 250, y: 250, own: 'bob' }] };
+// A token in an unrevealed area is not in a player's visibleTokens — another player's too;
+// our own always is.
+assert.deepStrictEqual(visibleTokens(fogSt, 'alice').map(t => t.id), ['lit', 'mine']);
+assert.deepStrictEqual(visibleTokens(fogSt, null).map(t => t.id), ['lit']);   // overlay, no charId
+// A world map ignores fog; a map from before the fog (null) is fully revealed.
+assert.strictEqual(visibleTokens({ ...fogSt, kind: 'monde' }, null).length, 5);
+assert.strictEqual(mapFog({ kind: 'tactique', fog: null }), null);
+assert.strictEqual(mapFog({ kind: 'tactique', fog: { base: 'clear', ops: [] } }), null);
+// Garbage from Ably: bad ops dropped, never a throw.
+assert.deepStrictEqual(mapFog({ kind: 'tactique', fog: { base: 'dark', ops: [null, { t: 'x', pts: sq(0, 1) }, { t: 'r', pts: 'no' }, { t: 'r', pts: [[0, 0], [1, 1]] }] } }),
+    { base: 'dark', ops: [] });
+assert.strictEqual(fogVisible({ base: 'clear', ops: [{ t: 'h', pts: sq(0, 10) }] }, 5, 5), false);
+assert.strictEqual(fogVisible({ base: 'clear', ops: [{ t: 'h', pts: sq(0, 10) }] }, 15, 5), true);
 
 const poiA = { id: 'a', name: 'Taverne', x: 10, y: 10, publicDesc: 'ok', discoveredBy: ['alice'], zone: [] };
 const poiB = { id: 'b', name: 'Crypte',  x: 20, y: 20, publicDesc: '',   discoveredBy: ['bob'],   zone: [[0,0],[10,0],[10,10]] };

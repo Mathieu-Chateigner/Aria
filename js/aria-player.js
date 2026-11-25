@@ -14,7 +14,143 @@ ARIA.configure({
     clearLocal:   () => _clearLocalPlayerData(),
     afterRestore: () => restoreLastCharacter(),
     onMusicPhase: (phase, track) => { if (phase === 'start') _updatePlayerMusicBar(track); },
+    drawers:      () => !UI_OLD,
+    stagePane:    () => playStagePane(),
+    sidePane:     () => playStagePane() === 'tab-map' && _tabShown('tab-cameras') ? 'tab-cameras' : null,
+    // Vue de jeu shortcuts: Esc puts the ruler down first; M measures, F follows the GM.
+    escape:       () => { if (!mapRuler) return false; mapRuler = false; renderMapTab(); return true; },
+    keys:         () => mapState?.imageUrl ? { m: toggleMapRuler, f: followGM } : null,
 });
+
+// ═══════════════════════════════════════════
+//  VUE DE JEU — frame (specs/2026-11-25-vue-de-jeu-design.md, step 1)
+// ═══════════════════════════════════════════
+// The new layout is the old page's nodes moved into new regions at load, before
+// initApp: the tab bar becomes the section rail, the HP bar / karma / modifier
+// cluster go to the bottom bar, the table thread to the right column. Every id and
+// handler stays the one the rest of this file already uses, which is what lets
+// `?ui=old` keep the previous screen for one release with no second copy of the
+// page. Nothing is moved after initApp — a moved iframe reloads.
+
+// Rail order and labels. Compétences opens from the bottom bar ("Toutes les
+// compétences"); the stage and side panes are hidden from the rail by CSS.
+const PLAY_RAIL = [
+    ['tab-char', 'Fiche'], ['tab-stats', 'Stats'], ['tab-inventory', 'Sac'],
+    ['tab-alchemy', 'Alchimie'], ['tab-cards', 'Cartes'], ['tab-notes', 'Notes'],
+    ['tab-files', 'Docs'], ['tab-free', 'Jet libre'], ['tab-chat', 'Messages'],
+    ['tab-map', 'Carte'], ['tab-cameras', 'Caméras'], ['tab-skills', null],
+];
+
+// The roll row over the centre (step 7): every roll and draw of the table; a card that
+// leaves it becomes a line of the table thread. null under ?ui=old (float card + toast).
+let rollRow = null;
+
+function mountPlayUI() {
+    if (UI_OLD) return;
+    mountPlayRail(PLAY_RAIL);
+    rollRow = makeRollRow({ onLeave: it => chat.note('global', it.char, rollThreadText(it)) });
+    document.querySelector('.main').append(rollRow.root);
+    mountFil();
+    mountPlayNarrow('Ouvrir ma fiche', () => character?.campaignKey
+        ? 'aria-fiche.html?camp=' + encodeURIComponent(character.campaignKey) : 'aria-hub.html');
+    playMove('#hp-number-wrap', 'pb-hp');
+    playMove('.hp-bar-wrap', 'pb-hp');
+    playMove('.tb-karma', 'pb-karma');
+    playMove('.tb-mod', 'pb-mod');
+    playMove('.sidebar-chat', 'play-side');
+    // The cameras are always on screen here (centre, or the right column under a
+    // map), so the three presence densities have nothing left to do: no Bandeau
+    // rail (it would double every viewer), no Tablée stage, no Réduit dots. Not
+    // persisted — ?ui=old gets the saved mode back.
+    presenceMode = 'play';
+}
+
+// Drawer open while the map holds the centre: the camera column folds into round
+// portraits (CSS only — the iframes never move) and the table thread hides behind a
+// « Fil » button, which floats it over the column. Closing the drawer gives the column
+// back (applyDrawerLayout drops .fil-open). The dot counts the messages that arrived
+// while the thread was out of sight; roll lines (.note) don't count.
+function mountFil() {
+    const main = document.querySelector('.main'), content = document.querySelector('.content');
+    const log = document.getElementById('chat-global-log');
+    const fil = el('button', { className: 'play-fil', title: 'Afficher le fil de la table',
+        onclick: () => { main.classList.toggle('fil-open'); sync(); } },
+        el('span', { textContent: 'Fil' }), el('span', { className: 'play-fil-dot' }));
+    main.append(fil);
+    let seen = 0;
+    function sync() {
+        const n = log ? log.querySelectorAll('.chat-msg:not(.note)').length : 0;
+        const away = content.classList.contains('drawer-open') && content.classList.contains('has-side')
+                  && !main.classList.contains('fil-open');
+        if (!away || n < seen) seen = n;
+        fil.classList.toggle('unread', n > seen);
+        fil.classList.toggle('on', main.classList.contains('fil-open'));
+    }
+    if (log) new MutationObserver(sync).observe(log, { childList: true });
+    new MutationObserver(sync).observe(content, { attributes: true, attributeFilter: ['class'] });
+    sync();
+}
+
+// What fills the centre: the shared map, else the cameras, else the placeholder.
+function playStagePane() {
+    if (_tabShown('tab-map')) return 'tab-map';
+    if (_tabShown('tab-cameras')) return 'tab-cameras';
+    return null;
+}
+
+// The skills the combat reactions roll under (see *Combat reactions* in CLAUDE.md).
+function reactionSkills() {
+    const all = [...(character.skills || []), ...(character.specials || [])];
+    const modern = character.ariaType === 'contemporary';
+    return {
+        parry: all.find(sk => modern ? /tabasser/i.test(sk.name) : /combat.rapproch/i.test(sk.name)),
+        dodge: all.find(sk => modern ? /réflexes/i.test(sk.name) : /esquiv/i.test(sk.name)),
+    };
+}
+
+// ★ in the Compétences list. Stored on the skill object itself, which is part of the
+// characters JSON column — so pins follow the character to every device, like `bonus`.
+function toggleSkillPin(sk) {
+    if (sk.pinned) delete sk.pinned; else sk.pinned = true;
+    commitCharacter();
+}
+
+// Bottom bar: identity, armour, pinned skills. Called from renderCombatSidebar(),
+// so the pinned thresholds follow the modifier like every other live preview.
+function renderPlayBar() {
+    if (UI_OLD || !character) return;
+    const name = character.name || '—';
+    document.getElementById('pb-name').textContent = name;
+    document.getElementById('pb-portrait').textContent =
+        name.split(/\s+/).filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+    const prot = character.protection || {};
+    document.getElementById('pb-armor').textContent = prot.valeur ? `armure ${prot.valeur}` : '';
+
+    const skillPin = (sk, label) => el('button', {
+        className: 'pb-pin', title: label,
+        onclick: () => sk.name === 'Soigner'
+            ? openSoignerTargetPicker(sk.pct + (+sk.bonus || 0))
+            : doRoll(label, sk.pct + (+sk.bonus || 0)),
+    },
+        el('span', { className: 'pb-pin-label', textContent: label }),
+        el('span', { className: 'pb-pin-val', textContent: rollThreshold(sk.pct, { bonus: +sk.bonus || 0 }) }));
+    const pinned = [...(character.skills || []), ...(character.specials || [])].filter(sk => sk.pinned);
+    let pins;
+    if (pinned.length) pins = pinned.map(sk => skillPin(sk, sk.name));
+    else {
+        // Nothing pinned yet: offer the combat reactions, as the old sidebar did.
+        const { parry, dodge } = reactionSkills();
+        pins = [parry && skillPin(parry, 'Parade'), dodge && skillPin(dodge, dodge.name)];
+    }
+    const weapons = (character.weapons || []).filter(w => w.nom.trim() && w.favourite && w.degats && w.degats.trim());
+    pins.push(...weapons.map(w => el('button', {
+        className: 'pb-pin pb-pin-weapon', title: `${w.nom} — dégâts`,
+        onclick: () => rollWeaponDamage(w.nom, w.degats),
+    },
+        el('span', { className: 'pb-pin-label', textContent: w.nom }),
+        el('span', { className: 'pb-pin-val', textContent: w.degats }))));
+    fill(document.getElementById('pb-pins'), ...pins);
+}
 
 // ═══════════════════════════════════════════
 //  STATE
@@ -48,6 +184,18 @@ let ablyMap = null;
 let mapState = null;         // last public map state received (or the cached one)
 let mapSelectedPoiId = null;
 let mapPendingPoiId = null;   // request sent, waiting for the token to move
+let mapFollow = true;         // « Suivre le MJ »: on whenever a new map is shown, off at a hand on the map
+let mapGMView = null;         // last view the GM sent ({ mapId, x, y, k }), applied while following
+let mapRuler = false;         // the measuring tool (M); a right-click drag measures anyway
+// Rulers and pings at the table, shared with the GM panel (makeMapFx in aria-shared.js).
+const mapFx = makeMapFx({
+    stage: () => document.getElementById('map-stage'),
+    conn: () => ablyInstance?.connection?.id,
+    nameOf: id => String(id).startsWith('gm-') ? 'MJ' : String(mapState?.players?.[id] || ''),
+    selfCls: 'pj',
+    selfName: () => character?.name || '',
+    onFocus: p => mapViewFocus(document.getElementById('map-stage'), p),
+});
 let mapTokenMove = null;      // { tokenId, x, y, denied } — own token move sent on a validated map
 let mapDeniedPoiId  = null;   // last refusal — holds until the player asks again, with no
                                // timeout: only requestMove() clears it, so a player who never
@@ -572,6 +720,7 @@ function resetCameraState() {
 //  INIT
 // ═══════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', async () => {
+    mountPlayUI();
     migrateIfNeeded();
     await tryRestoreSupabase();
 });
@@ -630,6 +779,7 @@ function renderTabLayout() {
     if (openPanes.includes('tab-cameras')) renderCamerasTab();
     if (openPanes.includes('tab-chat')) chat.render();   // clears its unread mark
     renderPresenceUI(); // the rail hides while the Cameras pane is open
+    document.getElementById('pb-all')?.classList.toggle('active', drawerPane === 'tab-skills');
     finishTabLayout();
 }
 
@@ -1170,8 +1320,25 @@ function renderCamerasTab() {
     // all, and renderPresenceUI() suppresses the rail while this pane is open, so a
     // player in Bandeau with Caméras docked saw the spotlight nowhere.
     const spot = spotlightSid();
-    grid.querySelectorAll('.camera-cell').forEach(cell =>
-        cell.classList.toggle('spotlit', !!spot && cellSid(cell) === spot));
+    // HP under the round portraits of the vue de jeu (shown by CSS only there).
+    // shortcut: our own HP refreshes with the next camera render, not on every hit.
+    const hpOf = new Map();
+    peerCameras.forEach(p => { if (p.streamId && Number.isFinite(+p.hp)) hpOf.set(p.streamId, `${+p.hp} / ${+p.maxHP || '?'} PV`); });
+    let spotShown = false;
+    grid.querySelectorAll('.camera-cell').forEach(cell => {
+        const sid = cellSid(cell);
+        const lit = !!spot && sid === spot;
+        spotShown ||= lit;
+        cell.classList.toggle('spotlit', lit);
+        // The vue de jeu's camera column puts the MJ tile first and full width — or the
+        // GM's Projecteur pick, while there is one (.has-spot).
+        cell.toggleAttribute('data-gm', !!gmStreamId && sid === gmStreamId);
+        const hp = cell.dataset.self ? `${currentHP} / ${getMaxHP()} PV` : hpOf.get(sid);
+        let hpEl = cell.querySelector('.camera-hp');
+        if (hp && !hpEl) cell.append(hpEl = el('div', { className: 'camera-hp' }));
+        if (hpEl) { if (hp) hpEl.textContent = hp; else hpEl.remove(); }
+    });
+    grid.classList.toggle('has-spot', spotShown);
     if (presenceMode === 'tablee') applyStageMain();
     cam.renderDevicePick('cam-device-pick');
     applyCamSize(false);
@@ -1512,6 +1679,15 @@ function commitCharacter({ editors = false } = {}) {
     if (editors) renderEditors();
 }
 
+// ★/☆ toggle at the head of a skill row (vue de jeu only — hidden by CSS otherwise).
+function pinBtn(sk) {
+    return el('button', {
+        className: 'skill-pin' + (sk.pinned ? ' on' : ''), textContent: sk.pinned ? '★' : '☆',
+        title: sk.pinned ? 'Retirer de la barre' : 'Épingler dans la barre',
+        onclick: e => { e.stopPropagation(); toggleSkillPin(sk); },
+    });
+}
+
 // Render the skills and specials lists (sorted) with effective percentages applied.
 function renderSkills() {
     const list = document.getElementById('skill-list');
@@ -1525,6 +1701,7 @@ function renderSkills() {
         div.dataset.skillName = skill.name;
         div.dataset.skillIdx = idx; // index into character.skills — survives duplicate names
         fill(div,
+            pinBtn(skill),
             el('span', { className: 'skill-name', textContent: skill.name }),
             bonus && el('span', { className: 'skill-mod', title: 'Modificateur permanent', textContent: `${bonus > 0 ? '+' : ''}${bonus}` }),
             skill.link && el('span', { className: 'skill-link', textContent: skill.link }),
@@ -1548,6 +1725,7 @@ function renderSkills() {
         div.dataset.skillIdx = idx;
         div.style.borderColor = 'rgba(236,164,86,.3)';
         fill(div,
+            pinBtn(sp),
             el('div', { className: 'skill-name-wrap' },
                 el('span', { className: 'skill-name', textContent: sp.name }),
                 sp.desc && el('span', { className: 'skill-desc', textContent: sp.desc })),
@@ -1635,11 +1813,9 @@ function renderCombatSidebar() {
     const section = (label, ...kids) => el('div', { className: 'sb-section' },
         el('div', { className: 'sb-label', textContent: label }), ...kids);
 
+    renderPlayBar();
     // 1 · Reactions (Parade / Esquive) — two cards
-    const allSkills = [...(character.skills || []), ...(character.specials || [])];
-    const isContemporary = character.ariaType === 'contemporary';
-    const parrySkill = allSkills.find(sk => isContemporary ? /tabasser/i.test(sk.name) : /combat.rapproch/i.test(sk.name));
-    const dodgeSkill = allSkills.find(sk => isContemporary ? /réflexes/i.test(sk.name) : /esquiv/i.test(sk.name));
+    const { parry: parrySkill, dodge: dodgeSkill } = reactionSkills();
     const reactBtn = (sk, label) => el('button', { className: 'react-btn', textContent: label,
         // Roll under the button's label: the toast/overlay/GM feed should say
         // "Parade", not the underlying skill ("Combat rapproché").
@@ -1705,6 +1881,11 @@ function rollDie(sides) {
 
 // Show a weapon damage result on the float card and publish it to Ably.
 function _showWeaponDamageResult(name, formula, result) {
+    if (showOwnRoll({ skillName: `${name} (dégâts)`, threshold: null, roll: result.total })) {
+        publishRoll({ skillName: `${name} (dégâts)`, threshold: null, roll: result.total, success: null, char: character.name, bonusMalus: 0, playerId });
+        pushRollHistory({ skillName: `${name} (dégâts)`, threshold: null, roll: result.total, success: null, char: character.name, bonusMalus: 0, playerId });
+        return;
+    }
     const card = document.getElementById('float-roll-card');
     const scrim = document.getElementById('roll-scrim');
     card.className = 'float-roll-card';
@@ -1730,6 +1911,7 @@ function rollWeaponDamage(name, formula) {
 }
 // Show a plain die result on the float roll card without a verdict.
 function showDieCard(diceName, result) {
+    if (showOwnRoll({ skillName: diceName, threshold: null, roll: result })) return;
     const card = document.getElementById('float-roll-card');
     const scrim = document.getElementById('roll-scrim');
     card.className = 'float-roll-card die';
@@ -1945,6 +2127,7 @@ function applySoigner(success) {
         if (success) {
             const heal = rollDieValue(6);
             publishRoll({ skillName: 'Soigner (soins)', threshold: null, roll: heal, success: null, char: character.name, bonusMalus: 0, playerId });
+            showOwnRoll({ skillName: 'Soigner (soins)', threshold: null, roll: heal });
             if (!target) {
                 const max = getMaxHP();
                 const before = currentHP;
@@ -1963,6 +2146,7 @@ function applySoigner(success) {
         } else {
             const dmg = rollDieValue(3);
             publishRoll({ skillName: 'Soigner (blessure)', threshold: null, roll: dmg, success: null, char: character.name, bonusMalus: 0, playerId });
+            showOwnRoll({ skillName: 'Soigner (blessure)', threshold: null, roll: dmg });
             if (!target) {
                 const max = getMaxHP();
                 const before = currentHP;
@@ -1983,8 +2167,19 @@ function applySoigner(success) {
     }, 1500);
 }
 let floatCardTimer = null;
+// Vue de jeu: our own roll is a card of the roll row (crits keep their confetti).
+// False under ?ui=old, where the float card shows it.
+function showOwnRoll(data) {
+    if (!rollRow) return false;
+    rollRow.push({ kind: 'roll', ...data, char: character.name, mine: true });
+    const t = data.threshold === null || data.threshold === undefined ? null : rollType(data.roll, data.threshold);
+    if (t === 'crit-success') spawnFcParticles('success');
+    else if (t === 'crit-fail') spawnFcParticles('fail');
+    return true;
+}
 // Show the floating roll result card with verdict text and crit particle effects.
 function showFloatCard(data) {
+    if (showOwnRoll(data)) return;
     const card = document.getElementById('float-roll-card');
     const scrim = document.getElementById('roll-scrim');
     const type = rollType(data.roll, data.threshold);
@@ -2174,8 +2369,18 @@ function initAbly() {
             }
         });
         ablyMap = ablyInstance.channels.get(campaignChannel('aria-map'));
+        mapFx.attach(ablyMap);
+        // The GM's view, for « Suivre le MJ ». Only from the GM, numbers checked.
+        ablyMap.subscribe('view', msg => {
+            const d = msg.data || {};
+            if (!ablyFromGM(msg) || ![d.x, d.y, d.k].every(n => Number.isFinite(+n))) return;
+            mapGMView = { mapId: String(d.mapId || ''), x: +d.x, y: +d.y, k: Math.min(8, Math.max(1, +d.k)) };
+            _applyGMView();
+        });
         ablyMap.subscribe('state', msg => {
             if (!ablyFromGM(msg)) return;
+            // A new map on the table: follow the GM again.
+            if ((msg.data?.mapId || null) !== (mapState?.mapId || null)) mapFollow = true;
             // `state` replaces, it never patches: drop what we had and take this.
             mapState = msg.data || null;
             // The cache follows the state unconditionally, same as the publisher that
@@ -2346,14 +2551,18 @@ function initAbly() {
             // toast for our OWN roll, and it is deliberately not the charId: a second
             // tab of this character should still be told about a roll made in the
             // first. (`myId` above is the charId, which addresses the character.)
-            if (!d || d.playerId === playerId) return;
+            if (!d || d.playerId === playerId || !msg.clientId) return;
             console.log('[PLAYER] other player rolled:', d.char, '| skill:', d.skillName, '| roll:', d.roll, '| threshold:', d.threshold, '|', d.success ? 'SUCCÈS' : 'ÉCHEC');
-            showOtherRollToast(d);
+            const who = knownPlayers[msg.clientId]?.name || d.char;
+            if (rollRow) rollRow.push({ kind: 'roll', char: who, skillName: String(d.skillName ?? ''),
+                roll: d.roll, threshold: d.threshold ?? null, bonusMalus: d.bonusMalus, hidden: false });
+            else showOtherRollToast(d);
         });
         // Listen for other players' card draws
         ablyCards.subscribe('draw', msg => {
             const d = msg.data;
-            if (!d || !d.playerName || d.playerName === character.name) return;
+            if (!d || !d.playerName || d.playerName === character.name || !msg.clientId) return;
+            if (rollRow) { rollRow.push({ kind: 'card', char: knownPlayers[msg.clientId]?.name || d.playerName, cardId: d.cardId }); return; }
             const card = cardById(d.cardId);
             const label = card ? cardLabel(card) : d.cardId;
             showOtherRollToast({ char: d.playerName, skillName: '🃏 ' + label, roll: null, threshold: null, success: null });
@@ -2497,7 +2706,7 @@ function applyPresenceSet(members) {
     byId.forEach((d, charId) => {
         if (d.role !== 'player' || charId.startsWith('gm-') || charId === currentCharId) return;
         knownPlayers[charId] = { name: d.name };
-        if (d.streamId) peerCameras.set(charId, { name: d.name || charId, streamId: d.streamId });
+        if (d.streamId) peerCameras.set(charId, { name: d.name || charId, streamId: d.streamId, hp: d.hp, maxHP: d.maxHP });
     });
     // Every stream seen once in this campaign, for the overlay editor's camera picker
     // (it has no presence of its own). Stream ids are derived from stable UUIDs.
@@ -3063,7 +3272,10 @@ function flashSaveStatus() {
 // persisted per character and mirrored to the table over Ably.
 const deck = makeDeck({
     persist: saveCardState,
-    publish: (type, extra) => publishCard(type, { ...extra, playerName: character.name }),
+    publish: (type, extra) => {
+        publishCard(type, { ...extra, playerName: character.name });
+        if (type === 'draw') rollRow?.push({ kind: 'card', char: character.name, cardId: extra.cardId, mine: true });
+    },
     fly: animateFly,
     announce: async remainingOnly => {
         const flash = document.getElementById('reshuffle-flash');
@@ -3179,12 +3391,15 @@ function renderMapTab() {
     const sel = visible.find(p => p.id === mapSelectedPoiId) || null;
     // A tactical map is in image pixels (mapVB), with its grid; a world map in percentages.
     const grid = mapGrid(mapState);
+    // The manual fog of a tactical map (phase 4): opaque here; visibleTokens() already
+    // dropped what stands under it, our own token excepted.
+    const darkness = mapFog({ kind: mapState.kind, fog: mapState.fogMask });
     mapView(stage, {
-        imageUrl: mapState.imageUrl, alt: mapState.name || '', vb: mapVB(mapState), grid,
+        imageUrl: mapState.imageUrl, alt: mapState.name || '', vb: mapVB(mapState), grid, fog: darkness,
         title: mapState.name || '',
         kicker: mapTokenMove?.denied ? 'Déplacement refusé par le MJ'
               : mapTokenMove ? 'Déplacement demandé au MJ…'
-              : (fog.length ? 'Exploration · brouillard actif' : 'Exploration')
+              : (fog.length || darkness ? 'Exploration · brouillard actif' : 'Exploration')
               + (grid ? ` · 1 case = ${String(grid.per).replace('.', ',')} ${grid.unit}` : ''),
         // Our own token can be dragged while the GM is there to receive it; the others are
         // only drawn. Names and HP come resolved in the state.
@@ -3193,6 +3408,15 @@ function renderMapTab() {
             ini: String(t.name || '?').trim().charAt(0).toUpperCase(), hp: t.hp, markers: markerGlyphs(t.markers),
             cls: [t.kind === 'monstre' && 'monster', t.hp === 0 && 'dead', t.own === currentCharId && 'me'].filter(Boolean).join(' '),
             draggable: t.own === currentCharId && gmOnline })),
+        center: (() => { const me = visibleTokens(mapState, currentCharId).find(t => t.own === currentCharId);
+                         return me ? { x: +me.x, y: +me.y } : null; })(),
+        follow: { on: mapFollow, toggle: () => mapFollow ? (mapFollow = false, renderMapTab()) : followGM() },
+        ruler: grid ? { on: mapRuler, toggle: toggleMapRuler } : null,
+        rulerCls: 'pj', tool: mapRuler ? 'ruler' : null,
+        onRuler: pts => mapFx.ruler(pts),
+        onPing: p => mapFx.ping(p, false),
+        // A hand on the map (wheel, drag, a button) stops following the GM.
+        onViewChange: (view, byUser) => { if (byUser && mapFollow) { mapFollow = false; renderMapTab(); } },
         onTokenDrop: (id, x, y) => {
             if (!ablyMap) return;
             ablyMap.publish('token-move', { tokenId: id, x, y });
@@ -3229,6 +3453,22 @@ function renderMapTab() {
         onBackground: () => { if (mapSelectedPoiId) { mapSelectedPoiId = null; renderMapTab(); } },
     });
     renderMapNotesDrawer();
+}
+
+// « Suivre le MJ »: back on (F or the chip), and straight to where the GM is looking.
+function followGM() {
+    mapFollow = true;
+    renderMapTab();
+    _applyGMView();
+}
+function _applyGMView() {
+    if (!mapFollow || !mapGMView || !mapState?.imageUrl || mapGMView.mapId !== (mapState.mapId || '')) return;
+    mapViewSetView(document.getElementById('map-stage'), mapGMView);
+}
+function toggleMapRuler() {
+    if (!mapGrid(mapState)) return;
+    mapRuler = !mapRuler;
+    renderMapTab();
 }
 
 // The grouping view AND the only writing surface. One row per DISCOVERED POI: it is

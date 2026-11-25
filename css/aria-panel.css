@@ -715,7 +715,17 @@ body.dock-dragging .tab-btn, body.dock-dragging .split-pane-hdr { cursor: grabbi
 .map-tok.draggable { cursor: grab; }
 .map-tok.dragging { cursor: grabbing; transition: none; z-index: 2; opacity: .85; }
 .map-tok.monster { background: var(--map-monster-bg); border-color: var(--bad); }
-.map-tok.dead { border-color: var(--faint); opacity: .45; }
+.map-tok.dead { border-color: var(--faint); opacity: .55; filter: grayscale(1); }
+/* Out of the fight: crossed out, until the GM removes the token. */
+.map-tok.dead::after { content: '✕'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+                       font: 700 70cqw/1 'Archivo', sans-serif; color: var(--bad); pointer-events: none; }
+.map-tok.dead .map-tok-ini { opacity: .35; }
+/* HP lost since the last render. */
+.map-tok.hit { animation: map-tok-hit .6s ease-out; }
+@keyframes map-tok-hit {
+    0%, 30% { box-shadow: 0 0 0 4px var(--bad), 0 0 22px var(--bad); }
+    100%    { box-shadow: 0 2px 8px rgba(0,0,0,.7); }
+}
 .map-tok.me { box-shadow: 0 0 0 4px rgba(var(--map-player-rgb), .25), 0 0 18px rgba(var(--map-player-rgb), .4); }
 .map-tok.selected { box-shadow: 0 0 0 3px var(--gold-light), 0 0 18px rgba(var(--accent-rgb), .5); }
 .map-tok.hidden { border-style: dashed; border-color: var(--map-secret); opacity: .6; }
@@ -740,6 +750,65 @@ body.dock-dragging .tab-btn, body.dock-dragging .split-pane-hdr { cursor: grabbi
                      white-space: nowrap; font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: .06em;
                      color: var(--warm); background: var(--map-scrim); border: 1px solid rgba(var(--accent-rgb), .5);
                      border-radius: 3px; padding: 3px 7px; }
+
+/* Manual fog of a tactical map (vue de jeu step 6): opaque for the table, see-through for
+   the GM with the revealed areas outlined in dashed violet. */
+.map-fog { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; overflow: visible; }
+.map-fog-ink { fill: var(--ink); }
+.map-fog.see .map-fog-ink { fill: rgba(var(--map-ink-rgb), .55); }
+.map-fog-edge { fill: none; stroke: var(--violet); stroke-width: 1.5; stroke-dasharray: 5 4; stroke-opacity: .8; }
+.map-rect-draft { position: absolute; border: 1.5px dashed rgb(var(--accent-rgb)); background: rgba(var(--accent-rgb), .08); }
+.map-view.tool-rect .map-viewport, .map-view.tool-rect .map-tok { cursor: crosshair; }
+.map-side-btn.fog-mode.cover { color: var(--text); }
+
+/* Rulers and pings (vue de jeu step 5): ember for a player, violet for the GM. The label
+   and the wave keep their size on screen at any zoom. */
+.map-fx { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+.map-ruler { position: absolute; inset: 0; --fx: var(--ember); transition: opacity .4s; }
+.map-ruler.gm, .map-ping.gm { --fx: var(--violet); }
+.map-ruler.fading { opacity: 0; }
+.map-ruler svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.map-ruler line { stroke: var(--fx); stroke-width: 2.5; stroke-dasharray: 7 5; filter: drop-shadow(0 0 2px #000); }
+.map-ruler-label { position: absolute; transform: translate(14px, -50%) scale(calc(1 / var(--map-k, 1))); transform-origin: 0 50%;
+                   white-space: nowrap; font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: .06em;
+                   color: var(--warm); background: var(--map-scrim); border: 1px solid var(--fx); border-radius: 3px; padding: 3px 7px; }
+.map-ping { position: absolute; width: 0; height: 0; --fx: var(--ember); }
+.map-ping i { position: absolute; left: -22px; top: -22px; width: 44px; height: 44px; border-radius: 50%;
+              border: 2px solid var(--fx); box-shadow: 0 0 12px var(--fx);
+              transform: scale(calc(.2 / var(--map-k, 1))); opacity: 1; animation: map-ping 1.2s ease-out forwards; }
+.map-ping i + i { animation-delay: .25s; }
+@keyframes map-ping { to { transform: scale(calc(1.6 / var(--map-k, 1))); opacity: 0; } }
+.map-ping-name { position: absolute; left: 0; top: 0; white-space: nowrap; transform: translate(-50%, 28px) scale(calc(1 / var(--map-k, 1)));
+                 transform-origin: 50% 0; font-family: 'Archivo', sans-serif; font-size: 10.5px; font-weight: 600; color: var(--fx);
+                 text-shadow: 0 1px 4px #000; animation: map-ping-name 1.2s forwards; }
+@keyframes map-ping-name { 70% { opacity: 1; } to { opacity: 0; } }
+.map-view.tool-ruler .map-viewport, .map-view.tool-ruler .map-tok { cursor: crosshair; }
+.map-view.tool-ping .map-viewport, .map-view.tool-ping .map-tok { cursor: cell; }
+.map-zoom-btn.on { color: rgb(var(--accent-rgb)); border-color: rgba(var(--accent-rgb), .7); }
+/* « Suivre le MJ »: a chip beside the zoom, lit while following. */
+.map-follow { height: 30px; padding: 0 10px; border: 1px solid var(--line2); border-radius: 3px; background: var(--map-scrim);
+              color: var(--dim); font-family: ui-monospace, Menlo, monospace; font-size: 9.5px; letter-spacing: .14em;
+              text-transform: uppercase; cursor: pointer; }
+.map-follow.on { color: rgb(var(--accent-rgb)); border-color: rgba(var(--accent-rgb), .7); }
+/* The GM's vertical toolbar, at the left edge of the map, under the cartouche. */
+.map-side-tools { position: absolute; left: 12px; top: 74px; z-index: 4; display: flex; flex-direction: column; gap: 4px;
+                  padding: 5px; background: var(--map-scrim); border: 1px solid var(--line2); border-radius: 4px; }
+.map-side-btn { width: 54px; padding: 5px 2px 4px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+                border: 1px solid transparent; border-radius: 3px; background: none; color: var(--dim); cursor: pointer; }
+.map-side-btn b { font-size: 15px; line-height: 1; font-weight: 400; }
+.map-side-btn span { font-family: ui-monospace, Menlo, monospace; font-size: 8px; letter-spacing: .08em; text-transform: uppercase; }
+.map-side-btn:hover:not(:disabled) { color: var(--text); border-color: var(--line2); }
+.map-side-btn.on { color: rgb(var(--accent-rgb)); border-color: rgba(var(--accent-rgb), .6); background: rgba(var(--accent-rgb), .08); }
+.map-side-btn:disabled { opacity: .35; cursor: default; }
+.map-side-sep { height: 1px; background: var(--line2); margin: 2px 4px; }
+/* « Placer un jeton »: the menu where the GM clicked (a map card). */
+.map-place-title { font-family: 'Cormorant Garamond', serif; font-size: 17px; font-weight: 600; color: var(--warm); }
+.map-place-label { font-family: ui-monospace, Menlo, monospace; font-size: 9px; letter-spacing: .16em; text-transform: uppercase;
+                   color: var(--dim); margin-bottom: 4px; }
+.map-place-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.map-place-free { display: flex; gap: 6px; }
+.map-place-name { flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--line2); border-radius: 3px;
+                  color: var(--text); padding: 4px 7px; font: inherit; font-size: 12px; }
 
 /* The floating card: a sibling of the zoomed layer (placed by _mapViewPlaceCard), so it
    is never scaled and never cut at the edges. */

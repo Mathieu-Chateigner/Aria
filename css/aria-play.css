@@ -1,0 +1,573 @@
+/* ═══════════════════════════════════════════════
+   VUE DE JEU — the play frame (specs/2026-11-25-vue-de-jeu-design.md)
+   ═══════════════════════════════════════════════
+   Loaded after the panel sheet. Everything is scoped under body.ui-play, which
+   mountPlayUI() sets unless the page was opened with ?ui=old — so the old layout
+   is untouched by this file. Like aria-panel.css it never names ember or violet:
+   only the accent handles (--gold, --gold-light, --accent-rgb), so the GM panel
+   can load it as-is in step 3. */
+
+body:not(.ui-play) .play-only { display: none !important; }
+body:not(.ui-play) .skill-pin { display: none; }
+
+body.ui-play { height: 100vh; min-height: 0; overflow: hidden; }
+body.ui-play #app-wrapper { min-height: 0; overflow: hidden; }
+body.ui-play .topbar { height: 48px; }
+
+/* ── Regions ──
+   One grid on .main; .content is display:contents so its panes are grid items and
+   can be placed in the centre OR the right column without ever being reparented
+   (a moved iframe reloads — the cameras pane goes centre ↔ column by CSS alone).
+       rail | centre | camera column (side pane, when the map holds the centre)
+       rail | centre | table thread (#play-side)                                */
+body.ui-play .main {
+    display: grid;
+    grid-template-columns: 60px minmax(0, 1fr) 300px;
+    grid-template-rows: auto minmax(0, 1fr);
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+body.ui-play .sidebar,
+body.ui-play #presence-rail { display: none !important; }
+body.ui-play .play-rail { grid-column: 1; grid-row: 1 / -1; }
+body.ui-play .content { display: contents; }
+body.ui-play .content > .tab-content,
+body.ui-play .content > .play-stage-empty { grid-column: 2; grid-row: 1 / -1; min-width: 0; min-height: 0; }
+body.ui-play .play-side { grid-column: 3; grid-row: 2; width: auto; }
+body.ui-play .content:not(.has-side) ~ .play-side { grid-row: 1 / -1; }
+
+/* ── Below 1280 px (step 7): the table does not fit, say so ── */
+.play-narrow { display: none; }
+@media (max-width: 1279px) {
+    body.ui-play .play-narrow {
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+        position: fixed; inset: 0; z-index: 2000; padding: 24px; text-align: center; background: var(--bg);
+    }
+}
+.pn-title { font-family: 'Cormorant Garamond', serif; font-size: 30px; font-style: italic; color: var(--warm); }
+.pn-sub { font-size: 13px; color: var(--dim); }
+.pn-link { margin-top: 6px; font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
+           color: var(--gold); border: 1px solid var(--gold); border-radius: 20px; padding: 8px 18px; text-decoration: none; }
+.pn-link:hover { background: rgba(var(--accent-rgb), .12); }
+
+/* ── Portraits (step 7): a drawer open while the map holds the centre folds the camera
+   column into round portraits; « Fil » floats the thread over it. CSS only — a moved or
+   re-src'd iframe would reload. ── */
+body.ui-play .main { position: relative; }
+.play-fil { display: none; }
+body.ui-play .main:has(> .content.drawer-open > #tab-cameras.side-pane) { grid-template-columns: 60px minmax(0, 1fr) 96px; }
+body.ui-play .content.drawer-open:has(> #tab-cameras.side-pane) > .side-pane { max-height: 72vh; padding: 10px 4px; }
+.content.drawer-open > .side-pane .cameras-toolbar,
+.content.drawer-open > .side-pane .cameras-warning,
+.content.drawer-open > .side-pane .cam-device-pick { display: none; }
+.content.drawer-open > .side-pane .cameras-grid { grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 10px; }
+.content.drawer-open > .side-pane .camera-cell { grid-column: auto !important; align-items: center; }
+.content.drawer-open > .side-pane .camera-iframe-wrap {
+    width: 64px !important; height: 64px; min-width: 0; aspect-ratio: 1;
+    border-radius: 50%; border: 2px solid var(--line2);
+}
+.content.drawer-open > .side-pane .camera-cell.spotlit .camera-iframe-wrap { border-color: var(--violet); }
+.content.drawer-open > .side-pane .camera-iframe-wrap iframe { width: 114px !important; height: 64px !important; margin-left: -25px; pointer-events: none; }
+.content.drawer-open > .side-pane .camera-label {
+    border: none; background: none; padding: 2px 0 0; max-width: 88px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: default;
+}
+.camera-hp { display: none; }
+.content.drawer-open > .side-pane .camera-hp { display: block; font-family: ui-monospace, Menlo, monospace; font-size: 9px; color: var(--dim); }
+body.ui-play .content.drawer-open:has(> #tab-cameras.side-pane) ~ .play-side { display: none; }
+body.ui-play .content.drawer-open:has(> #tab-cameras.side-pane) ~ .play-fil {
+    display: flex; grid-column: 3; grid-row: 2; align-self: start; justify-self: center;
+    align-items: center; gap: 6px; margin-top: 8px; position: relative;
+    font-family: 'Archivo', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--warm); background: var(--raise); border: 1px solid var(--line2); border-radius: 16px;
+    padding: 6px 14px; cursor: pointer;
+}
+body.ui-play .content.drawer-open:has(> #tab-cameras.side-pane) ~ .play-fil.on { border-color: var(--ember); color: var(--ember); }
+.play-fil-dot { display: none; width: 7px; height: 7px; border-radius: 50%; background: var(--ember); }
+.play-fil.unread .play-fil-dot { display: block; }
+body.ui-play .main.fil-open > .content.drawer-open:has(> #tab-cameras.side-pane) ~ .play-side {
+    display: flex; position: absolute; grid-row: 1 / -1; top: 0; bottom: 0; right: 96px; width: 300px; z-index: 7;
+    box-shadow: -14px 0 34px -10px var(--frameShadow);
+}
+
+/* ── Projecteur (step 7): the GM's pick is the big tile, framed violet (.spotlit). ── */
+body.ui-play .cameras-grid.has-spot .camera-cell[data-gm] { grid-column: auto; order: 0 !important; }
+body.ui-play .side-pane .cameras-grid.has-spot .camera-cell.spotlit { grid-column: 1 / -1; order: -1 !important; }
+body.ui-play .stage-pane .cameras-grid.has-spot .camera-cell.spotlit { flex-basis: 100%; align-items: center; order: -1 !important; }
+body.ui-play .stage-pane .cameras-grid.has-spot .camera-cell.spotlit .camera-iframe-wrap { width: min(100%, 760px) !important; }
+
+/* ── Top bar (step 7): the GM's mini-player and pending moves ── */
+.tb-music-play { background: none; border: none; color: var(--violet); font-size: 12px; cursor: pointer; padding: 0 2px; flex-shrink: 0; }
+.tb-music-play:hover { color: var(--violet2); }
+.tb-music-vol { width: 64px; accent-color: var(--violet); cursor: pointer; flex-shrink: 0; }
+.tb-flag {
+    font-family: 'Archivo', sans-serif; font-size: 12px; font-weight: 600;
+    color: var(--ember); background: var(--embersoft);
+    border: 1px solid var(--ember); border-radius: 20px; padding: 4px 12px; cursor: pointer;
+}
+.tb-flag:hover { background: rgba(var(--accent-rgb), .2); }
+
+/* ── Roll row (step 7): every roll and draw of the table, over the centre ── */
+.roll-row { grid-column: 2; grid-row: 1 / -1; position: relative; z-index: 6; pointer-events: none; min-width: 0; min-height: 0; }
+.roll-row-block { position: absolute; left: 50%; top: 50%; transform-origin: center; }
+.roll-card {
+    position: absolute; width: 214px; height: 132px; box-sizing: border-box;
+    padding: 10px 14px; display: flex; flex-direction: column; gap: 2px;
+    pointer-events: auto;
+    background: linear-gradient(160deg, var(--raise), var(--panel));
+    border: 1px solid var(--line2); border-radius: 10px;
+    box-shadow: 0 18px 40px -16px rgba(0,0,0,.9);
+    transition: left .25s ease, top .25s ease, opacity .25s ease, transform .25s ease;
+    animation: roll-card-in .28s cubic-bezier(.2,.8,.3,1.2);
+}
+.roll-card.mine { border-color: var(--ember); box-shadow: 0 0 0 1px var(--embersoft), 0 18px 40px -16px rgba(0,0,0,.9); }
+.roll-card.leaving { opacity: 0; transform: translateY(10px) scale(.96); }
+@keyframes roll-card-in { from { opacity: 0; transform: translateY(14px) scale(.92); } }
+.rc-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.rc-char { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.roll-card.mine .rc-char { color: var(--ember); }
+.rc-tag { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--violet); border: 1px solid var(--violet); border-radius: 4px; padding: 0 4px; }
+.rc-skill { font-size: 13px; color: var(--warm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-roll { font-family: 'Cormorant Garamond', serif; font-size: 40px; font-weight: 700; line-height: 1; color: var(--text); margin-top: 2px; }
+.rc-foot { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: auto; }
+.rc-verdict { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.rc-detail { font-family: ui-monospace, Menlo, monospace; font-size: 10px; color: var(--faint); white-space: nowrap; }
+.roll-card.v-s .rc-verdict { color: var(--ok); }
+.roll-card.v-cs .rc-verdict { color: var(--ember2); }
+.roll-card.v-f .rc-verdict { color: var(--bad); }
+.roll-card.v-cf .rc-verdict { color: var(--bad); }
+.roll-card.v-cs { border-color: var(--ember2); }
+.roll-card.v-cf { border-color: var(--bad); }
+/* A draw: a small card that flips, and who drew what. */
+.roll-card.draw { flex-direction: row; align-items: center; gap: 12px; }
+.rc-flip { width: 80px; height: 112px; flex-shrink: 0; perspective: 600px; position: relative; }
+.rc-flip .flip-inner { position: relative; width: 160px; height: 224px; transform-origin: 0 0; transform: scale(.5); transition: none; }
+.rc-flip .flip-inner > * { transition: transform .55s cubic-bezier(.4,0,.2,1); }
+.rc-flip .card-back-face { transform: rotateY(0); }
+.rc-flip .flip-face { transform: rotateY(180deg); }
+.rc-flip.flipped .card-back-face { transform: rotateY(-180deg); }
+.rc-flip.flipped .flip-face { transform: rotateY(0); }
+.rc-draw-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rc-card-label { font-family: 'Cormorant Garamond', serif; font-size: 20px; font-weight: 700; color: var(--text); }
+/* A roll that left the row, in the table thread. */
+.chat-msg.note { opacity: .75; }
+.chat-msg.note .chat-body { font-size: 12px; color: var(--dim); }
+
+/* The presence densities (Réduit / Bandeau / Tablée) have no job here: the cameras
+   are always on screen. Only the camera kill switch stays in the top bar. */
+body.ui-play .pres-pill:not(.cam-toggle),
+body.ui-play .pres-icon,
+body.ui-play .tb-presence-dots { display: none !important; }
+
+/* ── Section rail (the old tab bar, moved by mountPlayUI) ── */
+body.ui-play .play-rail {
+    width: 60px;
+    flex-shrink: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    padding: 8px 0;
+    flex-wrap: nowrap;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border-bottom: none;
+    background: var(--rail);
+    border-right: 1px solid var(--line);
+}
+body.ui-play .play-rail .tab-btn {
+    margin: 0;
+    padding: 0 3px;
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    white-space: normal;
+    font-size: 9px;
+    letter-spacing: .06em;
+    line-height: 1.25;
+    color: var(--dim);
+    border-bottom: none;
+    border-left: 2px solid transparent;
+}
+body.ui-play .play-rail .tab-btn:hover { color: var(--warm); background: rgba(var(--accent-rgb), .07); }
+body.ui-play .play-rail .tab-btn.active {
+    color: var(--warm);
+    border-left-color: var(--gold);
+    background: rgba(var(--accent-rgb), .10);
+}
+body.ui-play .play-rail .tab-btn.is-stage,
+body.ui-play .play-rail .tab-btn.rail-hidden { display: none !important; }
+body.ui-play .play-rail .tab-btn.has-unread::after { top: 10px; right: 8px; }
+
+/* ── Centre: one stage pane, at most one drawer over it ── */
+body.ui-play .content > .tab-content { display: none; }
+body.ui-play .content > .tab-content.active { display: block; }
+body.ui-play .content > .tab-content.stage-pane { overflow: auto; }
+body.ui-play .content > .tab-content.map-tab.stage-pane { display: flex; }
+body.ui-play .content > .tab-content.drawer-pane {
+    justify-self: start;
+    position: relative;
+    z-index: 5;
+    width: min(460px, 100%);
+    overflow-y: auto;
+    padding: 18px 20px 22px;
+    background: var(--bg);
+    border-right: 1px solid rgba(var(--accent-rgb), .28);
+    box-shadow: 14px 0 34px -10px var(--frameShadow);
+}
+/* Panes laid out for a full tab get a wider drawer. */
+body.ui-play .content > #tab-char.drawer-pane,
+body.ui-play .content > #tab-skills.drawer-pane,
+body.ui-play .content > #tab-free.drawer-pane,
+body.ui-play .content > #tab-notes.drawer-pane,
+body.ui-play .content > #tab-chat.drawer-pane,
+body.ui-play .content > #tab-cameras.drawer-pane,
+body.ui-play .content > #tab-map.drawer-pane,
+body.ui-play .content > #tab-music.drawer-pane,
+body.ui-play .content > #tab-files.drawer-pane,
+body.ui-play .content > #tab-gm-notes.drawer-pane { width: min(760px, 100%); }
+/* GM Monstres: creation form + card grid side by side. */
+body.ui-play .content > #tab-monsters.drawer-pane { width: min(980px, 100%); }
+body.ui-play .content > #tab-free.drawer-pane,
+body.ui-play .content > #tab-notes.drawer-pane { padding: 0; }
+body.ui-play .content > .tab-content.map-tab.drawer-pane { display: flex; }
+
+.play-stage-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-align: center;
+    pointer-events: none;
+}
+body.ui-play .content.has-stage > .play-stage-empty { display: none; }
+.pse-kicker {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 10px;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--faint);
+}
+.pse-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 30px;
+    font-style: italic;
+    color: var(--warm);
+}
+.pse-sub { font-size: 13px; color: var(--dim); }
+
+/* ── Camera column (the Caméras pane, placed by CSS when the map holds the centre) ── */
+body.ui-play .content > .tab-content.side-pane {
+    grid-column: 3;
+    grid-row: 1;
+    max-height: 56vh;
+    overflow-y: auto;
+    padding: 10px 10px 4px;
+    background: var(--rail);
+    border-left: 1px solid var(--line);
+}
+.side-pane .cameras-toolbar { padding: 0 0 6px; }
+.side-pane .cam-size-label,
+.side-pane .cam-size,
+.side-pane .cam-size-reset,
+.side-pane .camera-resize-handle { display: none; }
+.side-pane .cam-device-pick { width: 100%; max-width: none; }
+.side-pane .cameras-warning { font-size: 11px; line-height: 1.4; }
+.side-pane .cameras-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 0; }
+.side-pane .camera-cell { min-width: 0; }
+.side-pane .camera-iframe-wrap { width: 100% !important; min-width: 0; }
+/* MJ first and full width; !important beats the inline order applyCamOrder() sets. */
+.side-pane .camera-cell[data-gm] { grid-column: 1 / -1; order: -1 !important; }
+
+/* ── Right column ── */
+.play-side {
+    width: 300px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px;
+    background: var(--rail);
+    border-left: 1px solid var(--line);
+    min-height: 0;
+}
+.play-side .sidebar-chat { flex: 1; min-height: 0; }
+
+/* ── Bottom bar ── */
+.play-bar {
+    height: 108px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 0 14px;
+    background: var(--rail);
+    border-top: 1px solid var(--line2);
+    position: relative;
+    z-index: 15;
+}
+.pb-sep { width: 1px; height: 72px; background: var(--line2); flex-shrink: 0; }
+
+.pb-char { width: 300px; flex-shrink: 0; display: flex; gap: 12px; align-items: center; }
+.pb-portrait {
+    width: 60px;
+    height: 76px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(var(--accent-rgb), .55);
+    border-radius: 3px;
+    background: linear-gradient(160deg, var(--raise), var(--ink));
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 26px;
+    font-weight: 600;
+    color: var(--gold-light);
+}
+.pb-char-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.pb-char-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.pb-name {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 19px;
+    font-style: italic;
+    color: var(--warm);
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.pb-meta {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 9px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--dim);
+    white-space: nowrap;
+}
+.pb-hp .hp-number-wrap { display: flex; align-items: baseline; gap: 6px; text-align: left; padding: 0; }
+.pb-hp .hp-number { font-size: 24px; line-height: 1; }
+.pb-hp .hp-fraction { margin-top: 0; }
+.pb-hp .hp-bar-wrap { margin-top: 5px; }
+.pb-karma .tb-karma { gap: 6px; }
+
+.pb-pins { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.pb-pin-list { display: flex; gap: 8px; min-width: 0; overflow: hidden; }
+.pb-pin {
+    height: 60px;
+    min-width: 96px;
+    max-width: 160px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 2px;
+    padding: 0 14px;
+    border: 1px solid var(--line2);
+    border-radius: 3px;
+    background: rgba(0, 0, 0, .25);
+    color: var(--text);
+    cursor: pointer;
+    font-family: 'Archivo', sans-serif;
+    text-align: left;
+}
+.pb-pin:hover { border-color: rgba(var(--accent-rgb), .6); background: rgba(var(--accent-rgb), .08); }
+.pb-pin-label {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 9px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--dim);
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.pb-pin-val {
+    font-variant-numeric: tabular-nums;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--gold-light);
+    line-height: 1.1;
+}
+.pb-pin-weapon .pb-pin-val { font-size: 15px; }
+.pb-all {
+    height: 60px;
+    flex-shrink: 0;
+    padding: 0 12px;
+    border: 1px dashed var(--line2);
+    border-radius: 3px;
+    background: none;
+    color: var(--dim);
+    cursor: pointer;
+    font: 600 10px 'Archivo', sans-serif;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    line-height: 1.4;
+}
+.pb-all:hover { color: var(--warm); border-color: rgba(var(--accent-rgb), .5); }
+.pb-all.active { color: var(--warm); border-style: solid; border-color: var(--gold); background: rgba(var(--accent-rgb), .10); }
+
+.pb-roll { width: 400px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; }
+.pb-mod .tb-mod { flex-wrap: wrap; }
+/* The modifier popover lives in the bottom bar now: open it upwards. */
+.play-bar .tb-pop-panel { top: auto; bottom: calc(100% + 8px); }
+.pb-dice { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 5px; }
+.pb-die {
+    padding: 8px 0;
+    border: 1px solid var(--line2);
+    border-radius: 3px;
+    background: rgba(0, 0, 0, .25);
+    color: var(--text);
+    cursor: pointer;
+    font: 600 11px 'Archivo', sans-serif;
+    letter-spacing: .08em;
+}
+.pb-die:hover { border-color: rgba(var(--accent-rgb), .6); color: var(--gold-light); }
+
+/* ── ★ pin toggle in the Compétences list ── */
+.skill-pin {
+    flex-shrink: 0;
+    width: 22px;
+    border: none;
+    background: none;
+    color: var(--faint);
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1;
+}
+.skill-pin:hover, .skill-pin.on { color: var(--gold-light); }
+
+/* ── Narrower than 1440: four pins + Toutes ── */
+@media (max-width: 1439px) {
+    .pb-pin-list > .pb-pin:nth-child(n+5) { display: none; }
+    .pb-char { width: 250px; }
+    .pb-roll { width: 340px; }
+    body.ui-play .main { grid-template-columns: 60px minmax(0, 1fr) 260px; }
+}
+
+/* ════════════════════════════════════════════
+   GM — vue de jeu (step 3). The bar follows one selected monster.
+   ════════════════════════════════════════════ */
+.play-bar:not(.has-target) .pb-target,
+.play-bar.has-target .pb-empty { display: none; }
+.pb-empty {
+    width: 300px;
+    height: 76px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    padding: 0 14px;
+    border: 1px dashed var(--line2);
+    border-radius: 3px;
+    background: none;
+    color: var(--warm);
+    cursor: pointer;
+    font: italic 16px 'Cormorant Garamond', serif;
+    text-align: left;
+}
+.pb-empty span { font: 9px ui-monospace, Menlo, monospace; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); font-style: normal; }
+.pb-empty:hover { border-color: rgba(var(--accent-rgb), .5); }
+.pb-deselect {
+    margin-left: auto;
+    flex-shrink: 0;
+    border: none;
+    background: none;
+    color: var(--faint);
+    cursor: pointer;
+    font-size: 12px;
+}
+.pb-deselect:hover { color: var(--warm); }
+.pb-hp-line { display: flex; align-items: baseline; }
+.pb-hp-num { font: 700 24px 'Archivo', sans-serif; font-variant-numeric: tabular-nums; line-height: 1; }
+.pb-hp-max { font: 11px ui-monospace, Menlo, monospace; color: var(--dim); }
+.pb-hp-ctl { display: flex; gap: 5px; }
+.pb-ctl {
+    flex: 1;
+    padding: 5px 0;
+    border: 1px solid var(--line2);
+    border-radius: 3px;
+    background: rgba(0, 0, 0, .25);
+    cursor: pointer;
+    font: 600 10px 'Archivo', sans-serif;
+    letter-spacing: .06em;
+}
+.pb-ctl.dmg { color: var(--bad); }
+.pb-ctl.heal { color: var(--ok); }
+.pb-ctl:hover { border-color: currentColor; }
+.pb-ctl-val {
+    width: 52px;
+    flex-shrink: 0;
+    padding: 4px 6px;
+    border: 1px solid var(--line2);
+    border-radius: 3px;
+    background: var(--ink);
+    color: var(--text);
+    font: 600 12px 'Archivo', sans-serif;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+}
+.pb-pins-label { font: 9px ui-monospace, Menlo, monospace; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); writing-mode: vertical-rl; transform: rotate(180deg); }
+.pb-pin-sub { font-size: 11px; font-weight: 500; color: var(--dim); }
+.pb-gm-roll { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pb-gm-roll > .pb-meta:first-child { margin-right: auto; }
+.pb-d100 {
+    padding: 5px 12px;
+    border: 1px solid var(--gold);
+    border-radius: 3px;
+    background: rgba(var(--accent-rgb), .14);
+    color: var(--gold-light);
+    cursor: pointer;
+    font: 700 11px 'Archivo', sans-serif;
+    letter-spacing: .08em;
+}
+.pb-d100:hover { background: rgba(var(--accent-rgb), .24); }
+.pb-gm-roll .gm-die-result { font-size: 16px; min-height: 0; margin: 0; min-width: 28px; text-align: right; }
+
+/* The last roll, as a card above the bar's right end. */
+.pb-result {
+    position: fixed;
+    right: 314px;
+    bottom: 118px;
+    z-index: 20;
+    width: 260px;
+    display: none;
+}
+.pb-result.show { display: block; }
+.pb-result .gm-roll-result { box-shadow: 0 10px 30px rgba(0, 0, 0, .5); }
+.pb-result-close {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 1;
+    border: none;
+    background: none;
+    color: var(--faint);
+    cursor: pointer;
+}
+.pb-result-close:hover { color: var(--warm); }
+
+body.ui-play .monster-card { cursor: pointer; }
+body.ui-play .monster-card.is-selected { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+
+/* Roll feed in the right column. */
+.play-side .gm-jets-feed { flex: 1; min-height: 0; padding: 0; overflow: hidden; }
+.play-side .gm-jets-feed .rolls-feed { flex: 1; min-height: 0; overflow-y: auto; }
+
+/* Joueurs in the right column (under a map): one compact column. */
+.side-pane .gm-bulk-bar,
+.side-pane .pc-stats,
+.side-pane .pc-karma-row,
+.side-pane .pc-actions,
+.side-pane > .section-header { display: none; }
+.side-pane .players-grid { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.side-pane #gm-self-view-wrap { width: 100% !important; }
+@media (max-width: 1439px) {
+    .pb-empty { width: 250px; }
+    .pb-result { right: 274px; }
+}

@@ -14,7 +14,137 @@ ARIA.configure({
     clearLocal:   () => _clearLocalGMData(),
     afterRestore: () => restoreLastCampaign(),
     onMusicPhase: (phase) => { renderMusicTab(); if (phase === 'faded') _startMusicProgress(); },
+    drawers:      () => !UI_OLD,
+    stagePane:    () => gmStagePane(),
+    sidePane:     () => gmStagePane() === 'tab-map' ? 'tab-players' : null,
+    // Vue de jeu shortcuts: Esc puts the map tool down first (back to Sélection); M measures.
+    escape:       () => { if (!mapTool && !mapPlaceMenu) return false; setMapTool(null); return true; },
+    keys:         () => _activeMap()?.imageUrl ? { m: () => mapGrid(_activeMap()) && setMapTool(mapTool === 'ruler' ? null : 'ruler') } : null,
 });
+
+// ═══════════════════════════════════════════
+//  VUE DE JEU — frame (specs/2026-11-25-vue-de-jeu-design.md, step 3)
+// ═══════════════════════════════════════════
+// Same frame as the player (see mountPlayUI() there): the old page's nodes are
+// moved into the rail / right column / bottom bar at load, so ids and handlers
+// stay put and `?ui=old` keeps the previous screen. The centre is the map when one
+// is set, otherwise the Joueurs pane (the table: player cards and their cameras);
+// under a map, Joueurs moves to the right column by CSS — never reparented, its
+// camera iframes would reload.
+const GM_PLAY_RAIL = [
+    ['tab-monsters', 'Monstres'], ['tab-players', 'Joueurs'], ['tab-music', 'Musique'],
+    ['tab-files', 'Fichiers'], ['tab-gm-notes', 'Notes'], ['tab-alchemy', 'Alchimie'],
+    ['tab-cards', 'Cartes'], ['tab-map', 'Carte'], ['tab-chat', 'Messages'],
+    ['tab-gm-roll', null],   // its feed goes to the right column, its console to the bar
+];
+
+// The roll row over the centre (step 7): the players' rolls and draws, as they see
+// them. The GM's own rolls never go there (hidden, above the bottom bar); the right
+// column's roll feed is the GM's thread, so nothing is handed on when a card leaves.
+let rollRow = null;
+
+function mountPlayUI() {
+    if (UI_OLD) return;
+    mountPlayRail(GM_PLAY_RAIL);
+    rollRow = makeRollRow();
+    document.querySelector('.main').append(rollRow.root);
+    mountPlayNarrow('Ouvrir le seuil de la campagne', () => currentCampaignId
+        ? 'aria-accueil.html?camp=' + encodeURIComponent(currentCampaignId) : 'aria-hub.html');
+    playMove('.gm-jets-feed', 'play-side');
+    playMove('#gm-roll-result', 'pb-gm-result');
+    playMove('#gm-die-result', 'pb-gm-roll');
+    _mapStageDrop();
+}
+
+function gmStagePane() { return _activeMap()?.imageUrl ? 'tab-map' : 'tab-players'; }
+
+// The bottom bar follows one selected monster. Selection is a click on its card in
+// Monstres; the tactical map will select through its tokens the same way.
+let gmSelectedMonsterId = null;
+function selectMonster(id) {
+    gmSelectedMonsterId = id == null || gmSelectedMonsterId === String(id) ? null : String(id);
+    renderGMPlayBar();
+    if (_activeMap()?.kind === 'tactique') renderMapStage();   // its token lights up too
+}
+
+// A monster card dragged by its grip onto a tactical map becomes a token there, linked to
+// the monster and hidden from the players (mapAddToken). Same drag as the group chips.
+function _mapStageDrop() {
+    const stage = document.getElementById('map-stage');
+    const ok = () => _groupDrag?.type === 'monster' && _activeMap()?.kind === 'tactique' && _activeMap().imageUrl;
+    stage.addEventListener('dragover', e => { if (!ok()) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+    stage.addEventListener('drop', e => {
+        if (!ok()) return;
+        e.preventDefault();
+        const ref = _groupDrag.id; _groupDrag = null;
+        const frame = stage.querySelector('#map-frame'); if (!frame) return;
+        const r = frame.getBoundingClientRect();
+        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
+        const m = _activeMap();
+        if ((m.tokens || []).some(t => t.ref === ref)) return;   // one token per monster, as the picker
+        const p = _mapPt(e, frame);
+        mapAddToken(ref, p.x, p.y);
+    });
+}
+
+// Tokens of monsters at 0 PV leave the map (the monsters themselves stay in Monstres).
+function mapRemoveDead() {
+    const m = _activeMap(); if (!m) return;
+    const dead = (m.tokens || []).filter(t => monsters.find(x => x.id === t.ref)?.pv <= 0);
+    if (!dead.length) return;
+    m.tokens = m.tokens.filter(t => !dead.includes(t));
+    if (dead.some(t => t.id === mapSelectedTokenId)) mapSelectedTokenId = null;
+    saveMaps();
+    renderMapTab();
+}
+function _selectedMonster() { return monsters.find(m => String(m.id) === gmSelectedMonsterId) || null; }
+
+function renderGMPlayBar() {
+    if (UI_OLD) return;
+    const m = _selectedMonster();
+    if (!m) gmSelectedMonsterId = null;
+    document.getElementById('play-bar')?.classList.toggle('has-target', !!m);
+    document.querySelectorAll('#monsters-grid .monster-card').forEach(c =>
+        c.classList.toggle('is-selected', !!m && c.dataset.monsterId === gmSelectedMonsterId));
+    if (!m) { fill(document.getElementById('pb-pins')); return; }
+    document.getElementById('pb-name').textContent = m.name || 'Monstre';
+    document.getElementById('pb-portrait').textContent =
+        (m.name || '?').split(/\s+/).filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+    document.getElementById('pb-armor').textContent = `armure ${m.armor || 0}`;
+    const pct = m.maxPV > 0 ? m.pv / m.maxPV : 0;
+    const hp = document.getElementById('pb-hp-num');
+    hp.textContent = m.pv;
+    hp.style.color = pct > 0.5 ? 'var(--ok)' : pct > 0.25 ? 'var(--warn)' : 'var(--bad)';
+    document.getElementById('pb-hp-max').textContent = ` / ${m.maxPV} PV`;
+    fill(document.getElementById('pb-pins'), (m.attacks || []).map(a => el('button', {
+        className: 'pb-pin', title: a.dmg ? `${a.name} — ${a.dmg}` : a.name,
+        onclick: () => gmMonsterAttack(m, a),
+    },
+        el('span', { className: 'pb-pin-label', textContent: a.name || 'Attaque' }),
+        el('span', { className: 'pb-pin-val', textContent: a.pct || 0 },
+            a.dmg && el('span', { className: 'pb-pin-sub', textContent: ' ' + a.dmg })))));
+}
+
+// One attack from the bar: the same resolution as the console's "Lancer l'attaque".
+function gmMonsterAttack(m, atk) {
+    const r = resolveRoll(+atk.pct || 0);
+    const dmgResult = (r.success && atk.dmg?.trim()) ? rollDiceFormula(atk.dmg) : null;
+    showGMRollResult(`${m.name} — ${atk.name || 'Attaque'}`, r.threshold, r.roll, r.success, dmgResult);
+}
+function gmBarHP(sign) {
+    const m = _selectedMonster();
+    const inp = document.getElementById('pb-hp-val');
+    const v = parseInt(inp.value);
+    if (!m || !v || v <= 0) return;
+    if (sign < 0) damageMonster(m, v); else healMonster(m, v);
+    inp.value = '';
+}
+function gmBarRoll() {
+    const t = parseInt(document.getElementById('pb-gm-seuil').value);
+    if (isNaN(t) || t < 1 || t > 100) { alert('Seuil invalide.'); return; }
+    const r = resolveRoll(t);
+    showGMRollResult('Jet MJ', r.threshold, r.roll, r.success);
+}
 
 let ablyInstance = null, ablyRolls = null, ablyCards = null, ablyDamage = null, ablyRollsHidden = null;
 
@@ -79,10 +209,23 @@ let gmMaps = [];          // [{ id, name, imageUrl, imagePath, sourceUrl, pois, 
 let activeMapId = null;   // map shown to the table (local: campaign_maps has no flag for it)
 let mapSelectedPoiId = null;   // POI whose floating card is open (GM tab only)
 let mapTableView = false;      // preview what the table sees, through the very same filter
-let mapTool = null;           // 'pin' while the ＋ Lieu tool is armed, 'calib' while calibrating the grid
+// The armed map tool; null is Sélection. 'pin' (＋ Lieu) and 'calib' (grid calibration) come
+// from the top toolbar; 'place', 'hide', 'ruler', 'ping' from the vertical one.
+let mapTool = null;
 let calibPts = [];            // corners clicked so far by the grid calibration (map units)
 let mapSelectedTokenId = null; // token whose card is open
-let mapTokenRef = null;        // charId / monster id being placed while mapTool === 'token'
+let mapPlaceMenu = null;       // { x, y } where the « Placer un jeton » menu is open
+let mapFogMode = 'r';          // the fog tools reveal ('r') or cover ('h')
+// Rulers and pings at the table (makeMapFx in aria-shared.js). The GM's ping with Maj
+// recentres every screen.
+const mapFx = makeMapFx({
+    stage: () => document.getElementById('map-stage'),
+    conn: () => ablyInstance?.connection?.id,
+    nameOf: id => String(id).startsWith('gm-') ? 'MJ' : players.get(id)?.name || '',
+    selfCls: 'gm',
+    selfName: () => 'MJ',
+});
+let _gmView = null, _gmViewTimer = null;   // the GM's last map view, sent for « Suivre le MJ »
 let moveRequests = [];   // [{ charId, charName, poiId }] — persistent badge, not a toast:
                          // the GM may be looking elsewhere for ten minutes.
 let zoneEditPoiId = null;   // POI whose zone is being traced
@@ -675,6 +818,7 @@ function switchCampaign() {
 //  INIT
 // ═══════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', async () => {
+    mountPlayUI();
     migrateGMIfNeeded();
     await tryRestoreSupabase();
 });
@@ -711,7 +855,7 @@ function initApp() {
         // here, once, alongside the click handler above — not inside renderMapTab(), which
         // runs on every map mutation and would stack a new listener each time.
         document.addEventListener('keydown', e => {
-            if (e.key !== 'Delete' || !zoneEditPoiId || e.target.closest('input, textarea')) return;
+            if (e.key !== 'Delete' || !(zoneEditPoiId || mapTool === 'fog-poly') || e.target.closest('input, textarea')) return;
             zoneDraft.pop();
             renderMapTab();
         });
@@ -842,7 +986,8 @@ function initAbly() {
         initRouteChannel(ablyInstance);   // tells this save key's OBS overlay which campaign to show
         // A late joiner — a player connecting an hour in, or an OBS browser source
         // restarted mid-session — asks, and gets the whole state back.
-        ablyMap.subscribe('request', () => publishMapState(true));
+        ablyMap.subscribe('request', () => { publishMapState(true); publishMapView(true); });
+        mapFx.attach(ablyMap);
         // Same handshake for monster HP: it is only published when a monster changes,
         // so without this an overlay that started after the last edit shows nothing.
         ablyDamage.subscribe('monster-request', () => publishMonsterStateToOverlay());
@@ -890,7 +1035,7 @@ function initAbly() {
         const rolledBy = msg => ({ ...msg.data, char: players.get(msg.clientId)?.name || msg.data?.char });
         ablyRolls.subscribe('roll', msg => { if (!msg.data) return; console.log('[GM] received roll from', msg.data.char, '| skill:', msg.data.skillName, '| roll:', msg.data.roll, '| threshold:', msg.data.threshold, '| success:', msg.data.success); handleIncomingRoll(rolledBy(msg)); });
         ablyRollsHidden.subscribe('roll', msg => { if (!msg.data) return; console.log('[GM] received HIDDEN roll from', msg.data.char, '| skill:', msg.data.skillName, '| roll:', msg.data.roll); handleIncomingRoll(rolledBy(msg)); });
-        ablyCards.subscribe('draw',     msg => { console.log('[GM] received card draw:', msg.data?.cardId, 'by player'); handlePlayerCard(msg.data); });
+        ablyCards.subscribe('draw',     msg => { console.log('[GM] received card draw:', msg.data?.cardId, 'by player'); if (msg.clientId) handlePlayerCard({ ...msg.data, playerName: players.get(msg.clientId)?.name || msg.data?.playerName }); });
         ablyCards.subscribe('reshuffle', () => { console.log('[GM] received card reshuffle'); handlePlayerReshuffle(); });
         // The roster. Any change to the set is re-read in full rather than patched,
         // so the Joueurs tab cannot drift from who is actually connected.
@@ -1264,7 +1409,7 @@ function renderPlayerCards() {
             name:  el('div', { className: 'pc-name' }),
             cls:   el('div', { className: 'pc-class' }),
             spot:  el('button', { className: 'pc-btn spot', textContent: '☀', onclick: () => toggleSpotlight(charId),
-                       title: 'Spotlight — la caméra de ce joueur passe en grand chez tous' }),
+                       title: 'Projecteur — la caméra de ce joueur devient la grande tuile chez tous ; recliquer la rend au MJ' }),
             hpNum: el('div', { className: 'pc-hp-num' }),
             hpMax: el('div', { className: 'pc-hp-max' }),
             hpBar: el('div', { className: 'pc-hp-bar' }),
@@ -1600,27 +1745,35 @@ function _renderAmfAttacks() {
     fill(document.getElementById('amf-attacks-list'), newMonsterAttacks.map(_amfAttackRow));
 }
 // Apply damage to the selected monster in the GM roll panel.
+// Monster HP changes, from every place that makes them (console, card, bottom bar).
+// Damage goes through the monster's armour; healing is capped at maxPV.
+function damageMonster(m, dmg) {
+    m.pv = Math.max(0, m.pv - Math.max(0, dmg - (m.armor || 0)));
+    _afterMonsterHP(m, 'dmg');
+}
+function healMonster(m, amt) {
+    m.pv = Math.min(m.maxPV, m.pv + amt);
+    _afterMonsterHP(m, 'heal');
+}
+function _afterMonsterHP(m, fx) {
+    saveMonsters();
+    clearTimeout(renderMonstersTimer); renderMonstersTimer = setTimeout(renderMonsters, 50);
+    setTimeout(() => triggerCardFx(monsterCardEl(m.id), fx), 70);
+}
 function doGMMonsterDamage() {
     const mId = getSelectValue('gm-monster-select');
     const m = monsters.find(m => String(m.id) === mId); if (!m) return;
     const dmg = parseInt(document.getElementById('gm-monster-dmg-input').value); if (!dmg || dmg <= 0) return;
-    const effective = Math.max(0, dmg - (m.armor || 0));
-    m.pv = Math.max(0, m.pv - effective);
     document.getElementById('gm-monster-dmg-input').value = '';
-    saveMonsters();
-    clearTimeout(renderMonstersTimer); renderMonstersTimer = setTimeout(renderMonsters, 50);
-    setTimeout(() => triggerCardFx(monsterCardEl(m.id), 'dmg'), 70);
+    damageMonster(m, dmg);
 }
 // Apply heal to the selected monster in the GM roll panel.
 function doGMMonsterHeal() {
     const mId = getSelectValue('gm-monster-select');
     const m = monsters.find(m => String(m.id) === mId); if (!m) return;
     const amt = parseInt(document.getElementById('gm-monster-heal-input').value); if (!amt || amt <= 0) return;
-    m.pv = Math.min(m.maxPV, m.pv + amt);
     document.getElementById('gm-monster-heal-input').value = '';
-    saveMonsters();
-    clearTimeout(renderMonstersTimer); renderMonstersTimer = setTimeout(renderMonsters, 50);
-    setTimeout(() => triggerCardFx(monsterCardEl(m.id), 'heal'), 70);
+    healMonster(m, amt);
 }
 // Rebuild the attack select dropdown when the monster selection changes.
 function onMonsterSelectChange() {
@@ -1841,10 +1994,12 @@ function renderMonsters() {
             noM.textContent = monsters.length ? 'Aucun monstre dans ce groupe' : 'Aucun monstre actif';
             noM.style.display = ''; grid.appendChild(noM);
         }
+        renderGMPlayBar();
         return;
     }
     if (noM) noM.style.display = 'none';
     reconcile(grid, list.map(m => [String(m.id), m]), (id, m) => _monsterCard(id, m), (card, m) => _updateMonsterCard(card, m));
+    renderGMPlayBar();
 }
 
 // Build one monster card. Handlers are closures over the monster id, so the id never
@@ -1868,7 +2023,9 @@ function _monsterCard(id, m) {
         atks:   el('div', { className: 'mc-atk-section' }),
         dmgInput, healInput,
     };
-    const card = el('div', { className: 'monster-card', dataset: { monsterId: id } },
+    const card = el('div', { className: 'monster-card', dataset: { monsterId: id },
+        // Vue de jeu: a click on the card (not on one of its fields) selects it for the bottom bar.
+        onclick: e => { if (!UI_OLD && !e.target.closest('input, button, select, .group-grip')) selectMonster(id); } },
         el('div', { className: 'mc-header' },
             el('span', { className: 'group-grip', draggable: true, title: 'Glisser vers un groupe', textContent: '⠿',
                 ondragstart: e => _groupDragStart(e, id, 'monster'), ondragend: e => _groupDragEnd(e) }),
@@ -1899,7 +2056,8 @@ function _updateMonsterCard(card, m) {
     const pct = m.maxPV > 0 ? m.pv / m.maxPV : 0;
     const hpColor = pct > 0.5 ? 'var(--ok)' : pct > 0.25 ? 'var(--warn)' : 'var(--bad)';
     const dead = m.pv <= 0;
-    card.className = 'monster-card' + (dead ? ' is-dead' : (!dead && pct >= 0 && pct <= 0.25 ? ' hp-critical' : ''));
+    card.className = 'monster-card' + (dead ? ' is-dead' : (!dead && pct >= 0 && pct <= 0.25 ? ' hp-critical' : ''))
+        + (card.dataset.monsterId === gmSelectedMonsterId ? ' is-selected' : '');
     r.name.textContent = m.name;
     const gName = monsterGroupAssign[m.id] ? (monsterGroups.find(g => g.id === monsterGroupAssign[m.id]) || {}).name : '';
     r.badge.textContent = gName || '';
@@ -1986,6 +2144,7 @@ function handleIncomingRoll(data) {
         success: data.success === null || data.success === undefined ? data.success : !!data.success,
         hidden: !!data.hidden,
     };
+    if (data.playerId !== 'gm') rollRow?.push({ kind: 'roll', ...data, skillName: String(data.skillName ?? '') });
     rollFeed.unshift({ ...data, receivedAt: Date.now() });
     if (rollFeed.length > 50) rollFeed.pop();
     localStorage.setItem(rollsKey(), JSON.stringify(rollFeed));
@@ -2132,6 +2291,7 @@ function doGMMonsterRoll() {
 }
 // Display a GM roll result in the result panel with optional damage and player target buttons.
 function showGMRollResult(name, threshold, roll, success, dmgResult) {
+    document.getElementById('pb-gm-result')?.classList.add('show');
     // Add to the roll feed
     handleIncomingRoll({ skillName: name, threshold, roll, success, char: 'MJ', bonusMalus: 0, playerId: 'gm' });
     if (dmgResult) handleIncomingRoll({ skillName: `${name} — Dégâts`, threshold: null, roll: dmgResult.total, success: null, char: 'MJ', bonusMalus: 0, playerId: 'gm' });
@@ -2232,23 +2392,16 @@ function monsterInlineDamage(id) {
     const m = monsters.find(m => String(m.id) === String(id)); if (!m) return;
     const inp = monsterCardEl(id)?._refs.dmgInput;
     const dmg = parseInt(inp?.value); if (!dmg || dmg <= 0) return;
-    const effective = Math.max(0, dmg - (m.armor || 0));
-    m.pv = Math.max(0, m.pv - effective);
     if (inp) inp.value = '';
-    saveMonsters();
-    clearTimeout(renderMonstersTimer); renderMonstersTimer = setTimeout(renderMonsters, 50);
-    setTimeout(() => triggerCardFx(monsterCardEl(m.id), 'dmg'), 70);
+    damageMonster(m, dmg);
 }
 // Apply heal from the monster card inline input, capping at maxPV.
 function monsterInlineHeal(id) {
     const m = monsters.find(m => String(m.id) === String(id)); if (!m) return;
     const inp = monsterCardEl(id)?._refs.healInput;
     const amt = parseInt(inp?.value); if (!amt || amt <= 0) return;
-    m.pv = Math.min(m.maxPV, m.pv + amt);
     if (inp) inp.value = '';
-    saveMonsters();
-    clearTimeout(renderMonstersTimer); renderMonstersTimer = setTimeout(renderMonsters, 50);
-    setTimeout(() => triggerCardFx(monsterCardEl(m.id), 'heal'), 70);
+    healMonster(m, amt);
 }
 
 window.addEventListener('storage', e => {
@@ -2337,6 +2490,7 @@ async function handlePlayerCard(data) {
     const card = cardById(data.cardId);
     if (!card) return;
     const label = cardLabel(card);
+    rollRow?.push({ kind: 'card', char: data.playerName || '?', cardId: data.cardId });
     const who =data.playerName ? `${data.playerName} — ${label}` : label;
     document.getElementById('gm-card-info').textContent = who;
     cardHistory.unshift({ cardId: data.cardId, playerName: data.playerName || '?', ts: Date.now() });
@@ -2643,6 +2797,11 @@ function renderMusicTab() {
         tbChip.style.visibility = track ? 'visible' : 'hidden';
         const tbTitle = document.getElementById('tb-music-title');
         if (tbTitle) tbTitle.textContent = track ? track.name : '—';
+        // Vue de jeu mini-player: play/pause and volume; the rest lives in the Musique drawer.
+        const tbPlay = document.getElementById('tb-music-play');
+        if (tbPlay) tbPlay.textContent = musicIsPlaying ? '⏸' : '▶';
+        const tbVol = document.getElementById('tb-music-vol');
+        if (tbVol && document.activeElement !== tbVol) tbVol.value = String(musicMasterVolume);
     }
 
     // Subtitle showing which playlist the now-playing track belongs to.
@@ -2869,6 +3028,11 @@ function onGMMusicVolumeChange(val) {
     if (musicIsPlaying && !_musicFadeRaf) _setSlotVol(_musicCurrentSlot, musicMasterVolume);
     const volVal = document.getElementById('music-gm-vol-val');
     if (volVal) volVal.textContent = String(musicMasterVolume);
+    // The drawer's slider and the top bar's move together.
+    ['music-gm-volume', 'tb-music-vol'].forEach(id => {
+        const s = document.getElementById(id);
+        if (s && document.activeElement !== s) s.value = String(musicMasterVolume);
+    });
 }
 
 // Rename a track in the ACTIVE playlist.
@@ -3362,7 +3526,7 @@ async function mapSetKind(kind) {
         if (!m.size) m.size = await _imageSize(m.imageUrl).catch(() => null);
         if (!m.size) { alert('Impossible de lire la taille de l’image.'); return; }
     }
-    zoneEditPoiId = null; zoneDraft = []; mapTool = null; calibPts = [];
+    zoneEditPoiId = null; zoneDraft = []; mapTool = null; mapPlaceMenu = null; calibPts = [];
     const from = mapVB(m);
     m.kind = kind;
     _rescaleMap(m, from, mapVB(m));
@@ -3378,7 +3542,7 @@ function mapSetMoves(v) {
     const m = _activeMap(); if (!m) return;
     m.moves = v === 'validation' ? 'validation' : 'libre';
     saveMaps();
-    renderMapGridBar();
+    renderMapTab();
 }
 
 // One grid setting from the grid bar. Numbers accept a comma; anything unreadable is
@@ -3424,11 +3588,6 @@ function renderMapGridBar() {
                     oninput: e => mapSetGrid('unit', e.target.value) })),
             check('show', 'Visible'),
             check('snap', 'Magnétisme'),
-            el('span', { className: 'map-seg', id: 'map-moves-seg' },
-                el('button', { className: 'map-chip', dataset: { moves: 'libre' }, textContent: 'Déplacements libres',
-                    title: 'Un joueur déplace son jeton lui-même', onclick: () => mapSetMoves('libre') }),
-                el('button', { className: 'map-chip', dataset: { moves: 'validation' }, textContent: 'Sur validation',
-                    title: 'Chaque déplacement de joueur attend votre accord', onclick: () => mapSetMoves('validation') })),
             el('button', { className: 'map-chip', id: 'map-calib-btn', textContent: 'Caler sur une case',
                 title: 'Cliquez deux coins opposés d’une case dessinée sur la carte',
                 onclick: () => { mapTool = mapTool === 'calib' ? null : 'calib'; calibPts = []; renderMapTab(); } }));
@@ -3439,14 +3598,16 @@ function renderMapGridBar() {
         if (f.type === 'checkbox') f.checked = !!v; else f.value = String(v);
     });
     document.getElementById('map-calib-btn')?.classList.toggle('on', mapTool === 'calib');
-    bar.querySelectorAll('[data-moves]').forEach(b => b.classList.toggle('on', (m.moves || 'libre') === b.dataset.moves));
 }
 
 // No prompt(): the map gets a default name and the name field takes the focus.
 function addMap() {
     const m = { id: uid(), name: 'Carte ' + (gmMaps.length + 1),
                 imageUrl: '', imagePath: '', sourceUrl: '', pois: [], positions: {},
-                kind: 'monde', size: null, grid: null };
+                kind: 'monde', size: null, grid: null,
+                // A map made after the fog shipped starts all dark once it is tactical; an
+                // older one (fog null) stays fully revealed, so a game in progress keeps its light.
+                fog: { base: 'dark', ops: [] } };
     gmMaps.push(m);
     activeMapId = m.id;
     saveMaps();
@@ -3535,6 +3696,8 @@ function mapSelectPoi(id) { mapSelectedPoiId = mapSelectedPoiId === id ? null : 
 // from `players` (presence) and `monsters` every time, so they cannot go stale. A token
 // whose reference is gone (monster deleted, character left the campaign) is not drawn.
 function _mapTokenInfo(t) {
+    // A free token (« Placer » → Jeton libre): a name and nothing behind it.
+    if (t.free) return { kind: 'libre', name: String(t.name || '?'), own: null, hp: null };
     const pl = players.get(t.ref);
     if (pl) return { kind: 'pj', name: pl.name || '?', own: t.ref,
                      hp: pl.maxHP ? (pl.hp ?? pl.maxHP) / pl.maxHP : null };
@@ -3552,6 +3715,18 @@ function mapAddToken(ref, x, y) {
     // A monster comes in hidden: the GM places the ambush before revealing it.
     const isMonster = !players.has(ref);
     const t = { id: uid(), ref, x: p.x, y: p.y, size: 1, hidden: isMonster, markers: [] };
+    m.tokens.push(t);
+    mapSelectedTokenId = t.id; mapSelectedPoiId = null;
+    saveMaps();
+    renderMapTab();
+}
+
+function mapAddFreeToken(name, x, y) {
+    const m = _activeMap(); if (!m) return;
+    m.tokens = m.tokens || [];
+    const g = mapGrid(m);
+    const p = g && g.snap ? gridSnap(x, y, g, 1) : { x, y };
+    const t = { id: uid(), ref: null, free: true, name: String(name).slice(0, 40), x: p.x, y: p.y, size: 1, hidden: false, markers: [] };
     m.tokens.push(t);
     mapSelectedTokenId = t.id; mapSelectedPoiId = null;
     saveMaps();
@@ -3598,7 +3773,7 @@ function _tokenCard(id) {
 function _tokenCardUpdate(node, t) {
     const info = _mapTokenInfo(t);
     node.querySelector('.map-tok-card-name').textContent = info?.name || '?';
-    node.querySelector('.map-tok-card-kind').textContent = info?.kind === 'pj' ? 'Personnage joueur' : 'Monstre';
+    node.querySelector('.map-tok-card-kind').textContent = info?.kind === 'pj' ? 'Personnage joueur' : info?.kind === 'libre' ? 'Jeton libre' : 'Monstre';
     fill(node.querySelector('.map-tok-size'), [1, 2, 3, 4].map(n => el('button', {
         className: 'map-chip' + ((t.size || 1) === n ? ' on' : ''), textContent: n + '×' + n,
         onclick: () => mapSetToken(t.id, 'size', n) })));
@@ -3658,6 +3833,12 @@ function startZoneEdit(poiId) {
 
 // Close the polygon: three vertices is the minimum that encloses anything.
 function closeZone() {
+    if (mapTool === 'fog-poly') {
+        if (zoneDraft.length < 3) { alert('Un polygone demande au moins trois sommets.'); return; }
+        const pts = zoneDraft; zoneDraft = [];
+        fogAddOp(pts);
+        return;
+    }
     const m = _activeMap();
     const poi = m?.pois.find(p => p.id === zoneEditPoiId);
     if (!poi) return;
@@ -3842,6 +4023,8 @@ function _poiCardUpdate(node, poi) {
 // Render the whole Carte tab. The parts are separate on purpose: the move-request queue
 // changes on its own (renderMapQueue), and the stage is updated in place by mapView().
 function renderMapTab() {
+    // Vue de jeu: a map getting (or losing) its image changes what holds the centre.
+    if (drawerMode() && !openPanes.includes(gmStagePane())) setTimeout(renderTabLayout);
     // Drop a stale active id (map deleted on another device), then render the chips.
     if (activeMapId && !_activeMap()) activeMapId = gmMaps[0] ? gmMaps[0].id : null;
     // A trace can be stranded two ways: the GM switches map mid-trace (the POI is not on the
@@ -3857,19 +4040,106 @@ function renderMapTab() {
     renderMapStage();
 }
 
-// "＋ Jeton": the characters of the campaign and the monsters not on this map yet. Picking
-// one arms the tool; the next click on the map places it.
-function _tokenPicker(m) {
+function setMapTool(t) {
+    if (mapTool === 'fog-poly') zoneDraft = [];
+    mapTool = t; mapPlaceMenu = null; calibPts = [];
+    renderMapTab();
+}
+
+// ── Manual fog (phase 4) ─────────────────────────────────────────────────────
+// m.fog = { base: 'dark' | 'clear', ops: [{ t: 'r' | 'h', pts }] }, replayed in order
+// (mapFog / fogVisible in aria-supabase.js). Points are rounded to the pixel: the whole
+// fog travels in every `state`, under Ably's 16 KB.
+function fogAddOp(pts) {
+    const m = _activeMap(); if (!m || m.kind !== 'tactique') return;
+    m.fog = m.fog || { base: 'clear', ops: [] };
+    m.fog.ops.push({ t: mapFogMode, pts: pts.map(([x, y]) => [Math.round(x), Math.round(y)]) });
+    if (m.fog.ops.length > FOG_MAX_OPS) m.fog.ops = m.fog.ops.slice(-FOG_MAX_OPS);
+    saveMaps(); renderMapTab();
+}
+function fogAll(base) {
+    const m = _activeMap(); if (!m) return;
+    if (m.fog?.ops?.length && !confirm(base === 'dark' ? 'Tout cacher ? Les zones révélées seront perdues.'
+                                                       : 'Tout révéler ? Les zones tracées seront perdues.')) return;
+    m.fog = { base, ops: [] };
+    saveMaps(); renderMapTab();
+}
+
+// The vertical toolbar at the left edge of the map (vue de jeu spec, step 5). Tokens,
+// moves and the ruler only mean something on a tactical map; ping works on both.
+function _gmMapTools(m) {
+    const tac = m.kind === 'tactique', g = mapGrid(m);
+    const btn = (tool, glyph, label, title) => el('button', {
+        className: 'map-side-btn' + (mapTool === tool ? ' on' : ''), title,
+        onclick: () => setMapTool(mapTool === tool && tool ? null : tool) },
+        el('b', { textContent: glyph }), el('span', { textContent: label }));
+    const anyDead = tac && (m.tokens || []).some(t => monsters.find(x => x.id === t.ref)?.pv <= 0);
+    const validation = (m.moves || 'libre') === 'validation';
+    return [
+        btn(null, '↖', 'Sélection', 'Sélectionner, déplacer (Échap)'),
+        tac && btn('place', '＋', 'Placer', 'Cliquez sur la carte pour placer un jeton'),
+        tac && btn('hide', '◐', 'Masquer', 'Cliquez un jeton pour le masquer aux joueurs ou le montrer'),
+        g && btn('ruler', '⟷', 'Mesurer', 'Glissez pour mesurer (M) · clic droit-glisser mesure aussi'),
+        btn('ping', '◉', 'Ping', 'Cliquez pour pinger · Maj + clic recentre tous les écrans · clic long pinge aussi'),
+        tac && el('span', { className: 'map-side-sep' }),
+        tac && el('button', { className: 'map-side-btn' + (validation ? ' on' : ''),
+            title: validation ? 'Sur validation : chaque déplacement de joueur attend votre accord. Cliquez pour passer en libre.'
+                              : 'Libre : un joueur déplace son jeton lui-même. Cliquez pour passer sur validation.',
+            onclick: () => mapSetMoves(validation ? 'libre' : 'validation') },
+            el('b', { textContent: validation ? '⚑' : '⇄' }), el('span', { textContent: validation ? 'Validation' : 'Libre' })),
+        tac && el('button', { className: 'map-side-btn', disabled: !anyDead,
+            title: 'Retire de la carte les jetons des monstres à 0 PV', onclick: mapRemoveDead },
+            el('b', { textContent: '✕' }), el('span', { textContent: 'Morts' })),
+        // Fog: a rectangle or a polygon that reveals or covers, and the two resets.
+        tac && el('span', { className: 'map-side-sep' }),
+        tac && el('button', { className: 'map-side-btn fog-mode' + (mapFogMode === 'h' ? ' cover' : ''),
+            title: mapFogMode === 'r' ? 'Les outils révèlent. Cliquez pour recouvrir.' : 'Les outils recouvrent. Cliquez pour révéler.',
+            onclick: () => { mapFogMode = mapFogMode === 'r' ? 'h' : 'r'; renderMapTab(); } },
+            el('b', { textContent: mapFogMode === 'r' ? '☀' : '●' }), el('span', { textContent: mapFogMode === 'r' ? 'Révéler' : 'Recouvrir' })),
+        tac && btn('fog-rect', '▭', 'Rect.', 'Glissez un rectangle à révéler ou recouvrir'),
+        tac && btn('fog-poly', '⬠', 'Polygone', 'Cliquez les sommets, puis le premier pour fermer · Suppr retire le dernier'),
+        tac && el('button', { className: 'map-side-btn', title: 'Tout révéler', onclick: () => fogAll('clear') },
+            el('b', { textContent: '◯' }), el('span', { textContent: 'Tout voir' })),
+        tac && el('button', { className: 'map-side-btn', title: 'Tout cacher', onclick: () => fogAll('dark') },
+            el('b', { textContent: '◼' }), el('span', { textContent: 'Tout noir' })),
+    ].filter(Boolean);
+}
+
+// « Placer un jeton »: a small menu where the GM clicked — monsters and characters not on
+// this map yet, or a free token named on the spot. A monster comes in hidden (mapAddToken).
+function _placeMenu(pt) {
+    const m = _activeMap();
     const on = new Set((m.tokens || []).map(t => t.ref));
     const pcs = [...players.values()].filter(p => !on.has(p.charId));
     const mos = monsters.filter(x => !on.has(x.id));
-    const sel = el('select', { className: 'map-tok-pick' + (mapTool === 'token' ? ' on' : ''),
-        onchange: e => { mapTokenRef = e.target.value || null; mapTool = mapTokenRef ? 'token' : null; renderMapTab(); } },
-        el('option', { value: '', textContent: mapTool === 'token' ? 'Cliquez sur la carte…' : '＋ Jeton' }),
-        pcs.length > 0 && el('optgroup', { label: 'Personnages' }, pcs.map(p => el('option', { value: p.charId, textContent: p.name || p.charId }))),
-        mos.length > 0 && el('optgroup', { label: 'Monstres' }, mos.map(x => el('option', { value: x.id, textContent: x.name || '?' }))));
-    sel.value = mapTool === 'token' ? (mapTokenRef || '') : '';
-    return sel;
+    const put = ref => { mapPlaceMenu = null; mapAddToken(ref, pt.x, pt.y); };
+    const name = el('input', { className: 'map-place-name', placeholder: 'Jeton libre…', maxLength: 40,
+        onkeydown: e => { if (e.key === 'Enter') free(); } });
+    const free = () => {
+        const n = name.value.trim();
+        if (!n) { name.focus(); return; }
+        mapPlaceMenu = null; mapAddFreeToken(n, pt.x, pt.y);
+    };
+    const group = (label, items) => items.length > 0 && el('div', { className: 'map-place-group' },
+        el('div', { className: 'map-place-label', textContent: label }),
+        el('div', { className: 'map-place-list' }, items));
+    return el('div', { className: 'map-poi-card map-place-menu' },
+        el('div', { className: 'map-place-title', textContent: 'Placer un jeton' }),
+        group('Monstres · caché', mos.map(x => el('button', { className: 'map-chip', textContent: x.name || '?', onclick: () => put(x.id) }))),
+        group('Personnages', pcs.map(p => el('button', { className: 'map-chip', textContent: p.name || '?', onclick: () => put(p.charId) }))),
+        el('div', { className: 'map-place-free' }, name,
+            el('button', { className: 'map-chip on', textContent: 'Poser', onclick: free })));
+}
+
+// The GM's view goes to the table for « Suivre le MJ »: debounced, and again on a request.
+function publishMapView(force) {
+    clearTimeout(_gmViewTimer);
+    _gmViewTimer = setTimeout(() => {
+        const m = _activeMap();
+        if (!ablyMap || !_gmView || !m?.imageUrl) return;
+        const r = (n, d) => Math.round(n * d) / d;
+        ablyMap.publish('view', { mapId: m.id, x: r(_gmView.x, 10), y: r(_gmView.y, 10), k: r(_gmView.k, 100) });
+    }, force ? 0 : 300);
 }
 
 function renderMapToolbar() {
@@ -3896,7 +4166,6 @@ function renderMapToolbar() {
         m.imageUrl && el('button', { className: 'map-chip' + (mapTool === 'pin' ? ' on' : ''), textContent: '＋ Lieu',
             title: 'Puis cliquez sur la carte pour poser le lieu',
             onclick: () => { mapTool = mapTool === 'pin' ? null : 'pin'; renderMapTab(); } }),
-        m.kind === 'tactique' && m.imageUrl && _tokenPicker(m),
         m.imageUrl && el('button', { className: 'map-chip' + (mapTableView ? ' on' : ''), textContent: 'Vue table',
             onclick: () => { mapTableView = !mapTableView; renderMapTab(); } }),
         zoneEditPoiId && el('button', { className: 'map-chip on', textContent: 'Fermer la zone', onclick: closeZone }),
@@ -3925,6 +4194,22 @@ function renderMapQueue() {
                 el('button', { className: 'map-chip on', textContent: '✓', title: 'Accepter', onclick: () => acceptMove(i) }),
                 el('button', { className: 'map-chip', textContent: '×', title: 'Refuser', onclick: () => denyMove(i) }))))));
     _renderMapTabBadge();
+    const flag = document.getElementById('tb-flag');
+    if (flag) {
+        flag.style.visibility = moveRequests.length ? 'visible' : 'hidden';
+        document.getElementById('tb-flag-n').textContent = String(moveRequests.length);
+    }
+}
+
+// ⚑ in the top bar: close any drawer and centre the map on the oldest pending move (the
+// queue is in arrival order — asking again re-queues at the end). Its queue opens too.
+function focusOldestMove() {
+    const r = moveRequests[0], m = _activeMap();
+    if (!r || !m) return;
+    const p = r.tokenId ? { x: r.x, y: r.y } : m.pois.find(x => x.id === r.poiId);
+    closeDrawer();
+    if (p) mapViewFocus(document.getElementById('map-stage'), { x: p.x, y: p.y });
+    document.querySelector('#map-queue details')?.setAttribute('open', '');
 }
 
 function renderMapStage() {
@@ -3944,17 +4229,26 @@ function renderMapStage() {
     const list = mapTableView ? m.pois.filter(p => visibleIds.has(p.id)) : m.pois;
     // The card must not lie either: in table view it only opens for a POI the table sees.
     const sel = list.find(p => p.id === mapSelectedPoiId) || null;
+    const fog = mapFog(m);
     const toks = m.kind === 'tactique' ? (m.tokens || [])
         .map(t => ({ t, info: _mapTokenInfo(t) }))
-        .filter(({ t, info }) => info && !(mapTableView && t.hidden)) : [];
+        .filter(({ t, info }) => info && !(mapTableView && (t.hidden || (fog && !fogVisible(fog, t.x, t.y))))) : [];
     const selTok = toks.find(({ t }) => t.id === mapSelectedTokenId)?.t || null;
     const vb = mapVB(m), grid = mapGrid(m);
     mapView(stage, {
+        // The GM sees through the fog; « Vue table » shows it as the table does.
+        fog, fogSee: !mapTableView,
+        onRect: (a, b) => fogAddOp([[a.x, a.y], [b.x, a.y], [b.x, b.y], [a.x, b.y]]),
         imageUrl: m.imageUrl, alt: m.name, vb, grid,
         title: m.name,
         kicker: zoneEditPoiId ? `Tracé de zone · ${zoneDraft.length} sommet${zoneDraft.length > 1 ? 's' : ''} · Suppr annule le dernier`
               : mapTool === 'pin' ? 'Cliquez sur la carte pour poser le lieu'
-              : mapTool === 'token' ? `Cliquez sur la carte pour poser ${_mapTokenInfo({ ref: mapTokenRef })?.name || 'le jeton'}`
+              : mapTool === 'place' ? 'Placer un jeton · cliquez sur la carte'
+              : mapTool === 'hide' ? 'Masquer / montrer · cliquez un jeton'
+              : mapTool === 'ruler' ? 'Mesurer · glissez sur la carte'
+              : mapTool === 'ping' ? 'Ping · cliquez · Maj + clic recentre tous les écrans'
+              : mapTool === 'fog-rect' ? `Brouillard · glissez un rectangle à ${mapFogMode === 'r' ? 'révéler' : 'recouvrir'}`
+              : mapTool === 'fog-poly' ? `Brouillard · polygone à ${mapFogMode === 'r' ? 'révéler' : 'recouvrir'} · ${zoneDraft.length} sommet${zoneDraft.length > 1 ? 's' : ''} · Suppr annule le dernier`
               : mapTool === 'calib' ? (calibPts.length ? 'Calage · cliquez le coin opposé de la même case'
                                                        : 'Calage · cliquez un coin d’une case dessinée sur la carte')
               : (mapTableView ? 'Vue table · ce que voient les joueurs' : 'Vue MJ · tout est visible')
@@ -3962,7 +4256,7 @@ function renderMapStage() {
         zones: mapTableView ? [visiblePois(st, null).filter(p => (p.zone || []).length), fogZones(st, null)]
                             : [m.pois.filter(p => (p.zone || []).length && visibleIds.has(p.id)),
                                m.pois.filter(p => (p.zone || []).length && !visibleIds.has(p.id))],
-        extra: zoneEditPoiId ? [_mapZoneLayer([{ id: 'draft', zone: zoneDraft }], [], vb), _zoneEditLayer()]
+        extra: zoneEditPoiId || mapTool === 'fog-poly' ? [_mapZoneLayer([{ id: 'draft', zone: zoneDraft }], [], vb), _zoneEditLayer()]
              : mapTool === 'calib' ? [el('div', { className: 'map-zone-edit' }, calibPts.map(p => el('div', {
                    className: 'zone-vertex first', style: { left: p.x / vb.w * 100 + '%', top: p.y / vb.h * 100 + '%' } })))]
              : [],
@@ -3980,13 +4274,33 @@ function renderMapStage() {
             id: t.id, x: t.x, y: t.y, size: t.size || 1, name: info.name,
             ini: info.name.trim().charAt(0).toUpperCase(), hp: info.hp, markers: markerGlyphs(t.markers),
             cls: [info.kind === 'monstre' && 'monster', info.hp === 0 && 'dead', t.hidden && 'hidden',
-                  t.id === mapSelectedTokenId && 'selected'].filter(Boolean).join(' '),
+                  (t.id === mapSelectedTokenId || (gmSelectedMonsterId && t.ref === gmSelectedMonsterId)) && 'selected']
+                  .filter(Boolean).join(' '),
             draggable: true })),
-        card: selTok ? { key: selTok.id, x: selTok.x, y: selTok.y,
+        sideTools: _gmMapTools(m),
+        tool: mapTool === 'ruler' || mapTool === 'ping' ? mapTool : mapTool === 'fog-rect' ? 'rect' : null,
+        rulerCls: 'gm',
+        onRuler: pts => mapFx.ruler(pts),
+        onPing: (p, shift) => mapFx.ping(p, shift),
+        onViewChange: view => { _gmView = view; publishMapView(); },
+        card: mapPlaceMenu ? { key: 'place:' + mapPlaceMenu.x + ',' + mapPlaceMenu.y, x: mapPlaceMenu.x, y: mapPlaceMenu.y,
+                               create: () => _placeMenu(mapPlaceMenu) }
+            : selTok ? { key: selTok.id, x: selTok.x, y: selTok.y,
                          create: () => _tokenCard(selTok.id), update: node => _tokenCardUpdate(node, selTok) }
             : sel && { key: sel.id, x: sel.x, y: sel.y,
                        create: () => _poiCard(sel.id), update: node => _poiCardUpdate(node, sel) },
-        onTokenClick: id => { mapSelectedTokenId = mapSelectedTokenId === id ? null : id; mapSelectedPoiId = null; renderMapTab(); },
+        onTokenClick: id => {
+            if (mapTool === 'hide') {
+                const t = m.tokens.find(z => z.id === id);
+                if (t) { t.hidden = !t.hidden; saveMaps(); renderMapTab(); }
+                return;
+            }
+            mapSelectedTokenId = mapSelectedTokenId === id ? null : id; mapSelectedPoiId = null;
+            // Vue de jeu: a monster's token drives the bottom bar, like a click on its card.
+            const ref = m.tokens.find(z => z.id === id)?.ref;
+            if (mapSelectedTokenId && monsters.some(x => x.id === ref)) { gmSelectedMonsterId = String(ref); renderGMPlayBar(); }
+            renderMapTab();
+        },
         onTokenDrop: (id, x, y) => {
             const t = m.tokens.find(z => z.id === id); if (!t) return;
             t.x = x; t.y = y;
@@ -3997,7 +4311,7 @@ function renderMapStage() {
         onPinDown: (e, id) => { const p = m.pois.find(x => x.id === id); if (p) _mapDragPin(e, p); },
         onBackground: (e, pt) => {
             // While tracing a zone, a click places a vertex — and never a POI.
-            if (zoneEditPoiId) { if (pt) { zoneDraft.push([pt.x, pt.y]); renderMapTab(); } return; }
+            if (zoneEditPoiId || mapTool === 'fog-poly') { if (pt) { zoneDraft.push([pt.x, pt.y]); renderMapTab(); } return; }
             if (mapTool === 'calib') {
                 if (!pt) return;
                 calibPts.push(pt);
@@ -4011,7 +4325,7 @@ function renderMapStage() {
                 return;
             }
             if (mapTool === 'pin' && pt) { mapTool = null; mapAddPoi(pt.x, pt.y); return; }
-            if (mapTool === 'token' && pt) { const ref = mapTokenRef; mapTool = null; mapTokenRef = null; mapAddToken(ref, pt.x, pt.y); return; }
+            if (mapTool === 'place') { mapPlaceMenu = pt; mapSelectedTokenId = null; mapSelectedPoiId = null; renderMapTab(); return; }
             if (mapSelectedPoiId || mapSelectedTokenId) { mapSelectedPoiId = null; mapSelectedTokenId = null; renderMapTab(); }
         },
     });
@@ -4041,6 +4355,10 @@ function buildMapState() {
         // Tokens: a hidden one never leaves this panel. Names and HP are resolved here, so
         // the receivers need nothing but this message; `own` is the charId allowed to drag.
         moves: m.moves || 'libre',
+        // The manual fog, normalised (null = nothing to draw). Tokens under it are not
+        // removed here — visibleTokens() does it on every receiver, with one exception the
+        // GM cannot apply in a single shared state: each player always sees their own.
+        fogMask: mapFog(m),
         tokens: m.kind !== 'tactique' ? [] : (m.tokens || []).filter(t => !t.hidden).flatMap(t => {
             const info = _mapTokenInfo(t);
             return info ? [{ id: t.id, x: Math.round(t.x * 10) / 10, y: Math.round(t.y * 10) / 10, size: t.size || 1,
